@@ -18,7 +18,13 @@ Optional column (runner output since 2026-09-30):
     held_out   true if the question was never used to develop or fix MIE files
 
 Usage:
-    python results_analyzer.py evaluation_results.csv [--questions-dir DIR]
+    python results_analyzer.py evaluation_results.csv [--questions-dir DIR] [--keep-excluded]
+
+Every row is screened first (answer_screen.py): a content-policy refusal or a stub (failed,
+login-error or empty answer) in EITHER arm removes that question-row from the score sections,
+because its score measures the policy filter or the harness, not TogoMCP. The EXCLUDED CELLS
+section lists them and prints raw and clean totals side by side. --keep-excluded scores every
+row as before (raw numbers only).
 
 The held-out split reads `held_out` from the CSV when present. For older CSVs it
 falls back to the question YAMLs in --questions-dir (default: ../questions), but
@@ -31,7 +37,9 @@ import argparse
 import csv
 import sys
 from pathlib import Path
-from collections import defaultdict
+from collections import Counter, defaultdict
+
+from answer_screen import classify
 
 try:
     import yaml
@@ -48,9 +56,11 @@ QUESTION_TYPES = ["yes_no", "factoid", "list", "summary", "choice"]
 class ResultsAnalyzer:
     """Analyzes TogoMCP evaluation results."""
 
-    def __init__(self, csv_path: str, questions_dir: Path = DEFAULT_QUESTIONS_DIR):
+    def __init__(self, csv_path: str, questions_dir: Path = DEFAULT_QUESTIONS_DIR,
+                 keep_excluded: bool = False):
         self.csv_path = Path(csv_path)
         self.questions_dir = Path(questions_dir)
+        self.keep_excluded = keep_excluded
         self.results = []
         self._load()
 
@@ -78,13 +88,60 @@ class ResultsAnalyzer:
         """Return agent score for a dimension ('baseline' or 'togomcp')."""
         return self._float(row.get(f"{agent}_{col}", "0"))
 
-    def _evaluated_rows(self):
-        """Rows where both agents produced a non-zero total score."""
+    def _screen(self, row: dict) -> dict:
+        """{'baseline': class, 'togomcp': class} from answer_screen.classify."""
+        return {a: classify(row.get(f"{a}_answer"), row.get(f"{a}_success"))
+                for a in ("baseline", "togomcp")}
+
+    def _scored_rows(self):
+        """Rows where both agents produced a non-zero total score (0 = failed judge)."""
         return [
             r for r in self.results
             if self._score(r, "baseline", "total_score") > 0
             and self._score(r, "togomcp", "total_score") > 0
         ]
+
+    def _evaluated_rows(self):
+        """Scored rows whose both arms are valid answers (unless --keep-excluded)."""
+        rows = self._scored_rows()
+        if self.keep_excluded:
+            return rows
+        return [r for r in rows if set(self._screen(r).values()) == {"valid"}]
+
+    # ------------------------------------------------------------------
+    # Sections
+    # ------------------------------------------------------------------
+
+    def exclusion_report(self):
+        """Refusals and stubs per arm, and raw vs clean totals (Trap 8)."""
+        counts = Counter()
+        hits = defaultdict(list)
+        for r in self.results:
+            for arm, cls in self._screen(r).items():
+                counts[(arm, cls)] += 1
+                if cls != "valid":
+                    hits[(arm, cls)].append(r.get("question_id", "?"))
+        print("=" * 70)
+        print("EXCLUDED CELLS (content-policy refusals and stubs)")
+        print("=" * 70)
+        for arm in ("baseline", "togomcp"):
+            print(f"  {arm:9}: refusal {counts[(arm, 'refusal')]:3}  stub {counts[(arm, 'stub')]:3}"
+                  f"  valid {counts[(arm, 'valid')]:3}")
+        for (arm, cls), qids in sorted(hits.items()):
+            shown = ", ".join(sorted(set(qids))[:12])
+            print(f"    {arm} {cls}: {shown}{' ...' if len(set(qids)) > 12 else ''}")
+        raw = self._scored_rows()
+        clean = [r for r in raw if set(self._screen(r).values()) == {"valid"}]
+
+        def tot(rows, agent):
+            return sum(self._score(r, agent, "total_score") for r in rows) / len(rows) if rows else 0.0
+
+        print(f"\n  {'':6} {'n':>4}  {'Baseline':>9}  {'TogoMCP':>9}  {'Δ (T−B)':>9}")
+        for name, rows in (("raw", raw), ("clean", clean)):
+            b, t = tot(rows, "baseline"), tot(rows, "togomcp")
+            print(f"  {name:6} {len(rows):>4}  {b:>9.2f}  {t:>9.2f}  {t - b:>+9.2f}")
+        mode = "raw (--keep-excluded)" if self.keep_excluded else "clean"
+        print(f"\n  The sections below use the {mode} rows.\n")
 
     # ------------------------------------------------------------------
     # Sections
@@ -111,8 +168,8 @@ class ResultsAnalyzer:
         print("OVERALL RESULTS")
         print("=" * 70)
         print(f"\nTotal questions : {total}")
-        print(f"Evaluated pairs : {n_eval}  "
-              f"(both agents scored > 0)")
+        print(f"Evaluated pairs : {n_eval}  (both agents scored > 0"
+              f"{'' if self.keep_excluded else '; refusals and stubs excluded'})")
         print()
 
         print("EXECUTION SUCCESS:")
@@ -383,10 +440,13 @@ def main():
     ap.add_argument("--questions-dir", default=str(DEFAULT_QUESTIONS_DIR),
                     help="question YAMLs, used for the held-out split of older CSVs "
                          "(default: %(default)s)")
+    ap.add_argument("--keep-excluded", action="store_true",
+                    help="score refusal and stub rows too (raw numbers only)")
     args = ap.parse_args()
 
     try:
-        analyzer = ResultsAnalyzer(args.csv, args.questions_dir)
+        analyzer = ResultsAnalyzer(args.csv, args.questions_dir, args.keep_excluded)
+        analyzer.exclusion_report()
         analyzer.overall_stats()
         analyzer.type_breakdown()
         analyzer.held_out_breakdown()

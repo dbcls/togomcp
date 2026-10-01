@@ -44,8 +44,8 @@ QUESTIONS = REPO / "benchmark" / "questions"
 RESULTS_ROOT = REPO / "benchmark" / "results"
 sys.path.insert(0, str(REPO))
 
-REFUSAL_RE = re.compile(r"violate our Usage Policy|unable to respond to this request", re.I)
-STUB_RE = re.compile(r"Not logged in|^\[ERROR:|Empty response from claude-agent-sdk", re.I)
+sys.path.insert(0, str(REPO / "benchmark" / "scripts"))
+from answer_screen import classify  # noqa: E402  (shared with results_analyzer.py)
 SCORE_COLS = ("recall", "precision", "repetition", "readability", "total_score")
 DIFF_FLAG = 3.0   # per-question |delta| (points of 20) worth listing in the diff
 
@@ -60,15 +60,6 @@ def load_questions() -> dict[str, dict]:
         out[q["id"]] = {"type": q["type"], "held_out": bool(q.get("held_out", False)),
                         "databases": list(q.get("togomcp_databases_used") or [])}
     return out
-
-
-def classify(answer: str, success: str) -> str:
-    a = answer or ""
-    if REFUSAL_RE.search(a):
-        return "refusal"
-    if str(success).strip().lower() in ("false", "0") or STUB_RE.search(a.strip()) or not a.strip():
-        return "stub"
-    return "valid"
 
 
 def num(x) -> float | None:
