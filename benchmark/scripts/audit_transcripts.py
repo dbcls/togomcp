@@ -68,10 +68,16 @@ def _paths_from_bash(cmd: str, cwd: str) -> list[str]:
     for w in _tokens(cmd):
         for part in re.split(r"[;&|<>()]+", w):
             part = part.strip().strip("'\"")
-            if not part or not (part.startswith(("/", "~", "./", "../")) or "/" in part):
+            if not part or "/" not in part:
                 continue
+            explicit = part.startswith(("/", "~", "./", "../"))
             p = os.path.expanduser(part)
             p = p if os.path.isabs(p) else os.path.normpath(os.path.join(cwd, p))
+            if not explicit:
+                # a bare word with a slash (a sed/awk script, a regex) counts only if it IS a file
+                if os.path.exists(p):
+                    out.append(p)
+                continue
             probe = re.split(r"[*?\[]", p, maxsplit=1)[0].rstrip("/") or "/"
             if os.path.exists(probe) or os.path.exists(os.path.dirname(probe)) and "*" in p:
                 out.append(p)
@@ -80,6 +86,16 @@ def _paths_from_bash(cmd: str, cwd: str) -> list[str]:
 
 def classify(name: str, inp: dict, sid: str, folder: str, cwd: str) -> str:
     own = f"{folder}/{sid}"
+    # Inter-agent tools. Claude Code auto-approves these too (2026-10-03: a stage-1 agent
+    # spawned a sub-agent). A sub-agent's own calls are audited from its transcript under
+    # <sid>/subagents/, so spawning one is not itself a read; messaging anyone but the
+    # session's own parent is a cross-session channel.
+    if name in ("Agent", "Task"):
+        return "SUBAGENT"
+    if name == "ListAgents":
+        return "REVIEW"
+    if name == "SendMessage":
+        return "REVIEW" if str(inp.get("to", "")).strip() in ("main", "parent") else "VIOLATION"
     if name == "Bash":
         cmd = inp.get("command", "")
         words = {os.path.basename(w) for w in _tokens(cmd)}
@@ -110,8 +126,20 @@ def classify(name: str, inp: dict, sid: str, folder: str, cwd: str) -> str:
     return "VIOLATION"
 
 
-def audit_file(path: Path, folder: str) -> dict:
-    sid = path.stem
+def audit_session(path: Path, folder: str) -> dict:
+    """A session's transcript plus its sub-agents' transcripts, all under the parent's id."""
+    a = audit_file(path, folder)
+    for sub in sorted((path.parent / path.stem / "subagents").glob("*.jsonl")):
+        b = audit_file(sub, folder, sid=path.stem)
+        a["classes"] += b["classes"]
+        a["attempts"] += b["attempts"]
+        a["flagged"] += [(c, f"{n} (sub-agent)", i) for c, n, i in b["flagged"]]
+        a["subagents"] = a.get("subagents", 0) + 1
+    return a
+
+
+def audit_file(path: Path, folder: str, sid: str | None = None) -> dict:
+    sid = sid or path.stem
     cwd = str(Path.home())
     uses, out = {}, {"sid": sid, "model": None, "start": None, "classes": Counter(),
                      "attempts": Counter(), "flagged": []}
@@ -141,7 +169,7 @@ def audit_file(path: Path, folder: str) -> dict:
                     continue
                 c = classify(name, inp, sid, folder, cwd)
                 out["classes"][c] += 1
-                if c in ("VIOLATION", "REVIEW"):
+                if c in ("VIOLATION", "REVIEW", "SUBAGENT"):
                     out["flagged"].append((c, name, json.dumps(inp)[:240]))
     return out
 
@@ -165,7 +193,7 @@ def main() -> int:
     per_window = defaultdict(lambda: {"sessions": 0, "classes": Counter(), "attempts": Counter(),
                                       "flagged": []})
     for f in sorted(Path(folder).glob("*.jsonl")):
-        a = audit_file(f, folder)
+        a = audit_session(f, folder)
         if not a["start"]:
             continue
         for name, start, end, model in windows:
@@ -178,14 +206,14 @@ def main() -> int:
                                  for fl in a["flagged"]]
 
     L = ["# Transcript audit (non-MCP tool access)", "", f"Folder: `{folder}`", "",
-         "| Window | Sessions | own-output | compute | REVIEW | VIOLATION | Refused attempts |",
-         "|---|---:|---:|---:|---:|---:|---:|"]
+         "| Window | Sessions | own-output | compute | SUBAGENT | REVIEW | VIOLATION | Refused attempts |",
+         "|---|---:|---:|---:|---:|---:|---:|---:|"]
     bad = False
     for name, *_ in windows:
         w = per_window[name]
         c = w["classes"]
         bad |= c["VIOLATION"] > 0
-        L.append(f"| {name} | {w['sessions']} | {c['own-output']} | {c['compute']} | {c['REVIEW']} | "
+        L.append(f"| {name} | {w['sessions']} | {c['own-output']} | {c['compute']} | {c['SUBAGENT']} | {c['REVIEW']} | "
                  f"{c['VIOLATION']} | {sum(w['attempts'].values())} "
                  f"({', '.join(f'{k} {v}' for k, v in w['attempts'].most_common())}) |")
     for name, *_ in windows:
@@ -194,7 +222,9 @@ def main() -> int:
             L += ["", f"## {name}: flagged calls", "", "| Session | Start | Class | Tool | Input |",
                   "|---|---|---|---|---|"]
             L += [f"| {s} | {t} | {c} | {n} | `{i.replace('|', '¦')}` |" for s, t, c, n, i in fl]
-    L += ["", "own-output = the session's own saved tool results; compute = Bash with no path or "
+    L += ["", "Sub-agent transcripts (<session>/subagents/) are audited under their parent. "
+          "SUBAGENT = a sub-agent was spawned (its calls are classified on their own rows). "
+          "own-output = the session's own saved tool results; compute = Bash with no path or "
           "network; REVIEW = listing the shared folder without reading another session; "
           "VIOLATION = reading another session's files, anything else on disk, or the network. "
           "Refused attempts were denied by the runner's gate and had no effect."]

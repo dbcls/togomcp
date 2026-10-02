@@ -49,3 +49,14 @@ def test_folder_listing_is_review_but_reading_through_it_is_not():
 
 def test_grep_without_path_searches_the_repo():
     assert classify("Grep", {"pattern": "exact_answer"}, SID, FOLDER, FOLDER) == "VIOLATION"
+
+
+def test_sed_script_with_slashes_is_not_a_path():
+    cmd = f"cat {OWN} | sed 's/.*\"name\": \"\\(.*\\)\".*/\\1/' | head"
+    assert classify("Bash", {"command": cmd}, SID, FOLDER, FOLDER) == "own-output"
+
+
+def test_inter_agent_tools():
+    assert classify("Agent", {"description": "x", "prompt": "y"}, SID, FOLDER, FOLDER) == "SUBAGENT"
+    assert classify("SendMessage", {"to": "main", "message": "m"}, SID, FOLDER, FOLDER) == "REVIEW"
+    assert classify("SendMessage", {"to": "other-session", "message": "m"}, SID, FOLDER, FOLDER) == "VIOLATION"
