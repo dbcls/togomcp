@@ -239,6 +239,12 @@ def main() -> int:
         raise SystemExit(f"{args.base_config} names the retired find_databases(); use a 2026-10 config")
     url = PRODUCTION_URL if args.target == "production" else f"http://127.0.0.1:{args.port}/mcp"
     cfg["mcp_servers"]["togomcp"] = {"type": "http", "url": url}
+    # Strict isolation (automated_test_runner.py): a PreToolUse hook confines Read/Bash to the
+    # session's own saved outputs, and a private Claude Code config dir keeps this run's
+    # transcripts away from every other run's. Without it an agent could read full MIE
+    # responses from other sessions' transcripts (2026-10-02 audit).
+    cfg["strict_isolation"] = True
+    cfg["claude_config_dir"] = str(out / "claude-config")
     cfg_path = out / "config.rendered.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
 
@@ -268,6 +274,13 @@ def main() -> int:
             server.wait(timeout=15)
 
     counts, meta = tool_counts(log)
+    audit = subprocess.run([sys.executable, str(SCRIPTS / "audit_transcripts.py"),
+                            "--dir", str(next((out / "claude-config" / "projects").glob("*"), out)),
+                            "--out", str(out / "transcript_audit.md")],
+                           capture_output=True, text=True)
+    if audit.returncode != 0:
+        raise SystemExit(f"GUARD: transcript audit found non-MCP access outside the session's own "
+                         f"outputs; see {out / 'transcript_audit.md'}. Not judging.")
     if args.target == "local":
         if sum(counts.values()) == 0:
             raise SystemExit("GUARD: the local server executed ZERO tool calls; the agent did not use "
@@ -305,6 +318,8 @@ def main() -> int:
         "pricing_usd_per_mtok": list(price),
         "ollama_judge_options": ollama_options() if any(not is_claude(j) for j in judges) else None,
         "tool_calls": counts,
+        "isolation": {"strict_isolation": True, "claude_config_dir": "claude-config/",
+                      "transcript_audit": "clean (transcript_audit.md)"},
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     cmd = [sys.executable, str(SUMMARIZER), str(out)]

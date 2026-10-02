@@ -165,7 +165,9 @@ def check_variants_fresh(variants_dir: Path) -> None:
         raise SystemExit(
             f"variants in {variants_dir} are stale: {len(changed)} MIE file(s) differ from "
             f"{LIVE_MIE_DIR} ({', '.join(changed[:8])}{' ...' if len(changed) > 8 else ''}). "
-            f"Re-run ablate_mie.py.")
+            f"Re-run ablate_mie.py, but NOT while a sweep is serving from {variants_dir}: it "
+            f"deletes and rebuilds those directories under the running servers. Build into a "
+            f"new --out instead, or wait for the sweep to finish.")
 
 
 def frozen_question_set() -> tuple[list[str], dict]:
@@ -264,9 +266,18 @@ def preflight(python: str, required: dict[str, str]) -> None:
         raise SystemExit("\n".join(lines))
 
 
+ISOLATE = False   # set by --isolate; module-level so render_config sees it
+
+
 def render_config(base_config: Path, port: int, out_path: Path) -> None:
     """Clone the base benchmark config, redirecting only the togomcp server URL."""
     cfg = yaml.safe_load(base_config.read_text(encoding="utf-8"))
+    if ISOLATE:
+        # Opt-in (stage 1 ran without it): confine non-MCP reads to the session's own saved
+        # outputs and give each condition its own Claude Code config dir, so no condition can
+        # read another condition's transcripts (and the full MIE responses in them).
+        cfg["strict_isolation"] = True
+        cfg["claude_config_dir"] = str(RESULTS_DIR / "claude-config" / out_path.name.split(".")[0])
     servers = cfg.setdefault("mcp_servers", {})
     if "togomcp" not in servers:
         raise SystemExit(f"base config {base_config} has no mcp_servers.togomcp to redirect")
@@ -579,6 +590,7 @@ def write_run_manifest(args, conditions, questions, base_config, set_manifest,
         "variants_manifest_sha256": (_sha256_file(variants_manifest)
                                      if variants_manifest.exists() else None),
         "tool_calls": tool_counts,
+        "isolate": args.isolate,
     }
     path = RESULTS_DIR / "run_manifest.json"
     entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
@@ -638,6 +650,10 @@ def main() -> int:
                          "'Not logged in' login-error stubs under sustained load. Without this, "
                          "answering stays on the subscription and the key is withheld from it.")
     ap.add_argument("--port", type=int, default=8971, help="loopback port for the local server")
+    ap.add_argument("--isolate", action="store_true",
+                    help="strict transcript isolation (per-condition Claude config dir + a hook "
+                         "confining Read/Bash to the session's own outputs). Requires "
+                         "--answer-use-api. Off by default: stage 1 (2026-10) ran without it.")
     ap.add_argument("--python", default=sys.executable,
                     help="interpreter for the server + benchmark subprocesses "
                          "(default: this one; must import togo_mcp, claude_agent_sdk, pandas, anthropic)")
@@ -653,6 +669,11 @@ def main() -> int:
         if not tool.exists():
             raise SystemExit(f"missing dependency script: {tool}")
 
+    global ISOLATE
+    ISOLATE = args.isolate
+    if args.isolate and not args.answer_use_api:
+        raise SystemExit("--isolate needs --answer-use-api: a fresh Claude config dir has no "
+                         "claude-login credentials")
     if args.runs < 1:
         raise SystemExit(f"--runs must be >= 1 (got {args.runs})")
     if args.judge_runs < 1:

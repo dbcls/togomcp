@@ -68,6 +68,7 @@ try:
     from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
     from claude_agent_sdk import AssistantMessage, ResultMessage
     from claude_agent_sdk.types import ToolPermissionContext
+    from claude_agent_sdk import HookMatcher
 except ImportError:
     print("Error: claude-agent-sdk package not installed.")
     print("Install with: pip install claude-agent-sdk")
@@ -583,6 +584,54 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
             )
         return PermissionResultAllow()
 
+    async def _restrict_to_own_outputs(self, input_data, tool_use_id, context):
+        """PreToolUse hook for strict isolation (config `strict_isolation: true`).
+
+        Claude Code does NOT consult can_use_tool for read-only access inside its own
+        transcript folder (~/.claude/projects/<cwd>/, or $CLAUDE_CONFIG_DIR/projects/...):
+        Read, and Bash cat/grep/find there, are auto-approved. That folder holds every
+        session's transcript, including full get_MIE_file responses, so an ablated
+        condition could read the full MIE from another session (verified 2026-10-02;
+        never observed in a benchmark run). A PreToolUse hook runs for every tool call,
+        auto-approved or not, so this is where the boundary is enforced: MCP tools pass;
+        Read/Grep/Glob and Bash may touch only THIS session's own saved tool results
+        (plus /tmp and /dev/null); everything else is denied. The rules are those of
+        audit_transcripts.py, which checks the same boundary after the fact.
+        """
+        from audit_transcripts import classify as _audit_classify
+        name = input_data.get("tool_name", "")
+        if name.startswith("mcp__") or name == "ToolSearch":
+            return {}
+        transcript = input_data.get("transcript_path") or ""
+        folder = os.path.dirname(transcript)
+        sid = input_data.get("session_id") or os.path.basename(transcript).removesuffix(".jsonl")
+        verdict = _audit_classify(name, input_data.get("tool_input") or {}, sid, folder,
+                                  input_data.get("cwd") or os.getcwd())
+        if name in ("Read", "Grep", "Glob", "Bash") and verdict in ("own-output", "compute"):
+            return {}
+        return {"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"{name} blocked by benchmark isolation: only this session's own saved tool "
+                "results may be read. Use the registered MCP tools to retrieve data."),
+        }}
+
+    def _isolation_options(self) -> dict:
+        """Extra ClaudeAgentOptions for strict isolation; empty (old behaviour) by default."""
+        if not self.config.get("strict_isolation"):
+            return {}
+        opts = {"hooks": {"PreToolUse": [HookMatcher(matcher=None,
+                                                     hooks=[self._restrict_to_own_outputs])]}}
+        cfg_dir = self.config.get("claude_config_dir")
+        if cfg_dir:
+            # A private Claude Code config dir per run/condition: its projects/ folder then
+            # holds only this run's transcripts. Needs API auth (the claude-login
+            # subscription credentials are not found from a fresh config dir).
+            Path(cfg_dir).mkdir(parents=True, exist_ok=True)
+            opts["env"] = {"CLAUDE_CONFIG_DIR": str(Path(cfg_dir).resolve())}
+        return opts
+
     async def _make_togomcp_call_with_retry(
         self,
         question_text: str,
@@ -734,6 +783,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 allowed_tools=self.config["allowed_tools"],
                 disallowed_tools=self.config["disallowed_tools"],
                 can_use_tool=self._auto_approve_mcp_tools,
+                **self._isolation_options(),
                 # Hermeticity / cross-session isolation. setting_sources=[] is
                 # the SDK's "isolation mode": it loads NO filesystem settings —
                 # not ~/.claude/settings.json (user), .claude/settings.json
