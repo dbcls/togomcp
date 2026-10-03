@@ -146,7 +146,7 @@ def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def check_variants_fresh(variants_dir: Path) -> None:
+def check_variants_fresh(variants_dir: Path, allow_stale: bool = False) -> list[str]:
     """Refuse v3 variants built from a corpus that is no longer the live one.
 
     The variants are a snapshot; an MIE commit after `ablate_mie.py` ran would make
@@ -164,12 +164,19 @@ def check_variants_fresh(variants_dir: Path) -> None:
     if live != built.get("source_sha256"):
         changed = sorted(n for n in set(live) | set(built.get("source_sha256", {}))
                          if live.get(n) != built["source_sha256"].get(n))
+        if allow_stale:
+            print(f"WARNING: --allow-stale-variants: serving {variants_dir}, built from an older "
+                  f"corpus ({len(changed)} file(s) differ from the live one: {', '.join(changed)}). "
+                  f"Recorded in run_manifest.json.")
+            return changed
         raise SystemExit(
             f"variants in {variants_dir} are stale: {len(changed)} MIE file(s) differ from "
             f"{LIVE_MIE_DIR} ({', '.join(changed[:8])}{' ...' if len(changed) > 8 else ''}). "
             f"Re-run ablate_mie.py, but NOT while a sweep is serving from {variants_dir}: it "
             f"deletes and rebuilds those directories under the running servers. Build into a "
-            f"new --out instead, or wait for the sweep to finish.")
+            f"new --out instead, or wait for the sweep to finish. To continue a sweep on its own "
+            f"snapshot (e.g. its last condition), pass --allow-stale-variants.")
+    return []
 
 
 def frozen_question_set() -> tuple[list[str], dict]:
@@ -612,6 +619,7 @@ def write_run_manifest(args, conditions, questions, base_config, set_manifest,
                                      if variants_manifest.exists() else None),
         "tool_calls": tool_counts,
         "isolate": args.isolate,
+        "stale_variants_allowed": getattr(args, "_stale_files", []),
     }
     path = RESULTS_DIR / "run_manifest.json"
     entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
@@ -681,6 +689,10 @@ def main() -> int:
     ap.add_argument("--skip-preflight", action="store_true",
                     help="skip the up-front dependency check")
     ap.add_argument("--force", action="store_true", help="re-run conditions even if scored CSV exists")
+    ap.add_argument("--allow-stale-variants", action="store_true",
+                    help="serve variants built from an older corpus. Only for continuing a sweep "
+                         "on the snapshot its earlier conditions used; the differing files are "
+                         "recorded in run_manifest.json.")
     ap.add_argument("--remerge", action="store_true",
                     help="only rebuild <cond>-scored.csv (screened) and <cond>-scored-raw.csv from "
                          "the existing replicate files of --conditions in --results-dir; no "
@@ -785,7 +797,7 @@ def main() -> int:
 
     set_manifest = None
     if v3:
-        check_variants_fresh(VARIANTS_DIR)
+        args._stale_files = check_variants_fresh(VARIANTS_DIR, args.allow_stale_variants)
         if args.questions:
             questions = args.questions
             if SET_MANIFEST.exists():
