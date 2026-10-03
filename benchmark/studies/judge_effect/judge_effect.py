@@ -30,6 +30,7 @@ import csv
 import math
 import re
 import statistics as st
+import sys
 from collections import defaultdict
 from pathlib import Path
 
@@ -38,7 +39,8 @@ FROZEN = HERE.parents[1] / "results-Kinjo2026"
 CONDITIONS = {  # condition -> (rev0 date)
     "with_guide": "2026-02-28", "ng1": "2026-03-01", "ng2": "2026-03-01", "no_mie": "2026-02-28",
 }
-REFUSAL_RE = re.compile(r"violate our Usage Policy|unable to respond to this request", re.I)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from answer_screen import REFUSAL_RE  # noqa: E402  (shared detector; both refusal formats)
 
 
 def load(pattern: str):

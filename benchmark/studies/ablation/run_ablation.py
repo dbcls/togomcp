@@ -73,6 +73,8 @@ from statistics import mean
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from answer_screen import classify as screen_answer  # noqa: E402  (shared refusal/stub detector)
 from ablate_mie import (CANONICAL_SECTIONS, EXCLUDED_DATABASES, GROUPS,  # single source of truth
                         V3_SECTIONS, V3_UNITS)
 
@@ -318,8 +320,17 @@ def _is_number(x: str | None) -> bool:
         return False
 
 
-def merge_scored(run_paths: list[Path], out_path: Path) -> None:
+def merge_scored(run_paths: list[Path], out_path: Path, screen: bool = True) -> None:
     """Average per-question scores across replicate scored CSVs into one CSV.
+
+    With ``screen`` (default), each replicate cell is first screened with
+    answer_screen.classify: a content-policy refusal or a stub (failed/empty/login-error
+    answer) has that ARM's judge scores treated as missing, exactly like a failed-judge
+    0, because its 4/20 floor measures the policy filter, not TogoMCP (Trap 8; 50
+    stage-1 cells in 2026-10, unevenly across conditions). ``n_excluded_togomcp`` and
+    ``n_excluded_baseline`` record how many replicates were dropped per row. Callers
+    also write the unscreened average to <cond>-scored-raw.csv for side-by-side
+    reporting.
 
     Numeric columns are averaged per question_id; text columns are copied from the
     first replicate. For judge-criterion columns (recall/precision/repetition/
@@ -376,8 +387,16 @@ def merge_scored(run_paths: list[Path], out_path: Path) -> None:
         rows = rows_by_qid[qid]
         rec = dict(rows[0])
         rec["n_runs"] = len(rows)
+        excluded = {arm: [screen and screen_answer(row.get(f"{arm}_answer"),
+                                                   row.get(f"{arm}_success")) != "valid"
+                          for row in rows] for arm in ("togomcp", "baseline")}
+        rec["n_excluded_togomcp"] = sum(excluded["togomcp"])
+        rec["n_excluded_baseline"] = sum(excluded["baseline"])
         for col in numeric_cols:
-            nums = [float(row[col]) for row in rows if _is_number(row.get(col, ""))]
+            arm = col.split("_", 1)[0]
+            drop = excluded.get(arm) if _is_score_col(col) else None
+            nums = [float(row[col]) for i, row in enumerate(rows)
+                    if _is_number(row.get(col, "")) and not (drop and drop[i])]
             if _is_score_col(col):
                 nz = [v for v in nums if v != 0]  # drop failed-judge sentinels
                 rec[col] = f"{mean(nz):.4g}" if nz else "0"
@@ -386,8 +405,9 @@ def merge_scored(run_paths: list[Path], out_path: Path) -> None:
         merged.append(rec)
 
     out_fields = list(fieldnames)
-    if "n_runs" not in out_fields:
-        out_fields.append("n_runs")
+    for extra in ("n_runs", "n_excluded_togomcp", "n_excluded_baseline"):
+        if extra not in out_fields:
+            out_fields.append(extra)
     with out_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=out_fields, extrasaction="ignore")
         writer.writeheader()
@@ -552,6 +572,7 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     all_scored = [f for p in plan for f in p["scored_files"]]
     if len(all_scored) > 1:
         merge_scored(all_scored, final_scored)
+        merge_scored(all_scored, final_scored.with_name(f"{cond}-scored-raw.csv"), screen=False)
         print(f"[{cond}] averaged {len(all_scored)} scored file(s) "
               f"({runs} answer x {judge_runs} judge) -> {final_scored.name}")
     return "done"
@@ -660,6 +681,11 @@ def main() -> int:
     ap.add_argument("--skip-preflight", action="store_true",
                     help="skip the up-front dependency check")
     ap.add_argument("--force", action="store_true", help="re-run conditions even if scored CSV exists")
+    ap.add_argument("--remerge", action="store_true",
+                    help="only rebuild <cond>-scored.csv (screened) and <cond>-scored-raw.csv from "
+                         "the existing replicate files of --conditions in --results-dir; no "
+                         "server, no API. Use after a detector change or for conditions merged "
+                         "by an older run_ablation.py.")
     ap.add_argument("--dry-run", action="store_true",
                     help="boot the server + render config + check readiness, but skip the "
                          "runner/evaluator (validates orchestration without API cost)")
@@ -693,6 +719,19 @@ def main() -> int:
     if (args.judge_use_api or args.answer_use_api) and not os.environ.get("ANTHROPIC_API_KEY"):
         raise SystemExit("--judge-use-api/--answer-use-api require ANTHROPIC_API_KEY in the "
                          "environment (e.g. `ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY ...`).")
+
+    if args.remerge:
+        if not args.results_dir or not args.conditions:
+            raise SystemExit("--remerge needs --results-dir and --conditions")
+        for cond in [c.strip() for c in args.conditions.split(",") if c.strip()]:
+            reps = sorted(RESULTS_DIR.glob(f"{cond}-scored-v*.csv"))
+            if not reps:
+                print(f"[{cond}] no replicate scored files; skipped")
+                continue
+            merge_scored(reps, RESULTS_DIR / f"{cond}-scored.csv")
+            merge_scored(reps, RESULTS_DIR / f"{cond}-scored-raw.csv", screen=False)
+            print(f"[{cond}] re-merged {len(reps)} replicate(s) -> {cond}-scored.csv (+ -raw)")
+        return 0
 
     global VARIANTS_DIR
     v3 = args.mie_format == "v3"
