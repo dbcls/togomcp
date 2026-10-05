@@ -105,6 +105,10 @@ retired Q022 and the v3 MIEs were tuned on it. It stays unchanged for the releas
   `automated_test_runner.py`); after answering, `benchmark/scripts/audit_transcripts.py` checks
   every transcript and judging is refused if any session read outside its own outputs
   (`transcript_audit.md`).
+  The same isolation keeps the repository's auto-memory (`MEMORY.md`) out of the agents' context;
+  without it every session gets it. The runner and the Claude judge now fail closed: a
+  non-isolated run, or a Claude judge without `--use-api`, is refused unless
+  `--allow-memory-exposure` is given.
 - **No overwrite:** a run dir that already has a manifest is refused; give a new `--out`.
 - **Stale prompt:** a config that still names the retired `find_databases()` is refused.
 

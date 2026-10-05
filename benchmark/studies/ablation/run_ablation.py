@@ -276,11 +276,14 @@ def preflight(python: str, required: dict[str, str]) -> None:
 
 
 ISOLATE = False   # set by --isolate; module-level so render_config sees it
+ALLOW_MEMORY = False  # set by --allow-memory-exposure
 
 
 def render_config(base_config: Path, port: int, out_path: Path) -> None:
     """Clone the base benchmark config, redirecting only the togomcp server URL."""
     cfg = yaml.safe_load(base_config.read_text(encoding="utf-8"))
+    if ALLOW_MEMORY and not ISOLATE:
+        cfg["allow_memory_exposure"] = True   # the runner refuses a non-isolated run otherwise
     if ISOLATE:
         # Opt-in (stage 1 ran without it): confine non-MCP reads to the session's own saved
         # outputs and give each condition its own Claude Code config dir, so no condition can
@@ -571,6 +574,8 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
             eval_cmd += ["--model", judge_model]
         if judge_use_api:
             eval_cmd += ["--use-api"]     # plain anthropic SDK, forced-tool-call, ANTHROPIC_API_KEY
+        elif ALLOW_MEMORY:
+            eval_cmd += ["--allow-memory-exposure"]
         # Judge inherits the full env (incl. ANTHROPIC_API_KEY when --judge-use-api);
         # the default (no --use-api) authenticates via `claude login` like the runner.
         subprocess.run(eval_cmd, check=True, cwd=str(SCRIPTS_DIR), env=env)
@@ -619,6 +624,7 @@ def write_run_manifest(args, conditions, questions, base_config, set_manifest,
                                      if variants_manifest.exists() else None),
         "tool_calls": tool_counts,
         "isolate": args.isolate,
+        "memory_exposure_allowed": args.allow_memory_exposure and not args.isolate,
         "stale_variants_allowed": getattr(args, "_stale_files", []),
     }
     path = RESULTS_DIR / "run_manifest.json"
@@ -689,6 +695,10 @@ def main() -> int:
     ap.add_argument("--skip-preflight", action="store_true",
                     help="skip the up-front dependency check")
     ap.add_argument("--force", action="store_true", help="re-run conditions even if scored CSV exists")
+    ap.add_argument("--allow-memory-exposure", action="store_true",
+                    help="run WITHOUT --isolate: the repository's auto-memory is then in every "
+                         "answering agent's context (as in stage 1, 2026-10). Only to reproduce "
+                         "such a run; recorded in run_manifest.json.")
     ap.add_argument("--allow-stale-variants", action="store_true",
                     help="serve variants built from an older corpus. Only for continuing a sweep "
                          "on the snapshot its earlier conditions used; the differing files are "
@@ -707,8 +717,18 @@ def main() -> int:
         if not tool.exists():
             raise SystemExit(f"missing dependency script: {tool}")
 
-    global ISOLATE
-    ISOLATE = args.isolate
+    global ISOLATE, ALLOW_MEMORY
+    ISOLATE, ALLOW_MEMORY = args.isolate, args.allow_memory_exposure
+    if not args.remerge and not args.isolate and not args.allow_memory_exposure:
+        raise SystemExit(
+            "this sweep is not isolated: without --isolate (needs --answer-use-api) every "
+            "answering agent gets the repository's auto-memory in its context and can read "
+            "other sessions' transcripts. Pass --isolate, or --allow-memory-exposure to "
+            "reproduce a pre-2026-10-06 run.")
+    if not args.remerge and not args.dry_run and not args.judge_use_api \
+            and not args.allow_memory_exposure:
+        raise SystemExit("the Claude judge without --judge-use-api runs inside this repo and gets "
+                         "its auto-memory; pass --judge-use-api (or --allow-memory-exposure).")
     if args.isolate and not args.answer_use_api:
         raise SystemExit("--isolate needs --answer-use-api: a fresh Claude config dir has no "
                          "claude-login credentials")

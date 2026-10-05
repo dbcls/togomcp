@@ -60,3 +60,18 @@ def test_inter_agent_tools():
     assert classify("Agent", {"description": "x", "prompt": "y"}, SID, FOLDER, FOLDER) == "SUBAGENT"
     assert classify("SendMessage", {"to": "main", "message": "m"}, SID, FOLDER, FOLDER) == "REVIEW"
     assert classify("SendMessage", {"to": "other-session", "message": "m"}, SID, FOLDER, FOLDER) == "VIOLATION"
+
+
+def test_wildcard_path_resolving_to_own_folder_is_own_output():
+    import os
+    parent = os.path.dirname(FOLDER)
+    name = os.path.basename(FOLDER)
+    # (pytest gives sibling tests their own temp dirs holding the same SID, so the middle
+    # wildcard must stay specific to this test's directory)
+    own_glob = f"{parent}/{name[:-1]}?/{SID[:8]}*/tool-results/"
+    assert classify("Bash", {"command": f"cd {own_glob}; jq -r .result out.txt | head"}, SID, FOLDER, FOLDER) == "own-output"
+    # a wildcard that also reaches another session's folder is still a violation
+    other = Path(FOLDER) / "bbbbbbbb-0000-0000-0000-000000000000" / "tool-results"
+    other.mkdir(parents=True)
+    (other / "x.txt").write_text("{}")
+    assert classify("Bash", {"command": f"cat {parent}/{name}/*/tool-results/*.txt"}, SID, FOLDER, FOLDER) == "VIOLATION"

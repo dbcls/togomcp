@@ -828,6 +828,13 @@ Examples:
         default=1,
         help="Number of independent evaluation passes. >1 writes <output>-v1..-vN.csv",
     )
+    parser.add_argument(
+        "--allow-memory-exposure",
+        action="store_true",
+        help="Allow the Claude judge to run through the agent SDK (no --use-api). That judge "
+        "runs as a Claude Code session inside this repository and gets its auto-memory "
+        "(MEMORY.md) in context; --use-api and --provider ollama do not.",
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress progress output")
     parser.add_argument("--no-summary", action="store_true", help="Don't print summary statistics")
 
@@ -852,6 +859,14 @@ Examples:
             model = DEFAULT_MODEL
         else:
             parser.error("--model is required for --provider ollama (e.g. --model gemma3)")
+
+    # Fail closed (2026-10-06): the agent-SDK judge is a Claude Code session started in
+    # this repo, so the project's auto-memory would be in the JUDGE's context.
+    if provider == "anthropic" and not args.use_api and not args.allow_memory_exposure:
+        print("Error: the Claude judge without --use-api runs through the agent SDK and would "
+              "get this repository's auto-memory in its context. Pass --use-api (needs "
+              "ANTHROPIC_API_KEY), or --allow-memory-exposure to accept that.")
+        sys.exit(1)
 
     try:
         backend = build_backend(provider, model, args.ollama_host, use_api=args.use_api)

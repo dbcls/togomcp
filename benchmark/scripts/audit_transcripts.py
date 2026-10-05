@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import glob
 import json
 import os
 import re
@@ -116,6 +117,19 @@ def classify(name: str, inp: dict, sid: str, folder: str, cwd: str) -> str:
         if not paths:
             return "VIOLATION"
     paths = [p for p in paths if not p.startswith(SAFE_PREFIXES)]
+    # A wildcard path is judged by what it expands to. Agents abbreviate long transcript
+    # paths (".../projects/*/653ed5a8*/tool-results/"); if every match lies in this session's
+    # own folder it IS an own-output read. (2026-10-06: the hook refused 69 such reads in the
+    # clean Sonnet 5.5 run, cutting full Usage-Guide access from 46% to 25%.) A pattern that
+    # also matches anything else stays a violation.
+    expanded = []
+    for p in paths:
+        if any(ch in p for ch in "*?["):
+            matches = glob.glob(p)
+            expanded += matches if matches else [p]
+        else:
+            expanded.append(p)
+    paths = expanded
     if not paths:
         return "compute" if name == "Bash" else "own-output"
     if all(p.startswith(own) for p in paths):

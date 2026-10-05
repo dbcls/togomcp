@@ -1336,6 +1336,17 @@ Pricing config (add to config.yaml to override defaults):
         ),
     )
 
+    parser.add_argument(
+        "--allow-memory-exposure",
+        action="store_true",
+        help=(
+            "Run WITHOUT strict isolation. Claude Code then attaches the repository's "
+            "auto-memory (MEMORY.md) to every answering session, with or without tools, "
+            "and lets agents read other sessions' transcripts. Only for reproducing a "
+            "pre-2026-10-06 run exactly; say so wherever the numbers are reported."
+        ),
+    )
+
     args = parser.parse_args()
 
     missing_files = [f for f in args.question_files if not Path(f).exists()]
@@ -1350,6 +1361,22 @@ Pricing config (add to config.yaml to override defaults):
     except Exception as e:
         print(f"✗ Error initializing runner: {e}")
         sys.exit(1)
+
+    # Fail closed on context leaks (2026-10-06). Without strict isolation every session
+    # started inside this repo gets the project's auto-memory index in its context, and
+    # agents can read other sessions' transcripts; setting_sources=[] and the can_use_tool
+    # gate stop neither. Every run from 2026-09-30 to 2026-10-05 was exposed that way.
+    isolated = bool(runner.config.get("strict_isolation") and runner.config.get("claude_config_dir"))
+    if not isolated:
+        if not (args.allow_memory_exposure or runner.config.get("allow_memory_exposure")):
+            print("✗ Error: this run is not isolated. Set `strict_isolation: true` and a private\n"
+                  "  `claude_config_dir` in the config (run_ablation.py --isolate and the\n"
+                  "  benchmark-runner skill do this; it needs ANTHROPIC_API_KEY), or pass\n"
+                  "  --allow-memory-exposure to run with the repository's auto-memory in every\n"
+                  "  agent's context, as runs before 2026-10-06 did.")
+            sys.exit(1)
+        logger.warning("NOT ISOLATED (--allow-memory-exposure): the repository's auto-memory "
+                       "is in every answering session's context.")
 
     # Precedence: --model > config 'model' > built-in default_config.
     if args.model:
