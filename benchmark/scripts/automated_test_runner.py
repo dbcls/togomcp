@@ -446,6 +446,9 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 allowed_tools=[],        # advertise no tools to the model
                 disallowed_tools=self.config["disallowed_tools"],
                 can_use_tool=self._deny_all_tools,
+                # Same private config dir as the TogoMCP arm under strict isolation: the
+                # no-tool arm must not see the project's auto-memory either (2026-10-05).
+                **self._isolation_options(),
                 max_turns=1,             # single-shot answer, no tool loop
                 # Session isolation: same guard as the TogoMCP path.
                 # setting_sources=[] (SDK isolation mode) loads no

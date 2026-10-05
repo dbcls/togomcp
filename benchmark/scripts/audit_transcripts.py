@@ -17,6 +17,13 @@ Every SUCCESSFUL non-MCP tool call in each transcript is classified:
 
 Refused calls (the gate said no) are counted as attempts, not violations.
 
+Injected context is checked too. Claude Code attaches the repository's auto-memory index
+(~/.claude/projects/<repo>/memory/MEMORY.md) to every session started inside the repo, and
+setting_sources=[] does not prevent it; from 2026-09-30 to 2026-10-05 every benchmark session
+carried this project's index (notes on specific questions and database traps). A session with
+an AutoMem attachment is counted in the MEMORY column and fails the audit. Runs with a
+private CLAUDE_CONFIG_DIR (strict isolation) have none.
+
 Sessions are attributed to a run by time window and answering model (--window), because the
 runner does not record session ids. A window is NAME START END [MODEL-SUBSTRING], times in
 ISO format with offset, e.g.
@@ -142,13 +149,17 @@ def audit_file(path: Path, folder: str, sid: str | None = None) -> dict:
     sid = sid or path.stem
     cwd = str(Path.home())
     uses, out = {}, {"sid": sid, "model": None, "start": None, "classes": Counter(),
-                     "attempts": Counter(), "flagged": []}
+                     "attempts": Counter(), "flagged": [], "memory": 0}
     for line in path.open(encoding="utf-8", errors="replace"):
         try:
             r = json.loads(line)
         except ValueError:
             continue
         cwd = r.get("cwd") or cwd
+        att = r.get("attachment")
+        if isinstance(att, dict) and att.get("type") == "instructions" and any(
+                isinstance(x, dict) and x.get("type") == "AutoMem" for x in att.get("files") or []):
+            out["memory"] = 1
         if r.get("timestamp") and not out["start"]:
             out["start"] = parse_ts(r["timestamp"])
         m = r.get("message") or {}
@@ -191,7 +202,7 @@ def main() -> int:
         windows.append((w[0], parse_ts(w[1]), parse_ts(w[2]), w[3] if len(w) == 4 else None))
 
     per_window = defaultdict(lambda: {"sessions": 0, "classes": Counter(), "attempts": Counter(),
-                                      "flagged": []})
+                                      "flagged": [], "memory": 0})
     for f in sorted(Path(folder).glob("*.jsonl")):
         a = audit_session(f, folder)
         if not a["start"]:
@@ -200,20 +211,21 @@ def main() -> int:
             if start <= a["start"] < end and (model is None or (a["model"] and model in a["model"])):
                 w = per_window[name]
                 w["sessions"] += 1
+                w["memory"] += a["memory"]
                 w["classes"] += a["classes"]
                 w["attempts"] += a["attempts"]
                 w["flagged"] += [(a["sid"][:8], a["start"].isoformat(timespec="minutes"), *fl)
                                  for fl in a["flagged"]]
 
     L = ["# Transcript audit (non-MCP tool access)", "", f"Folder: `{folder}`", "",
-         "| Window | Sessions | own-output | compute | SUBAGENT | REVIEW | VIOLATION | Refused attempts |",
-         "|---|---:|---:|---:|---:|---:|---:|---:|"]
+         "| Window | Sessions | MEMORY | own-output | compute | SUBAGENT | REVIEW | VIOLATION | Refused attempts |",
+         "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
     bad = False
     for name, *_ in windows:
         w = per_window[name]
         c = w["classes"]
-        bad |= c["VIOLATION"] > 0
-        L.append(f"| {name} | {w['sessions']} | {c['own-output']} | {c['compute']} | {c['SUBAGENT']} | {c['REVIEW']} | "
+        bad |= c["VIOLATION"] > 0 or w["memory"] > 0
+        L.append(f"| {name} | {w['sessions']} | {w['memory']} | {c['own-output']} | {c['compute']} | {c['SUBAGENT']} | {c['REVIEW']} | "
                  f"{c['VIOLATION']} | {sum(w['attempts'].values())} "
                  f"({', '.join(f'{k} {v}' for k, v in w['attempts'].most_common())}) |")
     for name, *_ in windows:
@@ -222,7 +234,8 @@ def main() -> int:
             L += ["", f"## {name}: flagged calls", "", "| Session | Start | Class | Tool | Input |",
                   "|---|---|---|---|---|"]
             L += [f"| {s} | {t} | {c} | {n} | `{i.replace('|', '¦')}` |" for s, t, c, n, i in fl]
-    L += ["", "Sub-agent transcripts (<session>/subagents/) are audited under their parent. "
+    L += ["", "MEMORY = sessions that had the repository's auto-memory index attached to their "
+          "context (must be 0).", "Sub-agent transcripts (<session>/subagents/) are audited under their parent. "
           "SUBAGENT = a sub-agent was spawned (its calls are classified on their own rows). "
           "own-output = the session's own saved tool results; compute = Bash with no path or "
           "network; REVIEW = listing the shared folder without reading another session; "
