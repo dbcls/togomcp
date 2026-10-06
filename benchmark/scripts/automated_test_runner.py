@@ -610,7 +610,18 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
         sid = input_data.get("session_id") or os.path.basename(transcript).removesuffix(".jsonl")
         verdict = _audit_classify(name, input_data.get("tool_input") or {}, sid, folder,
                                   input_data.get("cwd") or os.getcwd())
-        if name in ("Read", "Grep", "Glob", "Bash") and verdict in ("own-output", "compute"):
+        if name in ("Read", "Grep", "Glob", "Bash") and verdict == "own-output":
+            # Allow explicitly. "No decision" is not enough: Claude Code auto-approves a
+            # literal path in its transcript folder, but a wildcard one
+            # (.../projects/*/<sid>*/tool-results/) falls through to can_use_tool, which
+            # denies every non-MCP tool. That refused 102 own-output reads in the
+            # 2026-10-06 full-clean2 run, after the hook itself had stopped refusing them.
+            return {"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": "this session's own saved tool results",
+            }}
+        if name == "Bash" and verdict == "compute":
             return {}
         return {"hookSpecificOutput": {
             "hookEventName": "PreToolUse",
