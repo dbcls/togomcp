@@ -23,9 +23,10 @@ guide tool's return shape changes (plain text, no structured copy); no tool or p
 
 Measured before release on the frozen 110-question benchmark (Sonnet 5.5, three replicates,
 isolated sessions), new guide against old: the core arrived inline in 330 of 330 sessions (old:
-0 of 330); calls with a wrong parameter name fell from 2.2 per session to none and errored calls
-from 1.35 to 0.28; answers took 40 s instead of 45 s. Answer quality did not change measurably
-(Opus 4.8 judge +0.25 ± 0.25 of 20, Gemma4 −0.00 ± 0.20). Cost per answer rose about 18%
+0 of 330); calls rejected for a wrong argument fell from 1.13 per session to 0.05 (372 to 16),
+and all errored calls from 1.35 to 0.28; answers took 40 s instead of 45 s. Answer quality did
+not change measurably (Opus 4.8 judge +0.25 ± 0.25 of 20, Gemma4 −0.00 ± 0.20). Cost per answer
+rose about 18%
 ($0.149 to $0.176), the price of the guide actually being in context. No session fetched a
 reference file, so that route is exercised by tests but not yet by real use.
 
