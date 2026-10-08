@@ -36,3 +36,10 @@ The adjacent Apache-2.0 license covers the widget; bundled dependencies retain
 license comments in the asset. To update, build the pinned widget source with
 `npm ci && npm run build`, copy its built asset and license, and verify both
 language pages and conversation limits before committing.
+
+## Launcher position
+
+The page stylesheet places the chat launcher 96px above the bottom edge, plus
+the device safe area, leaving the back-to-top button at its existing position.
+Adjust `bottom` and `right` in `llm-meta-widget #llm-meta-widget-toggle` to move
+the launcher. The scoped selector overrides the bundled widget stylesheet.
