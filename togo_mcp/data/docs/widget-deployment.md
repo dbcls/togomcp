@@ -25,9 +25,9 @@ unchanged. Unset, or any other value, leaves the chat on. `deploy.sh` forwards t
 variable (`TOGOMCP_TRIAL_CHAT_TEST` for the test container), so no rebuild is needed.
 
 The server removes everything between `<!-- TRIAL-CHAT:START -->` and
-`<!-- TRIAL-CHAT:END -->`. Each page has two such regions, the panel and the widget.
-Keep anything chat-specific inside them. A static web server ignores the variable:
-delete the two regions by hand there.
+`<!-- TRIAL-CHAT:END -->`. Each page has three such regions: the launcher's style
+rule in `<head>`, the panel and the widget. Keep anything chat-specific inside them.
+A static web server ignores the variable: delete the three regions by hand there.
 
 ## Configuration
 
@@ -37,7 +37,7 @@ hub availability changes. `max-exchanges="4"` limits user submissions per
 conversation. Set a positive integer such as `2` to change it. The widget shows
 remaining submissions and disables input when exhausted. Reload preserves the
 count; Clear starts a new conversation. Failed/cancelled submissions also count.
-`max-rounds="4"` separately limits internal LLM/tool rounds per submission.
+`max-rounds="10"` separately limits internal LLM/tool rounds per submission, including the final answer turn. Ten rounds allow schema lookup and query retries before summarizing results; completed answers stop earlier.
 The browser limit can be reset or bypassed; enforce abuse protection and quotas
 on the hub for production use.
 
@@ -49,3 +49,10 @@ The adjacent Apache-2.0 license covers the widget; bundled dependencies retain
 license comments in the asset. To update, build the pinned widget source with
 `npm ci && npm run build`, copy its built asset and license, and verify both
 language pages and conversation limits before committing.
+
+## Launcher position
+
+The page stylesheet places the chat launcher 96px above the bottom edge, plus
+the device safe area, leaving the back-to-top button at its existing position.
+Adjust `bottom` and `right` in `llm-meta-widget #llm-meta-widget-toggle` to move
+the launcher. The scoped selector overrides the bundled widget stylesheet.

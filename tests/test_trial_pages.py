@@ -19,14 +19,15 @@ def client(monkeypatch):
 
 
 @pytest.mark.parametrize("name", PAGES.values())
-def test_page_marks_the_panel_and_the_widget(name):
+def test_page_marks_every_chat_region(name):
     """The switch removes what lies between the sentinels, so a pair lost in a hand
     edit would leave half the chat on the page (or swallow the content after it)."""
     html = (DOCS / name).read_text(encoding="utf-8")
-    assert html.count(START) == html.count(END) == 2
+    assert html.count(START) == html.count(END) == 3
     regions = [r.split(END)[0] for r in html.split(START)[1:]]
-    assert 'id="open-trial-chat"' in regions[0]
-    assert "<llm-meta-widget " in regions[1] and "#open-trial-chat" in regions[1]
+    assert "#llm-meta-widget-toggle" in regions[0]            # launcher position, in <head>
+    assert 'id="open-trial-chat"' in regions[1]
+    assert "<llm-meta-widget " in regions[2] and "#open-trial-chat" in regions[2]
     outside = html.split(START)[0] + "".join(r.split(END)[1] for r in html.split(START)[1:])
     assert "llm-meta-widget" not in outside and "open-trial-chat" not in outside
 
