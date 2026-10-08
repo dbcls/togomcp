@@ -66,18 +66,19 @@ def test_core_fits_inline() -> None:
     assert len(core.encode("utf-8")) < 50_000
 
 
-def test_guide_is_returned_as_plain_text() -> None:
-    """No output schema: with one, the structured form {"result": "..."} is what a host
-    saves when it does persist a result — a single JSON line a file reader cannot page."""
+def test_guide_keeps_its_output_schema_and_structured_content() -> None:
+    """2.23.0 removed the output schema to make a saved guide pageable. Clients holding a
+    cached tool list then rejected every call ("has an output schema but did not return
+    structured content"). The tiered core arrives inline anyway, so the schema stays."""
 
     async def calls(client):
         tools = {t.name: t for t in await client.list_tools()}
         result = await client.call_tool("TogoMCP_Usage_Guide", {})
-        return tools["TogoMCP_Usage_Guide"].output_schema, result.structured_content
+        return tools["TogoMCP_Usage_Guide"].output_schema, result
 
-    schema, structured = _run(calls)
-    assert schema is None
-    assert structured is None
+    schema, result = _run(calls)
+    assert schema is not None and "result" in schema["properties"]
+    assert result.structured_content == {"result": result.content[0].text}
 
 
 def test_every_reference_file_is_indexed_and_every_indexed_file_exists() -> None:

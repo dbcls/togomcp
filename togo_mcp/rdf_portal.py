@@ -95,12 +95,17 @@ async def assemble_usage_guide_core() -> str:
     return "\n\n---\n\n".join(sections)
 
 
-# output_schema=None: return the guide as plain text only. With the default schema
-# FastMCP also sends {"result": "<guide>"} as structured content, and a host that
-# saves an oversized result to a file saves THAT form — one JSON line with no
-# newlines, which a line-paged file reader cannot page (measured 2026-10: no
-# Sonnet 5.5 session in 330 received the whole 57 KB v6 guide).
-@mcp.tool(name="TogoMCP_Usage_Guide", annotations=READ_ONLY_TOOL, output_schema=None)
+# KEEP THE DEFAULT OUTPUT SCHEMA. 2.23.0 dropped it so that a host saving an oversized
+# result would save plain Markdown instead of one JSON line. That broke every client
+# holding a CACHED tool list: MCP clients validate a result against the output schema
+# they were given at tools/list time, so a client that still had the pre-2.23
+# definition rejected every call with "has an output schema but did not return
+# structured content" — on the tool agents are told to call first, and re-listing tools
+# did not always clear it (seen on a claude.ai connector, 2026-10-09). Removing a schema
+# is a break a stale client cannot recover from; returning structured content to a
+# client that expects none is harmless. The size problem is solved by the tiered core
+# (33.6 KB), which arrives inline either way. tests/test_output_schema_stability.py.
+@mcp.tool(name="TogoMCP_Usage_Guide", annotations=READ_ONLY_TOOL)
 async def togomcp_usage_guide() -> str:
     """
     ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
@@ -136,7 +141,7 @@ async def togomcp_usage_guide() -> str:
 
     Re-run GATE 0 every turn — prior workflow does not carry forward.
 
-    RETURNS the guide as plain Markdown text.
+    RETURNS the guide as Markdown text.
     """
     return await assemble_usage_guide_core()
 

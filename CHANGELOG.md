@@ -13,6 +13,44 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.23.3] - 2026-10-09
+
+A regression fix. 2.23.0 broke `TogoMCP_Usage_Guide` for any client holding a cached tool list;
+this restores it. Also brings the last two oversized MIE files under the inline limit. PATCH:
+the guide tool returns what it returned through 2.22, and no tool or parameter moved.
+
+**If your client reported an error calling `TogoMCP_Usage_Guide` between 2.23.0 and 2.23.2, no
+action is needed once the server is on 2.23.3**: the call works again without reconnecting.
+
+### Fixed
+
+- **`TogoMCP_Usage_Guide` declares its output schema and returns structured content again.**
+  2.23.0 removed both so that a host saving an oversized result would save plain Markdown. MCP
+  clients validate a result against the schema they received at `tools/list` time, and many
+  hosts cache that list, so a client still holding the pre-2.23 definition rejected every call
+  with "has an output schema but did not return structured content". It hit the tool agents
+  are told to call first, on a healthy server with green tests, and re-listing tools did not
+  always clear it (seen on a claude.ai connector, 2026-10-09). The schema is back exactly as
+  it was through 2.22. A client that cached the 2.23.0–2.23.2 definition is unaffected:
+  structured content sent to a client that expects none is ignored. The tiered core (33.6 KB)
+  arrives inline either way, so nothing is lost.
+- **`massbank` and `marpolbase` MIE files now arrive inline.** As served they were 52,164 and
+  50,101 characters, past the 50,000 at which Claude Code saves a tool result to a file. On the
+  2026-10 benchmark transcripts Sonnet 5.5 then read a median 14,000 to 17,000 characters of the
+  saved file, about a third of the schema it was about to query. Both are trimmed to about
+  44,400 and 44,900 by cutting restated facts and authoring history (including long header
+  comments, which are served too). No example, query, verified figure or `check:` block
+  changed; the live example and gotcha checkers are clean on both.
+
+### Added
+
+- `tests/test_output_schema_stability.py`: pins the 29 tools that declare an output schema.
+  Removing one strands every client with a cached tool list, the same class of break as
+  renaming a tool, and nothing else catches it.
+- `tests/test_mie_size.py`: every MIE must reach the host in at most 47,000 characters,
+  measured on the form the host receives (`check:` blocks stripped, trap banner added, JSON
+  framing included). The largest is now `marpolbase`; `glycosmos` is next.
+
 ## [2.23.2] - 2026-10-09
 
 One change to what the landing page shows when the trial chat is switched off. No tool, parameter
@@ -3166,7 +3204,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.3...HEAD
+[2.23.3]: https://github.com/dbcls/togomcp/compare/v2.23.2...v2.23.3
 [2.23.2]: https://github.com/dbcls/togomcp/compare/v2.23.1...v2.23.2
 [2.23.1]: https://github.com/dbcls/togomcp/compare/v2.23.0...v2.23.1
 [2.23.0]: https://github.com/dbcls/togomcp/compare/v2.22.0...v2.23.0
