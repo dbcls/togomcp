@@ -26,7 +26,10 @@ def test_page_marks_every_chat_region(name):
     assert html.count(START) == html.count(END) == 3
     regions = [r.split(END)[0] for r in html.split(START)[1:]]
     assert "#llm-meta-widget-toggle" in regions[0]            # launcher position, in <head>
-    assert 'id="open-trial-chat"' in regions[1]
+    # the whole box goes, language links included: without the chat it says nothing
+    assert regions[1].lstrip().startswith('<section aria-labelledby="trial-title"')
+    assert regions[1].rstrip().endswith("</section>")
+    assert 'id="open-trial-chat"' in regions[1] and 'aria-label="Language"' in regions[1]
     assert "<llm-meta-widget " in regions[2] and "#open-trial-chat" in regions[2]
     outside = html.split(START)[0] + "".join(r.split(END)[1] for r in html.split(START)[1:])
     assert "llm-meta-widget" not in outside and "open-trial-chat" not in outside
@@ -47,8 +50,9 @@ def test_switch_removes_the_chat_and_nothing_else(client, monkeypatch, route, va
     off = client.get(route).text
     assert "llm-meta-widget" not in off and "open-trial-chat" not in off
     assert "TRIAL-CHAT" not in off
-    # the rest of the page survives: language links, What's New, the closing tags
-    assert '<a href="/ja">' in off and 'id="whats-new"' in off
+    assert 'aria-label="Language"' not in off and "trial-title" not in off
+    # the rest of the page survives: the hero before the box, What's New after it
+    assert "</header>" in off and 'id="whats-new"' in off
     assert off.rstrip().endswith("</html>")
     regions = (DOCS / PAGES[route]).read_text(encoding="utf-8").count(START)
     assert len(on.splitlines()) - len(off.splitlines()) > regions
@@ -60,9 +64,13 @@ def test_only_an_explicit_off_disables(client, monkeypatch, value):
     assert "<llm-meta-widget " in client.get("/").text
 
 
-def test_japanese_note_outlives_the_chat(client, monkeypatch):
+def test_japanese_page_without_the_chat_is_the_english_page(client, monkeypatch):
+    """The box holds all the Japanese on /ja, so with the chat off the two routes serve
+    the same page but for the lang attribute. Known and accepted; this pins it so a
+    change is a decision."""
     monkeypatch.setenv("TOGOMCP_TRIAL_CHAT", "0")
-    assert "以下の技術説明は英語です。" in client.get("/ja").text
+    ja, en = client.get("/ja").text, client.get("/").text
+    assert ja.replace('<html lang="ja">', '<html lang="en">', 1) == en
 
 
 def test_widget_asset_is_served_as_javascript(client):
