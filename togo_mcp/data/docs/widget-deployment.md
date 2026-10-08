@@ -24,7 +24,7 @@ hub availability changes. `max-exchanges="4"` limits user submissions per
 conversation. Set a positive integer such as `2` to change it. The widget shows
 remaining submissions and disables input when exhausted. Reload preserves the
 count; Clear starts a new conversation. Failed/cancelled submissions also count.
-`max-rounds="4"` separately limits internal LLM/tool rounds per submission.
+`max-rounds="10"` separately limits internal LLM/tool rounds per submission, including the final answer turn. Ten rounds allow schema lookup and query retries before summarizing results; completed answers stop earlier.
 The browser limit can be reset or bypassed; enforce abuse protection and quotas
 on the hub for production use.
 
