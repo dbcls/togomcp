@@ -13,6 +13,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- **`TOGOMCP_TRIAL_CHAT=0` now removes the whole box under the hero**, not only the chat panel
+  inside it. Until now the box stayed behind holding just the English / 日本語 links, which told a
+  visitor nothing once the chat was gone. A side effect to know about: all of the Japanese on `/ja`
+  is in that box, so with the chat off `/ja` serves the English page. With the chat on, nothing
+  changes.
+
 ## [2.23.1] - 2026-10-09
 
 Two fixes to the landing-page trial chat, and a correction to a figure in the 2.23.0 notes.

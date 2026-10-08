@@ -1051,7 +1051,7 @@ async def health_check(request: Request) -> PlainTextResponse:
 # The landing pages carry an anonymous trial chat that depends on an external hub
 # (see data/docs/widget-deployment.md). TOGOMCP_TRIAL_CHAT=0 takes it off both pages
 # without a rebuild: everything between the TRIAL-CHAT sentinels is dropped, which is
-# the launcher's style rule, the panel under the hero and the widget itself. On unless
+# the launcher's style rule, the whole box under the hero and the widget itself. On unless
 # switched off.
 _TRIAL_CHAT_RE = re.compile(
     r"[ \t]*<!-- TRIAL-CHAT:START -->.*?<!-- TRIAL-CHAT:END -->\n?", re.S

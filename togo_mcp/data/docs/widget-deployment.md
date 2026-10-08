@@ -19,14 +19,17 @@ localhost and file URLs may be rejected by the public hub's CORS policy.
 ## Turning the chat off
 
 Set `TOGOMCP_TRIAL_CHAT=0` (also `false`, `no` or `off`) in the server's environment
-and re-create the container. Both pages are then served without the "Try TogoMCP chat"
-panel and without the widget; the language links and the rest of the page are
-unchanged. Unset, or any other value, leaves the chat on. `deploy.sh` forwards the
-variable (`TOGOMCP_TRIAL_CHAT_TEST` for the test container), so no rebuild is needed.
+and re-create the container. Both pages are then served without the widget and
+without the whole box under the hero: the "Try TogoMCP chat" panel and the
+English / 日本語 links in it, which have nothing to point at once the chat is gone.
+The rest of the page is unchanged. `/ja` still answers, but all of its Japanese is
+in that box, so it then serves the English page. Unset, or any other value, leaves
+the chat on. `deploy.sh` forwards the variable (`TOGOMCP_TRIAL_CHAT_TEST` for the
+test container), so no rebuild is needed.
 
 The server removes everything between `<!-- TRIAL-CHAT:START -->` and
 `<!-- TRIAL-CHAT:END -->`. Each page has three such regions: the launcher's style
-rule in `<head>`, the panel and the widget. Keep anything chat-specific inside them.
+rule in `<head>`, the box under the hero and the widget. Keep anything chat-specific inside them.
 A static web server ignores the variable: delete the three regions by hand there.
 
 ## Configuration
