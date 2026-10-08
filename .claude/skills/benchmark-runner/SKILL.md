@@ -92,9 +92,15 @@ retired Q022 and the v3 MIEs were tuned on it. It stays unchanged for the releas
   TogoMCP answer. Never compare against a baseline from another run (ablation FINDINGS, Trap 1).
 - **The server did the work:** on a local target, judging is refused if the server executed zero
   tool calls, or if `get_MIE_file` never ran.
-- **Excluded cells, counted:** content-policy refusals ("…violate our Usage Policy…"), login stubs
-  ("Not logged in"), empty or failed answers are excluded from the clean means and counted per arm
-  in the report; raw means are shown next to the clean ones (Trap 8).
+- **Excluded cells, counted:** content-policy refusals, login stubs ("Not logged in"), empty or
+  failed answers are excluded from the clean means and counted per arm in the report; raw means
+  are shown next to the clean ones (Trap 8). Two refusal formats are detected
+  (`benchmark/scripts/answer_screen.py`): "…violate our Usage Policy…" (2026-07) and, since
+  2026-10, "API Error: Sonnet 4.5 can't help with this. … Details: `[bio]` …". The second hit 50+
+  Sonnet 4.5 cells in the 2026-10 ablation, unevenly across conditions; Sonnet 5.5 produced none
+  in the 2026-10 runs. The detector also keys on the AUP link and a leading "API Error:"; a future wording with
+  neither would pass as a valid floor-scored answer, so check the
+  excluded-cell counts against the lowest-scoring answers after a model change.
 - **Judge failures:** a 0 score is the failed-judge sentinel and is treated as missing;
   `add_llm_evaluation.py` aborts after consecutive judge failures.
 - **Transcript isolation and audit:** Claude Code lets the answering agent read its own
@@ -136,9 +142,10 @@ printed in the report; check them before quoting a distribution.
 
 ## Scheduling
 
-Not decided (report 【要確認】). This skill is invoked by a person. A scheduled run is possible
-(the `schedule` skill, or cron on a machine with Ollama and the API key) but needs the approval
-rule above replaced by a standing budget agreed with the user and DBCLS.
+On hold (decided with DBCLS, 2026-10, for budget reasons; report section 6). There is no
+scheduled run: a person invokes this skill when a canary or full run is wanted. Scheduling stays
+possible (the `schedule` skill, or cron on a machine with Ollama and the API key) but needs the
+approval rule above replaced by a standing budget agreed with the user and DBCLS.
 
 ## Output
 
