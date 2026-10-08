@@ -1,31 +1,71 @@
-"""Test landing-page routes without initializing external MCP dependencies."""
-import ast
-import asyncio
-import unittest
+"""Landing-page routes, and the TOGOMCP_TRIAL_CHAT switch that takes the chat off them."""
 from pathlib import Path
-from starlette.requests import Request
-from starlette.responses import FileResponse
 
-ROOT = Path(__file__).resolve().parents[1]
+import pytest
+from starlette.testclient import TestClient
 
-
-class TrialPagesTest(unittest.TestCase):
-    def test_routes_serve_existing_files_with_correct_media_types(self):
-        tree = ast.parse((ROOT / 'togo_mcp/server.py').read_text())
-        namespace = {'Request': Request, 'FileResponse': FileResponse,
-                     'CWD': ROOT / 'togo_mcp/data'}
-        for name, suffix, media in [
-            ('japanese_index', 'docs/togomcp-intro-ja.html', 'text/html'),
-            ('widget_asset', 'docs/assets/llm-meta-widget.js', 'application/javascript'),
-        ]:
-            function = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == name)
-            function.decorator_list = []
-            exec(compile(ast.Module(body=[function], type_ignores=[]), '<route>', 'exec'), namespace)
-            response = asyncio.run(namespace[name](None))
-            self.assertEqual(response.media_type, media)
-            self.assertEqual(Path(response.path), namespace['CWD'] / suffix)
-            self.assertTrue(Path(response.path).is_file())
+DOCS = Path(__file__).resolve().parents[1] / "togo_mcp" / "data" / "docs"
+PAGES = {"/": "togomcp-intro.html", "/ja": "togomcp-intro-ja.html"}
+START, END = "<!-- TRIAL-CHAT:START -->", "<!-- TRIAL-CHAT:END -->"
 
 
-if __name__ == '__main__':
-    unittest.main()
+@pytest.fixture
+def client(monkeypatch):
+    from togo_mcp.main import mcp
+
+    monkeypatch.delenv("TOGOMCP_TRIAL_CHAT", raising=False)
+    with TestClient(mcp.http_app()) as c:
+        yield c
+
+
+@pytest.mark.parametrize("name", PAGES.values())
+def test_page_marks_the_panel_and_the_widget(name):
+    """The switch removes what lies between the sentinels, so a pair lost in a hand
+    edit would leave half the chat on the page (or swallow the content after it)."""
+    html = (DOCS / name).read_text(encoding="utf-8")
+    assert html.count(START) == html.count(END) == 2
+    regions = [r.split(END)[0] for r in html.split(START)[1:]]
+    assert 'id="open-trial-chat"' in regions[0]
+    assert "<llm-meta-widget " in regions[1] and "#open-trial-chat" in regions[1]
+    outside = html.split(START)[0] + "".join(r.split(END)[1] for r in html.split(START)[1:])
+    assert "llm-meta-widget" not in outside and "open-trial-chat" not in outside
+
+
+@pytest.mark.parametrize("route", PAGES)
+def test_chat_is_on_by_default(client, route):
+    r = client.get(route)
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/html")
+    assert "<llm-meta-widget " in r.text and 'id="open-trial-chat"' in r.text
+
+
+@pytest.mark.parametrize("value", ["0", "false", "No", " off "])
+@pytest.mark.parametrize("route", PAGES)
+def test_switch_removes_the_chat_and_nothing_else(client, monkeypatch, route, value):
+    on = client.get(route).text
+    monkeypatch.setenv("TOGOMCP_TRIAL_CHAT", value)
+    off = client.get(route).text
+    assert "llm-meta-widget" not in off and "open-trial-chat" not in off
+    assert "TRIAL-CHAT" not in off
+    # the rest of the page survives: language links, What's New, the closing tags
+    assert '<a href="/ja">' in off and 'id="whats-new"' in off
+    assert off.rstrip().endswith("</html>")
+    regions = (DOCS / PAGES[route]).read_text(encoding="utf-8").count(START)
+    assert len(on.splitlines()) - len(off.splitlines()) > regions
+
+
+@pytest.mark.parametrize("value", ["", "1", "true", "anything"])
+def test_only_an_explicit_off_disables(client, monkeypatch, value):
+    monkeypatch.setenv("TOGOMCP_TRIAL_CHAT", value)
+    assert "<llm-meta-widget " in client.get("/").text
+
+
+def test_japanese_note_outlives_the_chat(client, monkeypatch):
+    monkeypatch.setenv("TOGOMCP_TRIAL_CHAT", "0")
+    assert "以下の技術説明は英語です。" in client.get("/ja").text
+
+
+def test_widget_asset_is_served_as_javascript(client):
+    r = client.get("/assets/llm-meta-widget.js")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/javascript")
+    assert len(r.content) == (DOCS / "assets" / "llm-meta-widget.js").stat().st_size

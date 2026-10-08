@@ -13,6 +13,16 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **`TOGOMCP_TRIAL_CHAT`: an off switch for the landing-page trial chat.** The chat added in
+  2.22.0 depends on an external hub, and until now the only way to take it down was to edit two
+  HTML files and rebuild. Setting the variable to `0` (or `false`/`no`/`off`) serves `/` and `/ja`
+  without the chat panel and the widget; the language links and everything else stay. It is on by
+  default, so an existing deployment does not change. The variable is wired through
+  `deploy.sh`, `compose.yaml` and `.env.example` (with a `_TEST` variant), because a knob missing
+  from `deploy.sh`'s list is inert in production.
+
 ## [2.22.0] - 2026-10-08
 
 A trial chat on the landing page, and a Japanese entry page. Nothing on the tool surface changed:

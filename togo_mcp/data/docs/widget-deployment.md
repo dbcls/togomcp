@@ -16,6 +16,19 @@ For an independent static web server, publish `togomcp-intro.html` as `/index.ht
 Verify both language links and send a question at the actual deployment origin;
 localhost and file URLs may be rejected by the public hub's CORS policy.
 
+## Turning the chat off
+
+Set `TOGOMCP_TRIAL_CHAT=0` (also `false`, `no` or `off`) in the server's environment
+and re-create the container. Both pages are then served without the "Try TogoMCP chat"
+panel and without the widget; the language links and the rest of the page are
+unchanged. Unset, or any other value, leaves the chat on. `deploy.sh` forwards the
+variable (`TOGOMCP_TRIAL_CHAT_TEST` for the test container), so no rebuild is needed.
+
+The server removes everything between `<!-- TRIAL-CHAT:START -->` and
+`<!-- TRIAL-CHAT:END -->`. Each page has two such regions, the panel and the widget.
+Keep anything chat-specific inside them. A static web server ignores the variable:
+delete the two regions by hand there.
+
 ## Configuration
 
 Both pages select all active TogoMCP tools initially. Visitors can deselect tools.

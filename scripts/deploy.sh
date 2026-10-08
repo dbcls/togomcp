@@ -71,7 +71,8 @@ PROD_CONFIRM_PHRASE="togomcp.rdfportal.org"
 TOGOMCP_PERSERVICE_VARS=(TOGOMCP_ALLOWED_HOSTS TOGOMCP_FORWARDED_ALLOW_IPS \
                          TOGOMCP_QUERY_LOG TOGOMCP_LOG_QUERY_TEXT \
                          TOGOMCP_STATS_USER TOGOMCP_STATS_PASSWORD TOGOMCP_LOG_HASH_SALT \
-                         TOGOMCP_LOG_RAW_IP TOGOMCP_STATS_EXCLUDE_CLIENTS)
+                         TOGOMCP_LOG_RAW_IP TOGOMCP_STATS_EXCLUDE_CLIENTS \
+                         TOGOMCP_TRIAL_CHAT)
 TOGOMCP_SHARED_VARS=(NCBI_API_KEY)
 
 # --------------------------------------------------------------------------- #

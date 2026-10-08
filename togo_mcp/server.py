@@ -1045,16 +1045,35 @@ async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
 
-@mcp.custom_route("/", methods=["GET"])
-async def index(request: Request) -> HTMLResponse:
-    with open(INDEX_HTML) as f:
-        html_content = f.read()
+# The landing pages carry an anonymous trial chat that depends on an external hub
+# (see data/docs/widget-deployment.md). TOGOMCP_TRIAL_CHAT=0 takes it off both pages
+# without a rebuild: everything between the TRIAL-CHAT sentinels is dropped, which is
+# the panel under the hero and the widget itself. On unless switched off.
+_TRIAL_CHAT_RE = re.compile(
+    r"[ \t]*<!-- TRIAL-CHAT:START -->.*?<!-- TRIAL-CHAT:END -->\n?", re.S
+)
+
+
+def _trial_chat_enabled() -> bool:
+    return os.getenv("TOGOMCP_TRIAL_CHAT", "").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def _intro_page(path: str | Path) -> HTMLResponse:
+    html_content = Path(path).read_text(encoding="utf-8")
+    if not _trial_chat_enabled():
+        html_content = _TRIAL_CHAT_RE.sub("", html_content)
     return HTMLResponse(html_content)
 
 
+@mcp.custom_route("/", methods=["GET"])
+async def index(request: Request) -> HTMLResponse:
+    return _intro_page(INDEX_HTML)
+
+
 @mcp.custom_route("/ja", methods=["GET"])
-async def japanese_index(request: Request) -> FileResponse:
-    return FileResponse(CWD / "docs" / "togomcp-intro-ja.html", media_type="text/html")
+async def japanese_index(request: Request) -> HTMLResponse:
+    return _intro_page(CWD / "docs" / "togomcp-intro-ja.html")
 
 
 @mcp.custom_route("/assets/llm-meta-widget.js", methods=["GET"])
