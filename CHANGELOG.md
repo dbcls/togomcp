@@ -13,6 +13,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.23.2] - 2026-10-09
+
+One change to what the landing page shows when the trial chat is switched off. No tool, parameter
+or return shape moved, and a deployment that leaves the chat on serves exactly what 2.23.1 did.
+
 ### Changed
 
 - **`TOGOMCP_TRIAL_CHAT=0` now removes the whole box under the hero**, not only the chat panel
@@ -3161,7 +3166,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.2...HEAD
+[2.23.2]: https://github.com/dbcls/togomcp/compare/v2.23.1...v2.23.2
 [2.23.1]: https://github.com/dbcls/togomcp/compare/v2.23.0...v2.23.1
 [2.23.0]: https://github.com/dbcls/togomcp/compare/v2.22.0...v2.23.0
 [2.22.0]: https://github.com/dbcls/togomcp/compare/v2.21.1...v2.22.0
