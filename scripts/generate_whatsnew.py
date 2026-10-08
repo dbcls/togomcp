@@ -23,10 +23,14 @@ The rendered block is written between the `<!-- WHATSNEW:START -->` and
 else on the hand-edited page is touched (the intro page is edited in place, never
 regenerated whole — see the intro-page-updater skill).
 
+The Japanese entry page (`togomcp-intro-ja.html`, served at `/ja`) carries the same
+section and gets the same block: its technical reference is English, so the items
+are not translated. Every page in PAGES is written and checked together.
+
 Usage:
-    python scripts/generate_whatsnew.py            # rewrite the block in the HTML
-    python scripts/generate_whatsnew.py --check     # exit 1 if the page is stale
-    python scripts/generate_whatsnew.py --stdout     # print the whole HTML, don't write
+    python scripts/generate_whatsnew.py            # rewrite the block in every page
+    python scripts/generate_whatsnew.py --check     # exit 1 if any page is stale
+    python scripts/generate_whatsnew.py --stdout     # print the English HTML, don't write
 """
 from __future__ import annotations
 
@@ -38,6 +42,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CHANGELOG = REPO_ROOT / "CHANGELOG.md"
 HTML = REPO_ROOT / "togo_mcp" / "data" / "docs" / "togomcp-intro.html"
+HTML_JA = HTML.with_name("togomcp-intro-ja.html")
+PAGES = (HTML, HTML_JA)
 
 MAX_ITEMS = 5
 INDENT = "      "  # the <li>/sentinel indent inside <ul class="whatsnew-list">
@@ -81,14 +87,14 @@ def render_items(markers) -> str:
     return "\n".join(li)
 
 
-def build() -> str:
-    """Return the full intro-page HTML with the What's New block regenerated."""
-    html = HTML.read_text(encoding="utf-8")
+def build(page: Path = HTML) -> str:
+    """Return the full HTML of `page` with the What's New block regenerated."""
+    html = page.read_text(encoding="utf-8")
     block = f"{INDENT}{START}\n{render_items(load_markers())}\n{INDENT}{END}"
     new_html, n = _BLOCK_RE.subn(lambda _m: block, html)
     if n != 1:
         raise SystemExit(
-            f"expected exactly one {START} … {END} region in {HTML.name}, found {n}"
+            f"expected exactly one {START} … {END} region in {page.name}, found {n}"
         )
     return new_html
 
@@ -96,30 +102,31 @@ def build() -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--check", action="store_true", help="exit 1 if the page is stale")
-    ap.add_argument("--stdout", action="store_true", help="print the rebuilt HTML, do not write")
+    ap.add_argument("--check", action="store_true", help="exit 1 if any page is stale")
+    ap.add_argument("--stdout", action="store_true", help="print the rebuilt English HTML, do not write")
     args = ap.parse_args(argv)
 
-    content = build()
-
     if args.stdout:
-        sys.stdout.write(content)
+        sys.stdout.write(build())
         return 0
 
     if args.check:
-        current = HTML.read_text(encoding="utf-8") if HTML.exists() else ""
-        if current != content:
+        stale = [p for p in PAGES
+                 if (p.read_text(encoding="utf-8") if p.exists() else "") != build(p)]
+        for p in stale:
             print(
-                f"What's New OUT OF SYNC: {HTML.relative_to(REPO_ROOT)} differs from the "
+                f"What's New OUT OF SYNC: {p.relative_to(REPO_ROOT)} differs from the "
                 "CHANGELOG whatsnew markers. Run: python scripts/generate_whatsnew.py",
                 file=sys.stderr,
             )
+        if stale:
             return 1
         print("What's New in sync.")
         return 0
 
-    HTML.write_text(content, encoding="utf-8")
-    print(f"wrote {HTML.relative_to(REPO_ROOT)} ({len(load_markers())} items)")
+    for p in PAGES:
+        p.write_text(build(p), encoding="utf-8")
+        print(f"wrote {p.relative_to(REPO_ROOT)} ({len(load_markers())} items)")
     return 0
 
 
