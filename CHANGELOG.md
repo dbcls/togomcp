@@ -13,6 +13,29 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.23.1] - 2026-10-09
+
+Two fixes to the landing-page trial chat, and a correction to a figure in the 2.23.0 notes.
+Nothing on the tool surface changed. PATCH: behaviour the page already promised now works.
+
+### Fixed
+
+- **The trial-chat launcher no longer covers the back-to-top button** (#253, by @yayamamo). It
+  sits 96px above the bottom edge (plus the device safe area) on both language pages.
+- **A trial question may use ten internal model rounds, not four** (#253). Four could run out
+  during schema lookup and query retries, before any answer was written. The limit of four
+  user questions per conversation is unchanged.
+- **With `TOGOMCP_TRIAL_CHAT` off, the page carries no trace of the widget.** The launcher's
+  style block was added outside the regions the switch removes, so it stayed on the page.
+  Harmless to a visitor, but the off page is meant to be free of the chat entirely.
+
+### Changed
+
+- **Corrected the 2.23.0 notes below:** calls rejected for a wrong argument fell from 1.13 per
+  session to 0.05, not "from 2.2 to none". The first count included
+  `get_MIE_file(dbname=...)`, a legacy alias the server accepts. The message of the 2.23.0
+  release commit still carries the old figure.
+
 ## [2.23.0] - 2026-10-09
 
 The Usage Guide now reaches the model. It had stopped doing so without anything failing: at
@@ -3130,7 +3153,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.1...HEAD
+[2.23.1]: https://github.com/dbcls/togomcp/compare/v2.23.0...v2.23.1
 [2.23.0]: https://github.com/dbcls/togomcp/compare/v2.22.0...v2.23.0
 [2.22.0]: https://github.com/dbcls/togomcp/compare/v2.21.1...v2.22.0
 [2.21.1]: https://github.com/dbcls/togomcp/compare/v2.21.0...v2.21.1
