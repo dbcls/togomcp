@@ -13,6 +13,24 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.23.0] - 2026-10-09
+
+The Usage Guide now reaches the model. It had stopped doing so without anything failing: at
+57 KB it was past the size at which Claude Code shows a tool result inline, so agents were
+handed a file path instead of the workflow, the rules and the database catalog. This release
+splits the guide into a core that fits and reference files fetched on demand. MINOR, because the
+guide tool's return shape changes (plain text, no structured copy); no tool or parameter moved.
+
+Measured before release on the frozen 110-question benchmark (Sonnet 5.5, three replicates,
+isolated sessions), new guide against old: the core arrived inline in 330 of 330 sessions (old:
+0 of 330); calls with a wrong parameter name fell from 2.2 per session to none and errored calls
+from 1.35 to 0.28; answers took 40 s instead of 45 s. Answer quality did not change measurably
+(Opus 4.8 judge +0.25 ± 0.25 of 20, Gemma4 −0.00 ± 0.20). Cost per answer rose about 18%
+($0.149 to $0.176), the price of the guide actually being in context. No session fetched a
+reference file, so that route is exercised by tests but not yet by real use.
+
+<!-- whatsnew: 2026-10-09 | The <strong>Usage Guide now arrives in full</strong>: it was too large for Claude Code to show the model, so it is now a compact core (workflow, rules and a one-line-per-database catalog) with detail fetched on demand through <code>get_workflow(name="usage-guide", …)</code> — fewer failed tool calls and faster answers. -->
+
 ### Changed
 
 - **The Usage Guide is tiered (v7): `TogoMCP_Usage_Guide` returns a 34 KB core, and the rest
@@ -3111,7 +3129,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.22.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.0...HEAD
+[2.23.0]: https://github.com/dbcls/togomcp/compare/v2.22.0...v2.23.0
 [2.22.0]: https://github.com/dbcls/togomcp/compare/v2.21.1...v2.22.0
 [2.21.1]: https://github.com/dbcls/togomcp/compare/v2.21.0...v2.21.1
 [2.21.0]: https://github.com/dbcls/togomcp/compare/v2.20.1...v2.21.0
