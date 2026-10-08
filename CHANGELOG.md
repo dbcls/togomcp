@@ -13,6 +13,51 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.22.0] - 2026-10-08
+
+A trial chat on the landing page, and a Japanese entry page. Nothing on the tool surface changed:
+no tool, parameter or return shape moved, so an agent sees exactly what it saw in 2.21.1. This is
+MINOR for the same reason 2.8.0 was: the server gained a user-facing capability it did not have.
+
+Until now a visitor could only read about TogoMCP before connecting a client, and connecting
+one needs an account with an MCP-capable assistant. The trial chat lets them ask a real question
+first.
+
+<!-- whatsnew: 2026-10-08 | <strong>Try TogoMCP before you install anything</strong>: the landing page now has a trial chat with no sign-in, up to four questions per conversation, backed by the live tools. The page also has a <a href="/ja">Japanese entry point</a>. -->
+
+### Added
+
+- **Anonymous trial chat on the landing page** (#251, by @yayamamo). A "Try TogoMCP chat" panel
+  under the hero opens a chat widget that answers with the live TogoMCP tools. No sign-in. Each
+  conversation allows four submissions (`max-exchanges`) and four LLM/tool rounds per submission
+  (`max-rounds`). The count survives a reload, Clear starts a new conversation, and failed or
+  cancelled submissions count too.
+- **The chat depends on an external service.** The widget talks to the public hub at
+  `https://hub.aibranch.org`, which runs the model (`qwen3-8-27b-fast`) and calls TogoMCP from
+  there. Three consequences: the hub's CORS policy must allow the deployment origin, so the chat
+  can work on one host and fail on another; the four-question limit is enforced in the browser
+  and is not an abuse quota (that has to live on the hub); and the answers come from a smaller
+  model than the assistants the rest of the page describes, so they are a taste of the tools
+  rather than a measure of them.
+- **`/ja`: a Japanese entry page.** It introduces the trial in Japanese and says plainly that the
+  technical reference below it is still in English. The two pages link to each other.
+- **`/assets/llm-meta-widget.js`**: the widget is served by the server itself from a fixed path, so
+  the page loads no third-party script. It is a built bundle of
+  [yayamamo/llm_meta_widget](https://github.com/yayamamo/llm_meta_widget/tree/d20130f)
+  (Apache-2.0, license shipped next to it). `data/docs/widget-deployment.md` records the
+  provenance and how to rebuild it.
+
+### Changed
+
+- **Container base image digest bumped** (#250, Renovate): `astral/uv:python3.12-trixie-slim` to
+  `28d570c`. It takes effect at the next `scripts/deploy.sh` build.
+- Benchmark (not in the wheel): answering sessions were found to receive this repository's
+  auto-memory and to be able to read other sessions' transcripts. Both arms are now isolated, the
+  runner fails closed on a detected leak, and `audit_transcripts.py` checks every transcript
+  (sub-agents included) after the fact. Also: the refusal screen recognises the 2026-10 `[bio]`
+  refusal format, `judge_agreement.py` and `analyze_conditions.py` are new, and the ablation
+  runner can continue a sweep on its own snapshot (`--allow-stale-variants`).
+
 ## [2.21.1] - 2026-10-01
 
 No tool, parameter or return shape moved. Four MIE files gain a global gotcha for a defect in
@@ -3026,7 +3071,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.21.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.22.0...HEAD
+[2.22.0]: https://github.com/dbcls/togomcp/compare/v2.21.1...v2.22.0
 [2.21.1]: https://github.com/dbcls/togomcp/compare/v2.21.0...v2.21.1
 [2.21.0]: https://github.com/dbcls/togomcp/compare/v2.20.1...v2.21.0
 [2.20.1]: https://github.com/dbcls/togomcp/compare/v2.20.0...v2.20.1

@@ -73,6 +73,8 @@ from statistics import mean
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from answer_screen import classify as screen_answer  # noqa: E402  (shared refusal/stub detector)
 from ablate_mie import (CANONICAL_SECTIONS, EXCLUDED_DATABASES, GROUPS,  # single source of truth
                         V3_SECTIONS, V3_UNITS)
 
@@ -144,7 +146,7 @@ def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def check_variants_fresh(variants_dir: Path) -> None:
+def check_variants_fresh(variants_dir: Path, allow_stale: bool = False) -> list[str]:
     """Refuse v3 variants built from a corpus that is no longer the live one.
 
     The variants are a snapshot; an MIE commit after `ablate_mie.py` ran would make
@@ -162,10 +164,19 @@ def check_variants_fresh(variants_dir: Path) -> None:
     if live != built.get("source_sha256"):
         changed = sorted(n for n in set(live) | set(built.get("source_sha256", {}))
                          if live.get(n) != built["source_sha256"].get(n))
+        if allow_stale:
+            print(f"WARNING: --allow-stale-variants: serving {variants_dir}, built from an older "
+                  f"corpus ({len(changed)} file(s) differ from the live one: {', '.join(changed)}). "
+                  f"Recorded in run_manifest.json.")
+            return changed
         raise SystemExit(
             f"variants in {variants_dir} are stale: {len(changed)} MIE file(s) differ from "
             f"{LIVE_MIE_DIR} ({', '.join(changed[:8])}{' ...' if len(changed) > 8 else ''}). "
-            f"Re-run ablate_mie.py.")
+            f"Re-run ablate_mie.py, but NOT while a sweep is serving from {variants_dir}: it "
+            f"deletes and rebuilds those directories under the running servers. Build into a "
+            f"new --out instead, or wait for the sweep to finish. To continue a sweep on its own "
+            f"snapshot (e.g. its last condition), pass --allow-stale-variants.")
+    return []
 
 
 def frozen_question_set() -> tuple[list[str], dict]:
@@ -264,9 +275,21 @@ def preflight(python: str, required: dict[str, str]) -> None:
         raise SystemExit("\n".join(lines))
 
 
+ISOLATE = False   # set by --isolate; module-level so render_config sees it
+ALLOW_MEMORY = False  # set by --allow-memory-exposure
+
+
 def render_config(base_config: Path, port: int, out_path: Path) -> None:
     """Clone the base benchmark config, redirecting only the togomcp server URL."""
     cfg = yaml.safe_load(base_config.read_text(encoding="utf-8"))
+    if ALLOW_MEMORY and not ISOLATE:
+        cfg["allow_memory_exposure"] = True   # the runner refuses a non-isolated run otherwise
+    if ISOLATE:
+        # Opt-in (stage 1 ran without it): confine non-MCP reads to the session's own saved
+        # outputs and give each condition its own Claude Code config dir, so no condition can
+        # read another condition's transcripts (and the full MIE responses in them).
+        cfg["strict_isolation"] = True
+        cfg["claude_config_dir"] = str(RESULTS_DIR / "claude-config" / out_path.name.split(".")[0])
     servers = cfg.setdefault("mcp_servers", {})
     if "togomcp" not in servers:
         raise SystemExit(f"base config {base_config} has no mcp_servers.togomcp to redirect")
@@ -307,8 +330,17 @@ def _is_number(x: str | None) -> bool:
         return False
 
 
-def merge_scored(run_paths: list[Path], out_path: Path) -> None:
+def merge_scored(run_paths: list[Path], out_path: Path, screen: bool = True) -> None:
     """Average per-question scores across replicate scored CSVs into one CSV.
+
+    With ``screen`` (default), each replicate cell is first screened with
+    answer_screen.classify: a content-policy refusal or a stub (failed/empty/login-error
+    answer) has that ARM's judge scores treated as missing, exactly like a failed-judge
+    0, because its 4/20 floor measures the policy filter, not TogoMCP (Trap 8; 50
+    stage-1 cells in 2026-10, unevenly across conditions). ``n_excluded_togomcp`` and
+    ``n_excluded_baseline`` record how many replicates were dropped per row. Callers
+    also write the unscreened average to <cond>-scored-raw.csv for side-by-side
+    reporting.
 
     Numeric columns are averaged per question_id; text columns are copied from the
     first replicate. For judge-criterion columns (recall/precision/repetition/
@@ -365,8 +397,16 @@ def merge_scored(run_paths: list[Path], out_path: Path) -> None:
         rows = rows_by_qid[qid]
         rec = dict(rows[0])
         rec["n_runs"] = len(rows)
+        excluded = {arm: [screen and screen_answer(row.get(f"{arm}_answer"),
+                                                   row.get(f"{arm}_success")) != "valid"
+                          for row in rows] for arm in ("togomcp", "baseline")}
+        rec["n_excluded_togomcp"] = sum(excluded["togomcp"])
+        rec["n_excluded_baseline"] = sum(excluded["baseline"])
         for col in numeric_cols:
-            nums = [float(row[col]) for row in rows if _is_number(row.get(col, ""))]
+            arm = col.split("_", 1)[0]
+            drop = excluded.get(arm) if _is_score_col(col) else None
+            nums = [float(row[col]) for i, row in enumerate(rows)
+                    if _is_number(row.get(col, "")) and not (drop and drop[i])]
             if _is_score_col(col):
                 nz = [v for v in nums if v != 0]  # drop failed-judge sentinels
                 rec[col] = f"{mean(nz):.4g}" if nz else "0"
@@ -375,8 +415,9 @@ def merge_scored(run_paths: list[Path], out_path: Path) -> None:
         merged.append(rec)
 
     out_fields = list(fieldnames)
-    if "n_runs" not in out_fields:
-        out_fields.append("n_runs")
+    for extra in ("n_runs", "n_excluded_togomcp", "n_excluded_baseline"):
+        if extra not in out_fields:
+            out_fields.append(extra)
     with out_path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=out_fields, extrasaction="ignore")
         writer.writeheader()
@@ -533,6 +574,8 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
             eval_cmd += ["--model", judge_model]
         if judge_use_api:
             eval_cmd += ["--use-api"]     # plain anthropic SDK, forced-tool-call, ANTHROPIC_API_KEY
+        elif ALLOW_MEMORY:
+            eval_cmd += ["--allow-memory-exposure"]
         # Judge inherits the full env (incl. ANTHROPIC_API_KEY when --judge-use-api);
         # the default (no --use-api) authenticates via `claude login` like the runner.
         subprocess.run(eval_cmd, check=True, cwd=str(SCRIPTS_DIR), env=env)
@@ -541,6 +584,7 @@ def run_condition(cond: str, questions: list[str], base_config: Path, port: int,
     all_scored = [f for p in plan for f in p["scored_files"]]
     if len(all_scored) > 1:
         merge_scored(all_scored, final_scored)
+        merge_scored(all_scored, final_scored.with_name(f"{cond}-scored-raw.csv"), screen=False)
         print(f"[{cond}] averaged {len(all_scored)} scored file(s) "
               f"({runs} answer x {judge_runs} judge) -> {final_scored.name}")
     return "done"
@@ -579,6 +623,9 @@ def write_run_manifest(args, conditions, questions, base_config, set_manifest,
         "variants_manifest_sha256": (_sha256_file(variants_manifest)
                                      if variants_manifest.exists() else None),
         "tool_calls": tool_counts,
+        "isolate": args.isolate,
+        "memory_exposure_allowed": args.allow_memory_exposure and not args.isolate,
+        "stale_variants_allowed": getattr(args, "_stale_files", []),
     }
     path = RESULTS_DIR / "run_manifest.json"
     entries = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
@@ -638,12 +685,29 @@ def main() -> int:
                          "'Not logged in' login-error stubs under sustained load. Without this, "
                          "answering stays on the subscription and the key is withheld from it.")
     ap.add_argument("--port", type=int, default=8971, help="loopback port for the local server")
+    ap.add_argument("--isolate", action="store_true",
+                    help="strict transcript isolation (per-condition Claude config dir + a hook "
+                         "confining Read/Bash to the session's own outputs). Requires "
+                         "--answer-use-api. Off by default: stage 1 (2026-10) ran without it.")
     ap.add_argument("--python", default=sys.executable,
                     help="interpreter for the server + benchmark subprocesses "
                          "(default: this one; must import togo_mcp, claude_agent_sdk, pandas, anthropic)")
     ap.add_argument("--skip-preflight", action="store_true",
                     help="skip the up-front dependency check")
     ap.add_argument("--force", action="store_true", help="re-run conditions even if scored CSV exists")
+    ap.add_argument("--allow-memory-exposure", action="store_true",
+                    help="run WITHOUT --isolate: the repository's auto-memory is then in every "
+                         "answering agent's context (as in stage 1, 2026-10). Only to reproduce "
+                         "such a run; recorded in run_manifest.json.")
+    ap.add_argument("--allow-stale-variants", action="store_true",
+                    help="serve variants built from an older corpus. Only for continuing a sweep "
+                         "on the snapshot its earlier conditions used; the differing files are "
+                         "recorded in run_manifest.json.")
+    ap.add_argument("--remerge", action="store_true",
+                    help="only rebuild <cond>-scored.csv (screened) and <cond>-scored-raw.csv from "
+                         "the existing replicate files of --conditions in --results-dir; no "
+                         "server, no API. Use after a detector change or for conditions merged "
+                         "by an older run_ablation.py.")
     ap.add_argument("--dry-run", action="store_true",
                     help="boot the server + render config + check readiness, but skip the "
                          "runner/evaluator (validates orchestration without API cost)")
@@ -653,6 +717,21 @@ def main() -> int:
         if not tool.exists():
             raise SystemExit(f"missing dependency script: {tool}")
 
+    global ISOLATE, ALLOW_MEMORY
+    ISOLATE, ALLOW_MEMORY = args.isolate, args.allow_memory_exposure
+    if not args.remerge and not args.isolate and not args.allow_memory_exposure:
+        raise SystemExit(
+            "this sweep is not isolated: without --isolate (needs --answer-use-api) every "
+            "answering agent gets the repository's auto-memory in its context and can read "
+            "other sessions' transcripts. Pass --isolate, or --allow-memory-exposure to "
+            "reproduce a pre-2026-10-06 run.")
+    if not args.remerge and not args.dry_run and not args.judge_use_api \
+            and not args.allow_memory_exposure:
+        raise SystemExit("the Claude judge without --judge-use-api runs inside this repo and gets "
+                         "its auto-memory; pass --judge-use-api (or --allow-memory-exposure).")
+    if args.isolate and not args.answer_use_api:
+        raise SystemExit("--isolate needs --answer-use-api: a fresh Claude config dir has no "
+                         "claude-login credentials")
     if args.runs < 1:
         raise SystemExit(f"--runs must be >= 1 (got {args.runs})")
     if args.judge_runs < 1:
@@ -672,6 +751,19 @@ def main() -> int:
     if (args.judge_use_api or args.answer_use_api) and not os.environ.get("ANTHROPIC_API_KEY"):
         raise SystemExit("--judge-use-api/--answer-use-api require ANTHROPIC_API_KEY in the "
                          "environment (e.g. `ANTHROPIC_API_KEY=$MY_ANTHROPIC_API_KEY ...`).")
+
+    if args.remerge:
+        if not args.results_dir or not args.conditions:
+            raise SystemExit("--remerge needs --results-dir and --conditions")
+        for cond in [c.strip() for c in args.conditions.split(",") if c.strip()]:
+            reps = sorted(RESULTS_DIR.glob(f"{cond}-scored-v*.csv"))
+            if not reps:
+                print(f"[{cond}] no replicate scored files; skipped")
+                continue
+            merge_scored(reps, RESULTS_DIR / f"{cond}-scored.csv")
+            merge_scored(reps, RESULTS_DIR / f"{cond}-scored-raw.csv", screen=False)
+            print(f"[{cond}] re-merged {len(reps)} replicate(s) -> {cond}-scored.csv (+ -raw)")
+        return 0
 
     global VARIANTS_DIR
     v3 = args.mie_format == "v3"
@@ -725,7 +817,7 @@ def main() -> int:
 
     set_manifest = None
     if v3:
-        check_variants_fresh(VARIANTS_DIR)
+        args._stale_files = check_variants_fresh(VARIANTS_DIR, args.allow_stale_variants)
         if args.questions:
             questions = args.questions
             if SET_MANIFEST.exists():

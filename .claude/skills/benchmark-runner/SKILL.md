@@ -97,6 +97,18 @@ retired Q022 and the v3 MIEs were tuned on it. It stays unchanged for the releas
   in the report; raw means are shown next to the clean ones (Trap 8).
 - **Judge failures:** a 0 score is the failed-judge sentinel and is treated as missing;
   `add_llm_evaluation.py` aborts after consecutive judge failures.
+- **Transcript isolation and audit:** Claude Code lets the answering agent read its own
+  transcript folder without asking the runner's gate, and that folder holds other sessions'
+  transcripts, including full `get_MIE_file` responses. Every run therefore uses a private
+  Claude Code config dir (`claude-config/` in the run dir) and a PreToolUse hook that confines
+  Read/Bash to the session's own saved outputs (`strict_isolation` in
+  `automated_test_runner.py`); after answering, `benchmark/scripts/audit_transcripts.py` checks
+  every transcript and judging is refused if any session read outside its own outputs
+  (`transcript_audit.md`).
+  The same isolation keeps the repository's auto-memory (`MEMORY.md`) out of the agents' context;
+  without it every session gets it. The runner and the Claude judge now fail closed: a
+  non-isolated run, or a Claude judge without `--use-api`, is refused unless
+  `--allow-memory-exposure` is given.
 - **No overwrite:** a run dir that already has a manifest is refused; give a new `--out`.
 - **Stale prompt:** a config that still names the retired `find_databases()` is refused.
 

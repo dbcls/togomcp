@@ -68,6 +68,7 @@ try:
     from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
     from claude_agent_sdk import AssistantMessage, ResultMessage
     from claude_agent_sdk.types import ToolPermissionContext
+    from claude_agent_sdk import HookMatcher
 except ImportError:
     print("Error: claude-agent-sdk package not installed.")
     print("Install with: pip install claude-agent-sdk")
@@ -445,6 +446,9 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 allowed_tools=[],        # advertise no tools to the model
                 disallowed_tools=self.config["disallowed_tools"],
                 can_use_tool=self._deny_all_tools,
+                # Same private config dir as the TogoMCP arm under strict isolation: the
+                # no-tool arm must not see the project's auto-memory either (2026-10-05).
+                **self._isolation_options(),
                 max_turns=1,             # single-shot answer, no tool loop
                 # Session isolation: same guard as the TogoMCP path.
                 # setting_sources=[] (SDK isolation mode) loads no
@@ -582,6 +586,65 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 )
             )
         return PermissionResultAllow()
+
+    async def _restrict_to_own_outputs(self, input_data, tool_use_id, context):
+        """PreToolUse hook for strict isolation (config `strict_isolation: true`).
+
+        Claude Code does NOT consult can_use_tool for read-only access inside its own
+        transcript folder (~/.claude/projects/<cwd>/, or $CLAUDE_CONFIG_DIR/projects/...):
+        Read, and Bash cat/grep/find there, are auto-approved. That folder holds every
+        session's transcript, including full get_MIE_file responses, so an ablated
+        condition could read the full MIE from another session (verified 2026-10-02;
+        never observed in a benchmark run). A PreToolUse hook runs for every tool call,
+        auto-approved or not, so this is where the boundary is enforced: MCP tools pass;
+        Read/Grep/Glob and Bash may touch only THIS session's own saved tool results
+        (plus /tmp and /dev/null); everything else is denied. The rules are those of
+        audit_transcripts.py, which checks the same boundary after the fact.
+        """
+        from audit_transcripts import classify as _audit_classify
+        name = input_data.get("tool_name", "")
+        if name.startswith("mcp__") or name == "ToolSearch":
+            return {}
+        transcript = input_data.get("transcript_path") or ""
+        folder = os.path.dirname(transcript)
+        sid = input_data.get("session_id") or os.path.basename(transcript).removesuffix(".jsonl")
+        verdict = _audit_classify(name, input_data.get("tool_input") or {}, sid, folder,
+                                  input_data.get("cwd") or os.getcwd())
+        if name in ("Read", "Grep", "Glob", "Bash") and verdict == "own-output":
+            # Allow explicitly. "No decision" is not enough: Claude Code auto-approves a
+            # literal path in its transcript folder, but a wildcard one
+            # (.../projects/*/<sid>*/tool-results/) falls through to can_use_tool, which
+            # denies every non-MCP tool. That refused 102 own-output reads in the
+            # 2026-10-06 full-clean2 run, after the hook itself had stopped refusing them.
+            return {"hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+                "permissionDecisionReason": "this session's own saved tool results",
+            }}
+        if name == "Bash" and verdict == "compute":
+            return {}
+        return {"hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": (
+                f"{name} blocked by benchmark isolation: only this session's own saved tool "
+                "results may be read. Use the registered MCP tools to retrieve data."),
+        }}
+
+    def _isolation_options(self) -> dict:
+        """Extra ClaudeAgentOptions for strict isolation; empty (old behaviour) by default."""
+        if not self.config.get("strict_isolation"):
+            return {}
+        opts = {"hooks": {"PreToolUse": [HookMatcher(matcher=None,
+                                                     hooks=[self._restrict_to_own_outputs])]}}
+        cfg_dir = self.config.get("claude_config_dir")
+        if cfg_dir:
+            # A private Claude Code config dir per run/condition: its projects/ folder then
+            # holds only this run's transcripts. Needs API auth (the claude-login
+            # subscription credentials are not found from a fresh config dir).
+            Path(cfg_dir).mkdir(parents=True, exist_ok=True)
+            opts["env"] = {"CLAUDE_CONFIG_DIR": str(Path(cfg_dir).resolve())}
+        return opts
 
     async def _make_togomcp_call_with_retry(
         self,
@@ -734,6 +797,7 @@ Simply provide the factual answer as you would write an encyclopedia entry."""
                 allowed_tools=self.config["allowed_tools"],
                 disallowed_tools=self.config["disallowed_tools"],
                 can_use_tool=self._auto_approve_mcp_tools,
+                **self._isolation_options(),
                 # Hermeticity / cross-session isolation. setting_sources=[] is
                 # the SDK's "isolation mode": it loads NO filesystem settings —
                 # not ~/.claude/settings.json (user), .claude/settings.json
@@ -1283,6 +1347,17 @@ Pricing config (add to config.yaml to override defaults):
         ),
     )
 
+    parser.add_argument(
+        "--allow-memory-exposure",
+        action="store_true",
+        help=(
+            "Run WITHOUT strict isolation. Claude Code then attaches the repository's "
+            "auto-memory (MEMORY.md) to every answering session, with or without tools, "
+            "and lets agents read other sessions' transcripts. Only for reproducing a "
+            "pre-2026-10-06 run exactly; say so wherever the numbers are reported."
+        ),
+    )
+
     args = parser.parse_args()
 
     missing_files = [f for f in args.question_files if not Path(f).exists()]
@@ -1297,6 +1372,22 @@ Pricing config (add to config.yaml to override defaults):
     except Exception as e:
         print(f"✗ Error initializing runner: {e}")
         sys.exit(1)
+
+    # Fail closed on context leaks (2026-10-06). Without strict isolation every session
+    # started inside this repo gets the project's auto-memory index in its context, and
+    # agents can read other sessions' transcripts; setting_sources=[] and the can_use_tool
+    # gate stop neither. Every run from 2026-09-30 to 2026-10-05 was exposed that way.
+    isolated = bool(runner.config.get("strict_isolation") and runner.config.get("claude_config_dir"))
+    if not isolated:
+        if not (args.allow_memory_exposure or runner.config.get("allow_memory_exposure")):
+            print("✗ Error: this run is not isolated. Set `strict_isolation: true` and a private\n"
+                  "  `claude_config_dir` in the config (run_ablation.py --isolate and the\n"
+                  "  benchmark-runner skill do this; it needs ANTHROPIC_API_KEY), or pass\n"
+                  "  --allow-memory-exposure to run with the repository's auto-memory in every\n"
+                  "  agent's context, as runs before 2026-10-06 did.")
+            sys.exit(1)
+        logger.warning("NOT ISOLATED (--allow-memory-exposure): the repository's auto-memory "
+                       "is in every answering session's context.")
 
     # Precedence: --model > config 'model' > built-in default_config.
     if args.model:

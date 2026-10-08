@@ -8,8 +8,9 @@ A run directory (benchmark/results/<date>/<answer-model>/<mode>/) holds:
     toolcalls.jsonl               the local server's tool-call log (TOGOMCP_QUERY_LOG)
 
 Every answer cell is classified before scoring is aggregated:
-    refusal  content-policy refusal ("...violate our Usage Policy..."): the answer is the
-             API's refusal text, scored at the floor; excluded (Trap 8)
+    refusal  content-policy refusal (both known formats, see answer_screen.REFUSAL_RE: "...violate
+             our Usage Policy..." and "API Error: ... can't help with this ... [bio]"): the
+             answer is the API's refusal text, scored at the floor; excluded (Trap 8)
     stub     failed or login-error answer ("Not logged in", "[ERROR: Empty response...",
              success=False); excluded
     valid    everything else

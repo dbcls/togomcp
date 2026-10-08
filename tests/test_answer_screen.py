@@ -34,3 +34,13 @@ def test_short_real_answer_is_valid():
     # A real ~400-character answer must not be mistaken for a refusal by its length.
     answer = "Yes. The HSPB1 gene has 68 documented ClinVar variants for Charcot-Marie-Tooth disease."
     assert classify(answer, "True") == "valid"
+
+
+BIO_REFUSAL = (
+    "API Error: Sonnet 4.5 can't help with this. Start a new session to continue.\n\n"
+    "Learn more: https://www.anthropic.com/legal/aup\n\nDetails: `[bio]`\n\nRequest ID: req_x"
+)
+
+
+def test_2026_10_bio_refusal_format_is_a_refusal():
+    assert classify(BIO_REFUSAL, "True") == "refusal"

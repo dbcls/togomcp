@@ -35,6 +35,22 @@
 >     --conditions no_mie --base-config ../../scripts/config_no_mie_2026_10.yaml
 > ```
 >
+> **Transcript isolation (2026-10-02).** Claude Code does not consult the runner's gate for
+> reads inside its own transcript folder, which holds every session's transcript, full MIE
+> responses included; an ablated condition could in principle read the full MIE from a
+> baseline session. Stage 1 (2026-10) ran without protection; `benchmark/scripts/audit_transcripts.py`
+> found no session that did so (0 violations over stage 1 and the Sonnet 5.5 run) and must be
+> re-run on each condition before conclusions are written. From stage 2 on, pass `--isolate`
+> (per-condition Claude config dir + a PreToolUse hook confining Read/Bash to the session's own
+> outputs; needs `--answer-use-api`).
+>
+> **Fail-closed since 2026-10-06.** Without isolation, Claude Code also attaches this
+> repository's auto-memory index (`MEMORY.md`) to every answering session (both arms); all of
+> stage 1 ran that way. `run_ablation.py` now refuses to start without `--isolate`, the runner
+> without `strict_isolation` + `claude_config_dir`, and the Claude judge without
+> `--judge-use-api` / `--use-api`. `--allow-memory-exposure` overrides all three (recorded in
+> `run_manifest.json`) and exists only to reproduce a pre-2026-10-06 run.
+>
 > Known residue: column-0 comments outside a stripped section (the file-header change
 > log, 2.3% of corpus bytes) are served in every condition, as in production, and can
 > mention an idiom a condition removed. That biases ablation effects toward zero, not
