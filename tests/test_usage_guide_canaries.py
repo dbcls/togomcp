@@ -1,6 +1,6 @@
 """Drift guard: the Usage Guide's stale-tool-list row must stay true to the tool registry.
 
-The TROUBLESHOOTING table in `usage_guide_v6/04_reference.md` carries a row that
+The TROUBLESHOOTING table in `usage_guide_v7/04_reference.md` carries a row that
 teaches the model to recognise a client whose cached tool list has gone stale —
 the failure mode behind every phantom-tool call in the production log, all of
 them from ChatGPT connectors, which record the list at *Scan Tools* time and
@@ -38,7 +38,7 @@ from togo_mcp.main import mcp, setup
 
 GUIDE_DIR = (
     Path(__file__).resolve().parent.parent
-    / "togo_mcp" / "data" / "resources" / "usage_guide_v6"
+    / "togo_mcp" / "data" / "resources" / "usage_guide_v7"
 )
 
 # The row is identified by this phrase rather than by file or line, so it stays

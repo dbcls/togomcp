@@ -25,7 +25,7 @@ A short, curated list of the most recent **user-facing** updates (new databases,
 - **GENERATED, not hand-edited.** The `<li>` items live between `<!-- WHATSNEW:START -->` / `<!-- WHATSNEW:END -->` sentinels and are rendered by `scripts/generate_whatsnew.py` from markers in `CHANGELOG.md`. Do not edit the items by hand.
 - **Source of truth: `CHANGELOG.md` markers.** Add one HTML-comment marker where the change is recorded (under its release heading, or `[Unreleased]` for non-release news):
   `<!-- whatsnew: 2026-07-24 | one user-facing sentence (may use <code>/<em>/<a>) -->`
-  Include only what a *user* would notice; skip internal refactors/tests. Then run `python scripts/generate_whatsnew.py`. The `whatsnew.yml` CI + `tests/test_whatsnew_in_sync.py` fail if the page is stale.
+  Include only what a *user* would notice; skip internal refactors/tests. Then run `python scripts/generate_whatsnew.py` (it writes the same block into the Japanese entry page, `togomcp-intro-ja.html`). The `whatsnew.yml` CI + `tests/test_whatsnew_in_sync.py` fail if the page is stale.
 - End with a "Full changelog →" link to `https://github.com/dbcls/togomcp/blob/main/CHANGELOG.md`.
 
 ## Publications

@@ -1,4 +1,6 @@
-## 📚 DATABASE CATALOG
+> Usage Guide reference file — fetched on demand with `get_workflow(name="usage-guide", path="references/database-catalog.md")`. The always-loaded core is `TogoMCP_Usage_Guide()`.
+
+## 📚 DATABASE CATALOG — FULL
 
 All 45 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 

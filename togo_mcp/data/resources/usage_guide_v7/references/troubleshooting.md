@@ -1,3 +1,5 @@
+> Usage Guide reference file — fetched on demand with `get_workflow(name="usage-guide", path="references/troubleshooting.md")`. The always-loaded core is `TogoMCP_Usage_Guide()`.
+
 ## ⚠️ KNOWN-HARD QUERIES
 
 | Pattern | Fallback |
@@ -8,16 +10,6 @@
 | Rhea reactions filtered by UniProt keyword | Read UniProt MIE for keyword IRI (`up:classifiedWith`); EC-prefix fallback overcounts. |
 | Bacterial gene counts via NCBI | Field tags mandatory: `"Archaea[Organism] AND nifH[Gene Name]"` — omitting loses 70–80%. |
 | Full predicate/ontology coverage across many graphs | `COUNT`-first probing per graph (BULK MODE), not one cross-graph query |
-
----
-
-## ✍️ OUTPUT QUALITY
-
-- Each fact exactly once.
-- No meta-commentary ("Based on my analysis", "In summary", "As established above").
-- No reasoning leakage in the final answer.
-- Prose **or** list — not both.
-- Partial data: state what was found and what wasn't. No padding.
 
 ---
 
@@ -44,4 +36,6 @@
 | ≥15 tool calls, no answer | Synthesize from partial data. Partial + honest > wrong + exhaustive. |
 | Repetitive answer | Remove any sentence restating an earlier point. |
 | OLS4 / PubMed unavailable | → `search_mesh_descriptor` / `ncbi_esearch`. |
-| **A tool named in this guide is absent from your tool list** (canaries: `get_workflow`, `pubcasefinder_rank_by_phenotypes`) — or a tool you call returns "unknown tool" (`find_databases`, `list_categories`), or a result ends with a `[TogoMCP notice]` that the name you called is outdated | Your MCP client cached the tool list when the connector was added and has not refetched it. **Tell the user in your answer** that the TogoMCP app must be updated in their client. In ChatGPT that is an admin task on Business (recreate and republish the app) and Enterprise/Edu (Action control → Refresh, then enable the new tools); on Pro, delete and recreate the TogoMCP plugin. Common with ChatGPT, which freezes the tool list — some clients are running lists months stale. Do not retry the missing name or invent a substitute. **Databases are unaffected**: the catalog in this guide is served live, so any database key listed there works even when your cached tool schema does not name it. |
+
+
+The stale-tool-list row (a tool named in the guide is missing from your tool list) lives in the core guide, because a client that needs it cannot fetch this file.

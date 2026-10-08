@@ -213,7 +213,7 @@ def test_usage_guide_workflows_section_matches_registry() -> None:
         assert f"- {s.name}: {s.catalog}" in guide
     # placed right after GATE 0's part, before the budgets part
     assert guide.index("GATE 0") < guide.index("## Workflows") < guide.index(
-        (REPO / "togo_mcp/data/resources/usage_guide_v6/02_budgets_and_discovery.md")
+        (REPO / "togo_mcp/data/resources/usage_guide_v7/02_budgets_and_discovery.md")
         .read_text(encoding="utf-8").strip().splitlines()[0]
     )
 

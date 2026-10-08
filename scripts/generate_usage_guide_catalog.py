@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Generate the Database Catalog part of the TogoMCP Usage Guide.
+"""Generate the Database Catalog of the TogoMCP Usage Guide (compact + full).
+
+Two forms come out of the same records, because the guide is tiered (v7): a COMPACT
+catalog that ships inside the always-returned core (one line per database: short
+title, capped description, the first few keywords), and the FULL catalog (complete
+descriptions, every keyword) as an on-demand reference file. The core must stay
+well under the size at which MCP hosts stop returning a tool result inline (Claude
+Code: 50,000 characters / 25,000 tokens) — the single 25 KB catalog was 43% of a
+57 KB guide that no Sonnet 5.5 session ever received whole (2026-10).
 
 The catalog bakes the per-database *semantic* layer — title, one-line
 description, categories, keywords — from every MIE `discovery:` block into a
@@ -16,7 +24,7 @@ release flip) with one code path. It reads the same `discovery`-or-`schema_info`
 location the server's `_load_databases_cache` reads.
 
 Usage:
-    python scripts/generate_usage_guide_catalog.py           # write the part file
+    python scripts/generate_usage_guide_catalog.py           # write the generated files
     python scripts/generate_usage_guide_catalog.py --check   # exit 1 if out of sync
     python scripts/generate_usage_guide_catalog.py --stdout   # print, don't write
 
@@ -34,8 +42,26 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MIE_DIR = REPO_ROOT / "togo_mcp" / "data" / "mie"
-GUIDE_DIR = REPO_ROOT / "togo_mcp" / "data" / "resources" / "usage_guide_v6"
+GUIDE_DIR = REPO_ROOT / "togo_mcp" / "data" / "resources" / "usage_guide_v7"
+# Compact catalog: a top-level part, so it is assembled into the core guide.
 OUT_FILE = GUIDE_DIR / "02b_database_catalog.md"
+# Full catalog: under references/, invisible to the core's top-level glob and served
+# on demand through get_workflow(name="usage-guide", path="references/...").
+REFERENCES_DIR = GUIDE_DIR / "references"
+FULL_CATALOG = REFERENCES_DIR / "database-catalog.md"
+REFERENCE_HEADER = (
+    "> Usage Guide reference file — fetched on demand with "
+    '`get_workflow(name="usage-guide", path="references/{name}")`. '
+    "The always-loaded core is `TogoMCP_Usage_Guide()`.\n\n"
+)
+
+# Compact-row budget. Per database the core pays roughly
+# len(key) + COMPACT_TITLE_CAP + COMPACT_DESC_CAP + the keywords; at 45 databases
+# that is ~10 KB. Raise these only together with the core size guard
+# (tests/test_usage_guide_size.py).
+COMPACT_TITLE_CAP = 32
+COMPACT_DESC_CAP = 110
+COMPACT_KEYWORDS = 6
 
 # Guide parts served ONLY when the tools they document are actually mounted.
 # Deliberately in a SUBDIRECTORY: the guide assembles `sorted(glob("*.md"))` over
@@ -105,18 +131,95 @@ def load_records(mie_dir: Path = MIE_DIR) -> list[dict]:
     return records
 
 
-def render_catalog(records: list[dict]) -> str:
-    """Render the deterministic markdown catalog section from records."""
-    records = sorted(records, key=lambda r: r["database"])
+def _cap(text: str, cap: int) -> str:
+    return text if len(text) <= cap else text[: cap - 1].rstrip() + "…"
 
-    # category -> sorted member db names
+
+def _short_title(title: str) -> str:
+    """`BacDive — Bacterial Diversity Metadatabase` → `BacDive`: the part an agent
+    recognizes. The long form stays in the full catalog."""
+    head = re.split(r"\s+[—–-]\s+|\s+\(", title, maxsplit=1)[0].strip()
+    return _cap(head or title, COMPACT_TITLE_CAP)
+
+
+def _category_index(records: list[dict]) -> dict[str, list[str]]:
     cat_index: dict[str, list[str]] = {}
     for r in records:
         for c in r["categories"] or ["(uncategorized)"]:
             cat_index.setdefault(c, []).append(r["database"])
+    return cat_index
 
+
+def render_compact_catalog(records: list[dict]) -> str:
+    """The catalog that ships in the core: one line per database.
+
+    Agents use the catalog as a lookup — in the 2026-10 runs nearly every fetch from
+    the saved guide was a grep for a database name or a data keyword — so each row
+    keeps the first COMPACT_KEYWORDS keywords next to a capped description. The
+    full descriptions and keyword lists are one get_workflow call away.
+    """
+    records = sorted(records, key=lambda r: r["database"])
     lines: list[str] = []
     lines.append("## 📚 DATABASE CATALOG")
+    lines.append("")
+    lines.append(
+        f"All {len(records)} RDF databases, one line each: what it is *for*, then its top "
+        "keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 "
+        "candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact "
+        "`database=` key is **bold**. Full descriptions and every keyword: reference "
+        "file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines "
+        "do not separate your candidates."
+    )
+    lines.append("")
+    lines.append(
+        "Quick hints: "
+        + " · ".join(f"{kw} → `{db}`" for kw, db in PROVEN_HINTS)
+        + "."
+    )
+    lines.append("")
+    lines.append("**By category** (a database may appear under several):")
+    lines.append("")
+    cat_index = _category_index(records)
+    for cat in sorted(cat_index):
+        members = " ".join(f"`{db}`" for db in sorted(cat_index[cat]))
+        lines.append(f"- **{cat}** — {members}")
+    lines.append("")
+    lines.append("**All databases** (alphabetical):")
+    lines.append("")
+    for r in records:
+        desc = _cap(r["description"].rstrip("…").rstrip(), COMPACT_DESC_CAP)
+        kws = ", ".join(r["keywords"][:COMPACT_KEYWORDS])
+        row = f"- **{r['database']}** — {_short_title(r['title'])}. {desc}"
+        if kws:
+            row += f" _[{kws}]_"
+        lines.append(row)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_compact_kegg_note() -> str:
+    """The KEGG note for the core: enough to stop `database="kegg"` and to say what
+    to do without the tools. The full note is in the reference catalog."""
+    return "\n".join([
+        "**Not an RDF Portal database — KEGG.** `database=\"kegg\"` is invalid on "
+        "`run_sparql` and `get_MIE_file`: KEGG has no SPARQL endpoint and no MIE. The "
+        "`kegg_*` tools exist only on a local stdio server whose operator enabled them. "
+        "**If you see no `kegg_*` tool, KEGG is unavailable in this session** — answer "
+        "pathway questions from `reactome` or `rhea`, and do NOT report the absence as "
+        "an error or suggest enabling it. When the tools ARE present, this guide "
+        "carries a KEGG section with the details.",
+        "",
+    ])
+
+
+def render_catalog(records: list[dict]) -> str:
+    """Render the deterministic FULL markdown catalog section from records."""
+    records = sorted(records, key=lambda r: r["database"])
+
+    cat_index = _category_index(records)
+
+    lines: list[str] = []
+    lines.append("## 📚 DATABASE CATALOG — FULL")
     lines.append("")
     lines.append(
         f"All {len(records)} RDF databases, with what each is *for*. Scan by the KIND "
@@ -255,7 +358,18 @@ def render_local_only_kegg() -> str:
 
 
 def build() -> str:
-    return render_catalog(load_records()) + "\n" + render_non_sparql_companions()
+    """The compact catalog part of the core guide."""
+    return render_compact_catalog(load_records()) + "\n" + render_compact_kegg_note()
+
+
+def build_full() -> str:
+    """The full catalog, served on demand as a reference file."""
+    return (
+        REFERENCE_HEADER.format(name=FULL_CATALOG.name)
+        + render_catalog(load_records())
+        + "\n"
+        + render_non_sparql_companions()
+    )
 
 
 def build_local_only() -> str:
@@ -278,9 +392,14 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write("\n".join(cats) + "\n")
         return 0
 
-    # Both generated parts are checked/written together; a stale local-only file
-    # is exactly as wrong as a stale catalog, it is just served to fewer clients.
-    outputs = [(OUT_FILE, build()), (LOCAL_ONLY_KEGG, build_local_only())]
+    # All generated files are checked/written together; a stale reference or
+    # local-only file is exactly as wrong as a stale core catalog, it is just served
+    # to fewer clients.
+    outputs = [
+        (OUT_FILE, build()),
+        (FULL_CATALOG, build_full()),
+        (LOCAL_ONLY_KEGG, build_local_only()),
+    ]
 
     if args.stdout:
         for path, content in outputs:

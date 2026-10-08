@@ -13,6 +13,64 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.23.0] - 2026-10-09
+
+The Usage Guide now reaches the model. It had stopped doing so without anything failing: at
+57 KB it was past the size at which Claude Code shows a tool result inline, so agents were
+handed a file path instead of the workflow, the rules and the database catalog. This release
+splits the guide into a core that fits and reference files fetched on demand. MINOR, because the
+guide tool's return shape changes (plain text, no structured copy); no tool or parameter moved.
+
+Measured before release on the frozen 110-question benchmark (Sonnet 5.5, three replicates,
+isolated sessions), new guide against old: the core arrived inline in 330 of 330 sessions (old:
+0 of 330); calls with a wrong parameter name fell from 2.2 per session to none and errored calls
+from 1.35 to 0.28; answers took 40 s instead of 45 s. Answer quality did not change measurably
+(Opus 4.8 judge +0.25 ± 0.25 of 20, Gemma4 −0.00 ± 0.20). Cost per answer rose about 18%
+($0.149 to $0.176), the price of the guide actually being in context. No session fetched a
+reference file, so that route is exercised by tests but not yet by real use.
+
+<!-- whatsnew: 2026-10-09 | The <strong>Usage Guide now arrives in full</strong>: it was too large for Claude Code to show the model, so it is now a compact core (workflow, rules and a one-line-per-database catalog) with detail fetched on demand through <code>get_workflow(name="usage-guide", …)</code> — fewer failed tool calls and faster answers. -->
+
+### Changed
+
+- **The Usage Guide is tiered (v7): `TogoMCP_Usage_Guide` returns a 34 KB core, and the rest
+  is fetched on demand.** The v6 guide was 57,287 characters, past the size at which an MCP host
+  stops showing a tool result to the model. Claude Code has two such limits (50,000 characters;
+  25,000 tokens) and the guide crossed both. Measured on the 2026-10 benchmark transcripts:
+  Sonnet 4.5 sessions got a saved file and a 2 KB preview; Sonnet 5.5 sessions got an error and
+  a saved file with no preview, and **none of 330 received the whole guide** (median 2 KB read,
+  31% read nothing). Nothing failed visibly, which is why it lasted.
+  - The core keeps every rule a correct answer depends on (gates, critical rules, budgets, MIE
+    reading order, the endpoint table, TogoID, SPARQL discipline, the eleven silent-failure
+    traps as one line each) plus a **compact catalog**: one line per database with its top six
+    keywords, because the transcripts show agents use the catalog as a keyword lookup.
+  - Six reference files hold the depth: the full catalog, co-tenancy worked examples,
+    endpoint/federation detail, the full troubleshooting table, bulk mode, tool tiers. Fetch
+    with `get_workflow(name="usage-guide", path="references/<file>")`; the guide's last section
+    says when each is needed, and `get_workflow()` lists them. No new tool and no new parameter:
+    `get_workflow` already served files by name and path.
+  - A client whose cached tool list predates `get_workflow` gets the core only. That is why the
+    core is self-sufficient, and why the stale-tool-list row stays in it.
+- **`TogoMCP_Usage_Guide` returns plain text, with no structured `{"result": ...}` copy.** A host
+  that saves an oversized result saves the structured form: one JSON line that a line-paged
+  file reader cannot page. Return-shape change, hence MINOR.
+
+### Added
+
+- **`TOGOMCP_TRIAL_CHAT`: an off switch for the landing-page trial chat.** The chat added in
+  2.22.0 depends on an external hub, and until now the only way to take it down was to edit two
+  HTML files and rebuild. Setting the variable to `0` (or `false`/`no`/`off`) serves `/` and `/ja`
+  without the chat panel and the widget; the language links and everything else stay. It is on by
+  default, so an existing deployment does not change. The variable is wired through
+  `deploy.sh`, `compose.yaml` and `.env.example` (with a `_TEST` variant), because a knob missing
+  from `deploy.sh`'s list is inert in production.
+- `tests/test_usage_guide_size.py`: fails when the core grows past 40,000 characters, when a
+  reference file is unindexed or unreachable, or when the guide regains an output schema. The
+  catalog gains a row with every database, so without a guard the core drifts back over the
+  limit one release at a time.
+- `scripts/generate_usage_guide_catalog.py` now writes both catalogs (compact in the core, full
+  under `references/`); the sync test and the CI check cover both.
+
 ## [2.22.0] - 2026-10-08
 
 A trial chat on the landing page, and a Japanese entry page. Nothing on the tool surface changed:
@@ -3071,7 +3129,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.22.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.0...HEAD
+[2.23.0]: https://github.com/dbcls/togomcp/compare/v2.22.0...v2.23.0
 [2.22.0]: https://github.com/dbcls/togomcp/compare/v2.21.1...v2.22.0
 [2.21.1]: https://github.com/dbcls/togomcp/compare/v2.21.0...v2.21.1
 [2.21.0]: https://github.com/dbcls/togomcp/compare/v2.20.1...v2.21.0

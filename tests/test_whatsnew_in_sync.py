@@ -1,6 +1,7 @@
 """Drift guard: the intro page's "What's New" block must match the CHANGELOG markers.
 
-The `#whats-new` section of `togo_mcp/data/docs/togomcp-intro.html` is generated
+The `#whats-new` section of `togo_mcp/data/docs/togomcp-intro.html`, and of the
+Japanese entry page `togomcp-intro-ja.html` next to it, is generated
 from the `<!-- whatsnew: DATE | text -->` markers in `CHANGELOG.md` by
 `scripts/generate_whatsnew.py`. If the CHANGELOG markers change and the page is
 not regenerated, the landing page's What's New silently goes stale. This test
@@ -24,12 +25,12 @@ def _load_generator():
 
 def test_whatsnew_matches_changelog_markers():
     gen = _load_generator()
-    expected = gen.build()
-    committed = gen.HTML.read_text(encoding="utf-8")
-    assert committed == expected, (
-        "Intro page 'What's New' is out of sync with the CHANGELOG whatsnew markers. "
-        "Run: python scripts/generate_whatsnew.py"
-    )
+    assert len(gen.PAGES) == 2, gen.PAGES
+    for page in gen.PAGES:
+        assert page.read_text(encoding="utf-8") == gen.build(page), (
+            f"{page.name} 'What's New' is out of sync with the CHANGELOG whatsnew markers. "
+            "Run: python scripts/generate_whatsnew.py"
+        )
 
 
 def test_whatsnew_has_markers():

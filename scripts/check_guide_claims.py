@@ -335,7 +335,7 @@ def main() -> int:
         print("\nFAILED — the guide asserts something the endpoint no longer does:")
         for line in failures:
             print(f"    {line}")
-        print("\n  Fix the guide (usage_guide_v6/), not this script — unless the claim was "
+        print("\n  Fix the guide (usage_guide_v7/), not this script — unless the claim was "
               "always wrong, in which case fix both.")
     return min(fail_n, 125)
 

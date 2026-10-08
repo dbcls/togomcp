@@ -50,10 +50,13 @@ CWD = Path(os.getenv("TOGOMCP_DIR", str(_PACKAGE_DATA_DIR)))
 # unchanged.
 MIE_DIR = os.getenv("TOGOMCP_MIE_DIR", str(CWD.joinpath("mie")))
 # Directory of usage-guide part files, split by change-cadence and assembled
-# (sorted *.md, joined by the section separator) at serve time. The "_v6" in
+# (sorted top-level *.md, joined by the section separator) at serve time into the
+# CORE guide. Its `references/` subdirectory holds the on-demand sections, served
+# through get_workflow(name="usage-guide", path="references/<file>"); `local_only/`
+# holds parts gated on tools that are not on every transport. The "_v7" in
 # the dir name is what _detect_usage_guide_version() reads — bumping the guide
 # means renaming this directory, not editing a version string.
-TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v6"))
+TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v7"))
 ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
 TUTORIAL_DIR = CWD.joinpath("docs", "tutorial")
@@ -1045,16 +1048,35 @@ async def health_check(request: Request) -> PlainTextResponse:
     return PlainTextResponse("OK")
 
 
-@mcp.custom_route("/", methods=["GET"])
-async def index(request: Request) -> HTMLResponse:
-    with open(INDEX_HTML) as f:
-        html_content = f.read()
+# The landing pages carry an anonymous trial chat that depends on an external hub
+# (see data/docs/widget-deployment.md). TOGOMCP_TRIAL_CHAT=0 takes it off both pages
+# without a rebuild: everything between the TRIAL-CHAT sentinels is dropped, which is
+# the panel under the hero and the widget itself. On unless switched off.
+_TRIAL_CHAT_RE = re.compile(
+    r"[ \t]*<!-- TRIAL-CHAT:START -->.*?<!-- TRIAL-CHAT:END -->\n?", re.S
+)
+
+
+def _trial_chat_enabled() -> bool:
+    return os.getenv("TOGOMCP_TRIAL_CHAT", "").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def _intro_page(path: str | Path) -> HTMLResponse:
+    html_content = Path(path).read_text(encoding="utf-8")
+    if not _trial_chat_enabled():
+        html_content = _TRIAL_CHAT_RE.sub("", html_content)
     return HTMLResponse(html_content)
 
 
+@mcp.custom_route("/", methods=["GET"])
+async def index(request: Request) -> HTMLResponse:
+    return _intro_page(INDEX_HTML)
+
+
 @mcp.custom_route("/ja", methods=["GET"])
-async def japanese_index(request: Request) -> FileResponse:
-    return FileResponse(CWD / "docs" / "togomcp-intro-ja.html", media_type="text/html")
+async def japanese_index(request: Request) -> HTMLResponse:
+    return _intro_page(CWD / "docs" / "togomcp-intro-ja.html")
 
 
 @mcp.custom_route("/assets/llm-meta-widget.js", methods=["GET"])

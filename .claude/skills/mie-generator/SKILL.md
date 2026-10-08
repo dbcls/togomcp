@@ -31,7 +31,7 @@ Fake or unverified examples are worse than missing ones: they train the downstre
 
 Phase 2 (live discovery) is the canonical source of truth for the schema and example queries — never let prior assumptions override what the endpoint actually exposes.
 
-The MCP tools `get_MIE_file` and `save_MIE_file` are **not** used in this environment — read and write MIE files directly. The remaining TogoMCP tools (`run_sparql`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org. **The discovery trio (`find_databases` / `list_databases` / `list_categories`) is retired — do not call it.** The database catalog it served is now a static, generated Usage-Guide section (`togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md`), built from every MIE's `discovery:` block; when this skill changes a MIE's `discovery` block, regenerate that catalog (Phase 6).
+The MCP tools `get_MIE_file` and `save_MIE_file` are **not** used in this environment — read and write MIE files directly. The remaining TogoMCP tools (`run_sparql`, `get_sparql_endpoints`, `get_graph_list`, the search APIs) ARE used; they hit live endpoints and cannot be replaced by filesystem access. `WebFetch` is used in Phase 0 to look up unregistered endpoints on rdfportal.org. **The discovery trio (`find_databases` / `list_databases` / `list_categories`) is retired — do not call it.** The database catalog it served is now a static, generated Usage-Guide section (`togo_mcp/data/resources/usage_guide_v7/02b_database_catalog.md`), built from every MIE's `discovery:` block; when this skill changes a MIE's `discovery` block, regenerate that catalog (Phase 6).
 
 ## Workflow
 
@@ -560,7 +560,7 @@ Growth is fine when it is verified content in the right section. A raw byte targ
 **If you added, removed, or changed the MIE's `discovery` block** (title, description, keywords, or categories), regenerate the static database catalog so the served Usage Guide stays in sync:
 
 ```bash
-uv run python scripts/generate_usage_guide_catalog.py   # rewrites usage_guide_v6/02b_database_catalog.md
+uv run python scripts/generate_usage_guide_catalog.py   # rewrites usage_guide_v7/02b_database_catalog.md
 ```
 
 The `tests/test_catalog_in_sync.py` drift guard fails if you skip this. A pure examples/schema edit that left the discovery block untouched produces no diff — running it is still safe (idempotent). Include the regenerated `02b_database_catalog.md` in your changes.

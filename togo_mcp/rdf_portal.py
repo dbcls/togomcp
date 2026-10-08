@@ -73,12 +73,39 @@ async def _conditional_guide_parts() -> list[str]:
     return parts
 
 
-@mcp.tool(name="TogoMCP_Usage_Guide", annotations=READ_ONLY_TOOL)
+GUIDE_SKILL_NAME = "usage-guide"
+GUIDE_REFERENCES_DIR = Path(TOGOMCP_USAGE_GUIDE) / "references"
+
+
+async def assemble_usage_guide_core() -> str:
+    """The core guide: top-level part files in sorted order, joined by the section
+    separator. Parts for tools that are not on every transport are appended last,
+    and only when the tool they document is actually mounted here. The on-demand
+    sections under `references/` are NOT part of it (a top-level glob cannot see
+    them); they are served by get_workflow(name="usage-guide", path=...)."""
+    parts = sorted(Path(TOGOMCP_USAGE_GUIDE).glob("*.md"))
+    sections = [p.read_text(encoding="utf-8") for p in parts]
+    # The Workflows section routes to get_workflow right after GATE 0 (part 01) —
+    # the tool route has no description-based skill triggering, so the guide does it.
+    # Generated from the registry at call time, never hand-copied into a part file.
+    gate_idx = next((i for i, p in enumerate(parts) if p.name.startswith("01_")), 0)
+    if WORKFLOWS:
+        sections.insert(gate_idx + 1, workflow_catalog_section())
+    sections.extend(await _conditional_guide_parts())
+    return "\n\n---\n\n".join(sections)
+
+
+# output_schema=None: return the guide as plain text only. With the default schema
+# FastMCP also sends {"result": "<guide>"} as structured content, and a host that
+# saves an oversized result to a file saves THAT form — one JSON line with no
+# newlines, which a line-paged file reader cannot page (measured 2026-10: no
+# Sonnet 5.5 session in 330 received the whole 57 KB v6 guide).
+@mcp.tool(name="TogoMCP_Usage_Guide", annotations=READ_ONLY_TOOL, output_schema=None)
 async def togomcp_usage_guide() -> str:
     """
     ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
 
-    Returns the v6 Usage Guide, which enforces the empirically-validated workflow:
+    Returns the v7 Usage Guide core, which enforces the empirically-validated workflow:
 
         GATE 0: classify the question (bounded → STEP −1 | open-ended → EXPLORATION).
         STEP −1: analyze entities, databases, endpoints (no tools).
@@ -95,31 +122,23 @@ async def togomcp_usage_guide() -> str:
     to pick 1–3), plus the EXPLORATION habits (Seed Definition, concierge
     check, prioritized Next Steps) for open-ended deep dives.
 
-    Most RDF Portal endpoints host MANY databases (primary: 16, ebi: 5, ncbi: 5,
+    Most RDF Portal endpoints host MANY databases (primary: 18, ebi: 6, ncbi: 5,
     sib: 4) and every endpoint hosts many GRAPHS. An unpinned query silently
     reads all of them, so a co-hosted graph can supply a predicate you believe is
     native and return a plausible, correctly-shaped, WRONG number — with no error.
     The guide's CO-TENANCY section is the one to read before writing SPARQL.
 
+    The core is complete for ordinary questions and is sized to arrive inline.
+    Deeper detail (full catalog, co-tenancy worked examples, federation, bulk
+    mode, the full troubleshooting table) lives in reference files listed at the
+    end of the guide; fetch one only when its trigger applies, with
+    get_workflow(name="usage-guide", path="references/<file>").
+
     Re-run GATE 0 every turn — prior workflow does not carry forward.
 
-    Returns:
-        str: The content of the TogoMCP usage guide.
+    RETURNS the guide as plain Markdown text.
     """
-    # The guide is split into part files by change-cadence; assemble them in
-    # sorted order, joined by the section separator, into one document. Parts for
-    # tools that are not on every transport are appended last, and only when the
-    # tool they document is actually mounted here.
-    parts = sorted(Path(TOGOMCP_USAGE_GUIDE).glob("*.md"))
-    sections = [p.read_text(encoding="utf-8") for p in parts]
-    # The Workflows section routes to get_workflow right after GATE 0 (part 01) —
-    # the tool route has no description-based skill triggering, so the guide does it.
-    # Generated from the registry at call time, never hand-copied into a part file.
-    gate_idx = next((i for i, p in enumerate(parts) if p.name.startswith("01_")), 0)
-    if WORKFLOWS:
-        sections.insert(gate_idx + 1, workflow_catalog_section())
-    sections.extend(await _conditional_guide_parts())
-    return "\n\n---\n\n".join(sections)
+    return await assemble_usage_guide_core()
 
 
 # --- Tools for RDF Portal --- #
@@ -738,6 +757,13 @@ from . import skills as _skills
 
 SKILLS_DIR = CWD.joinpath("skills", "public")
 WORKFLOWS: dict[str, _skills.Skill] = _skills.load_registry(SKILLS_DIR)
+# The Usage Guide is served through the same tool under a reserved name (its core as
+# the "SKILL.md", its on-demand sections as references/), but it is not a workflow and
+# is deliberately absent from this registry and from the guide's Workflows list.
+if GUIDE_SKILL_NAME in WORKFLOWS:
+    raise _skills.SkillRegistryError(
+        f"workflow name {GUIDE_SKILL_NAME!r} is reserved for the Usage Guide"
+    )
 
 # TODO(fastmcp#5016): enable SkillsExtension (SEP-2640 `skills/list` / `skills/get`)
 # once FastMCP ships it — absent in 3.4.3, 4.0.4 and 4.0.10 (checked 2026-09-29). Until
@@ -769,6 +795,47 @@ def _workflow_names() -> str:
     return ", ".join(WORKFLOWS) or "(none)"
 
 
+def _guide_reference_files() -> dict[str, Path]:
+    """`references/<file>` → path, for the Usage Guide's on-demand sections. Listed
+    from disk at call time, like the core's part files; symlinks are not served."""
+    if not GUIDE_REFERENCES_DIR.is_dir():
+        return {}
+    return {
+        f"references/{p.name}": p
+        for p in sorted(GUIDE_REFERENCES_DIR.glob("*.md"))
+        if p.is_file() and not p.is_symlink()
+    }
+
+
+def _guide_reference_listing() -> list[str]:
+    files = _guide_reference_files()
+    if not files:
+        return []
+    width = max(len(rel) for rel in files)
+    lines = [
+        f'Usage Guide reference files (fetch with get_workflow(name="{GUIDE_SKILL_NAME}", '
+        "path=...); the guide's last section says when each is needed):"
+    ]
+    lines += [
+        f"  {rel.ljust(width)}  ({_skills.format_size(p.stat().st_size)})"
+        for rel, p in files.items()
+    ]
+    return lines
+
+
+async def _get_usage_guide_file(path: str | None) -> str:
+    if not path:
+        return await assemble_usage_guide_core()
+    files = _guide_reference_files()
+    target = files.get(path.strip().removeprefix("./"))
+    if target is None:
+        return (
+            f"Error: no file {path!r} in {GUIDE_SKILL_NAME!r}. Files: "
+            f"{', '.join(files) or '(none)'}. Do not retry with the same value."
+        )
+    return target.read_text(encoding="utf-8")
+
+
 def _workflow_listing() -> str:
     lines = [
         "TogoMCP workflows. Fetch one with get_workflow(name=...).",
@@ -780,6 +847,9 @@ def _workflow_listing() -> str:
             f"- {s.name}: {s.catalog} [digest: {s.short_digest}{version} | "
             f"{_skills.format_size(s.total_size)}]"
         )
+    guide = _guide_reference_listing()
+    if guide:
+        lines += ["", *guide]
     return "\n".join(lines)
 
 
@@ -809,7 +879,9 @@ def _workflow_header(s: _skills.Skill) -> str:
         "text listing, or a short header (files + sizes, digest) followed by the raw "
         "SKILL.md, or the raw requested file. An unknown name or an invalid path returns "
         "a string beginning with 'Error:' (listing the valid names or files); retrying "
-        "the same arguments will not change the result."
+        "the same arguments will not change the result. Also serves the TogoMCP Usage "
+        'Guide\'s on-demand reference files: get_workflow(name="usage-guide", '
+        'path="references/<file>").'
     ),
 )
 async def get_workflow(
@@ -836,6 +908,8 @@ async def get_workflow(
                 "Do not retry with the same arguments."
             )
         return _workflow_listing()
+    if name == GUIDE_SKILL_NAME:
+        return await _get_usage_guide_file(path)
     skill = WORKFLOWS.get(name)
     if skill is None:
         # Internal skills are not in the registry at all, so they land here too and
