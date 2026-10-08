@@ -4,6 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmark" / "scripts"))
 
+import audit_transcripts  # noqa: E402
 from audit_transcripts import classify  # noqa: E402
 
 import pytest  # noqa: E402
@@ -13,9 +14,14 @@ OTHER = __file__                                        # a real file outside th
 
 
 @pytest.fixture(autouse=True)
-def _folder(tmp_path):
+def _folder(tmp_path, monkeypatch):
     """A transcript folder with this session's saved output on disk (paths must exist)."""
     global FOLDER, OWN
+    # On Linux pytest's tmp_path lives under /tmp/, which the classifier ignores as scratch
+    # space, so every path here would be dropped before it is judged (CI failed that way,
+    # macOS did not). Keep only the /dev/ entries; a real transcript folder is never in /tmp.
+    monkeypatch.setattr(audit_transcripts, "SAFE_PREFIXES", tuple(
+        p for p in audit_transcripts.SAFE_PREFIXES if p.startswith("/dev/")))
     FOLDER = str(tmp_path)
     own = tmp_path / SID / "tool-results" / "out.txt"
     own.parent.mkdir(parents=True)
