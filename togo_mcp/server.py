@@ -22,6 +22,7 @@ from mcp_types.version import MODERN_PROTOCOL_VERSIONS
 import httpx
 from starlette.requests import Request
 from starlette.responses import (
+    FileResponse,
     HTMLResponse,
     JSONResponse,
     PlainTextResponse,
@@ -1049,6 +1050,16 @@ async def index(request: Request) -> HTMLResponse:
     with open(INDEX_HTML) as f:
         html_content = f.read()
     return HTMLResponse(html_content)
+
+
+@mcp.custom_route("/ja", methods=["GET"])
+async def japanese_index(request: Request) -> FileResponse:
+    return FileResponse(CWD / "docs" / "togomcp-intro-ja.html", media_type="text/html")
+
+
+@mcp.custom_route("/assets/llm-meta-widget.js", methods=["GET"])
+async def widget_asset(request: Request) -> FileResponse:
+    return FileResponse(CWD / "docs" / "assets" / "llm-meta-widget.js", media_type="application/javascript")
 
 
 # --------------------------------------------------------------------------- #
