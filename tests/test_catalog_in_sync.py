@@ -1,6 +1,6 @@
 """Drift guard: the committed Database Catalog guide part must match the generator.
 
-The catalog (`usage_guide_v6/02b_database_catalog.md`) is generated from every
+The catalog (`usage_guide_v7/02b_database_catalog.md`) is generated from every
 MIE `discovery:` block by `scripts/generate_usage_guide_catalog.py`. If a
 database is added, removed, or re-described and the catalog is not regenerated,
 the served Usage Guide silently goes stale. This test fails on that drift.
@@ -29,6 +29,33 @@ def test_catalog_matches_generator():
         "Database Catalog is out of sync with the MIE discovery blocks. "
         "Run: python scripts/generate_usage_guide_catalog.py"
     )
+
+
+def test_full_catalog_reference_matches_generator():
+    """The on-demand full catalog is generated from the same records as the compact
+    one in the core; a stale reference file is served to fewer clients, not to none."""
+    gen = _load_generator()
+    expected = gen.build_full() + "\n"
+    committed = gen.FULL_CATALOG.read_text(encoding="utf-8")
+    assert committed == expected, (
+        "references/database-catalog.md is out of sync with the generator. "
+        "Run: python scripts/generate_usage_guide_catalog.py"
+    )
+
+
+def test_full_catalog_is_hidden_from_the_core_glob():
+    gen = _load_generator()
+    assert gen.FULL_CATALOG.parent.name == "references"
+    assert gen.FULL_CATALOG.name not in {p.name for p in gen.OUT_FILE.parent.glob("*.md")}
+
+
+def test_compact_rows_carry_keywords_and_stay_one_line():
+    """Agents look databases up by keyword (2026-10 transcripts), so the compact row
+    keeps a few; and one line per database is what keeps the core under its budget."""
+    gen = _load_generator()
+    rows = [l for l in gen.build().splitlines() if l.startswith("- **") and " — " in l and "_[" in l]
+    assert len(rows) == len(gen.load_records())
+    assert max(map(len, rows)) < 400
 
 
 def test_local_only_parts_match_generator():

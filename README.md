@@ -298,7 +298,7 @@ Contributions are welcome!
 1. `togo_mcp/data/resources/endpoints.csv` — the registry row (this alone decides valid `database=` values).
 2. `togo_mcp/data/mie/<db>.yaml` — the MIE file (see the MIE spec in `togo_mcp/data/docs/`).
 3. `uv run python scripts/generate_usage_guide_catalog.py` — regenerates the Usage Guide's database catalog. Guarded by `tests/test_catalog_in_sync.py`.
-4. `togo_mcp/data/resources/usage_guide_v6/02_budgets_and_discovery.md` — a **hand-written** copy of the registry that no generator touches. Bump the per-endpoint count *and* add the key. Guarded by `TestUsageGuideEndpointTable` in `tests/test_server.py`.
+4. `togo_mcp/data/resources/usage_guide_v7/02_budgets_and_discovery.md` — a **hand-written** copy of the registry that no generator touches. Bump the per-endpoint count *and* add the key. Guarded by `TestUsageGuideEndpointTable` in `tests/test_server.py`.
 5. `togo_mcp/data/docs/togomcp-intro.html` — add a card to the database grid (not generated).
 
 Note that a database *removal* really is just step 1: nothing validates against the other four.

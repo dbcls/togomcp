@@ -186,7 +186,7 @@ mkdir -p ~/togomcp-logs
 1. `togo_mcp/data/resources/endpoints.csv` — 登録行（**これだけが有効な `database=` 値を決めます**）
 2. `togo_mcp/data/mie/<db>.yaml` — MIE ファイル（仕様は `togo_mcp/data/docs/` に）
 3. `uv run python scripts/generate_usage_guide_catalog.py` — 使い方ガイドのデータベース目録を再生成
-4. `togo_mcp/data/resources/usage_guide_v6/02_budgets_and_discovery.md` — **生成器が触らない手書きの写し**。件数とキーの両方を更新
+4. `togo_mcp/data/resources/usage_guide_v7/02_budgets_and_discovery.md` — **生成器が触らない手書きの写し**。件数とキーの両方を更新
 5. `togo_mcp/data/docs/togomcp-intro.html` — ランディングページのカード（非生成）
 
 ---

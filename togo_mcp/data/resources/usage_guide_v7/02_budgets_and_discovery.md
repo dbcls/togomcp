@@ -10,32 +10,21 @@ Score peaks at ≤10 tool calls and 1–3 SPARQL, then declines steadily (21+ ca
 the sweet spot; ≥3 **consecutive** run_sparql ≈ **−1.1** vs ≤2). With STEP 0 now a no-tool catalog
 scan, a compliant flow is typically MIE + 1–3 SPARQL (+ one grounding search) — aim low.
 
-**Tool tiers** (mean answer score when the tool appears, ≥5 uses):
-- **Tier 1 (≥17.5):** `search_mesh_descriptor` · `get_compound_attributes_from_pubchem` · `search_chembl_target` · `OLS:search` · `get_pubchem_compound_id`
-- **Tier 2 (17.0–17.5):** `run_sparql` · `togoid_getAllRelation` · `ncbi_esearch` · `search_chembl_molecule`
-- **Tier 3 (<17.0):** `search_rhea_entity` · `ncbi_esummary` · `search_reactome_entity` · `search_uniprot_entity` · `togoid_convertId`
-
-Tiers rank by the *questions* a tool tends to appear on as much as the tool itself — treat as a
-soft prior, not a ban. If `OLS:*` or `PubMed:*` unavailable, substitute `search_mesh_descriptor` /
-`ncbi_esearch`. Use `togoid_getAllRelation` for discovery; `togoid_getRelation` only to confirm a
-known route.
-
-> Budgets + tiers derived from the v3 equivalence run (100 questions × 3, 2026-07, refusal cells
-> excluded, n=282). Directions are stable across models; the exact cut-points are a guide, not a gate.
+If `OLS:*` or `PubMed:*` unavailable, substitute `search_mesh_descriptor` / `ncbi_esearch`.
+(Tool tiers and the provenance of these numbers: reference file `budgets.md`.)
 
 ---
 
 ## 🔍 STEP 0: DATABASE DISCOVERY
 
-**No tool call.** The **DATABASE CATALOG** (next section) lists every database with what it holds,
-grouped by category — it is already in this guide, so scan it directly. Match the KIND of data you
-need (not an entity name) against the catalog, pick 1–3 candidate databases, then go straight to
-STEP 2 (`get_MIE_file`). The full roster of `database=` keys is also on the `run_sparql` /
+**No tool call.** The **DATABASE CATALOG** (below) lists every database with what it holds — it
+is already in this guide, so scan it directly. Match the KIND of data you need (not an entity
+name) against the catalog, pick 1–3 candidate databases, then go straight to STEP 2
+(`get_MIE_file`). The full roster of `database=` keys is also on the `run_sparql` /
 `get_MIE_file` schema, so you never need a tool to learn what exists.
 
-The catalog's "By category" index is the controlled taxonomy (`protein`, `gene`, `variant`,
-`compound`, `drug_target`, `pathway`, `reaction`, `ontology`, `structure`, `literature`,
-`taxonomy`, `disease`, `materials`, `physics`, …); quick hints and per-database keywords are there too.
+Only if two or three candidates still look alike after reading their catalog lines, fetch the
+long form (full descriptions + all keywords): reference file `database-catalog.md`.
 
 ---
 
@@ -98,54 +87,19 @@ is the bold row label.
 | **microbes** | 1 | `bh26microbes` ← key ≠ endpoint name; experimental (QLever) |
 | **marpolbase** | 1 | `marpolbase` ← Marchantia polymorpha genome; own endpoint, 7 graphs, 10k row cap, no `SERVICE` |
 
-> **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
-> (43), IDSM (39), MarpolBase (7) and TogoVar serve many graphs from their *own* endpoint —
-> TogoVar re-types 2.9M variant IRIs across two of its own, MarpolBase re-declares gene
-> identifiers and symbols across two of its own (×2.00 on the plain gene lookup), and IDSM re-hosts nine chemical
-> datasets under their original IRIs with a union default graph. Co-tenancy is a property
-> of **graphs**, not of this table. Only SuperCon (2) and SwissLipids (3, of which just one
-> holds data — the other two are `.well-known/void` and `.well-known/sparql-examples`) are
-> near-single-graph — and LIPID MAPS declares **no named graphs at all**, so every
-> `GRAPH`/`FROM` pin returns 0 rows there.
-
-Copied from `endpoints.csv` and it **drifts**: a database mounted beside yours silently
-rewrites what your unpinned query means (OMA landed on `sib` 2026-04-28 and changed
-answers written months earlier). `get_sparql_endpoints()` is authoritative.
+**One database ≠ one graph.** A database alone on its endpoint still serves many graphs
+(GlyCosmos ~150, PubChem 68, PDB 46, DDBJ 43, IDSM 39), so co-tenancy is a property of
+**graphs**, not of this table. `lipidmaps` declares **no named graphs at all**: every
+`GRAPH`/`FROM` pin returns 0 rows there.
 
 Same endpoint → single SPARQL. Different endpoints → `togoid_convertId` or NCBI
-cross-reference. Call `get_sparql_endpoints()` when planning a bridge, or when a
+cross-reference. This table is copied from `endpoints.csv` and drifts;
+`get_sparql_endpoints()` is authoritative — call it when planning a bridge, or when a
 count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 without).
 
-**Third route, from a few verified callers only: `SERVICE` federation.** Some endpoints
-can send part of a query to another endpoint in a `SERVICE <url> { … }` block — verified
-2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea, SwissLipids → Rhea, and RDF
-Portal's `ebi` → LIPID MAPS; 2026-09-17: `microbes` → UniProt on SIB. Run the query on the
-**calling** endpoint (`database=wikipathways` / `idsm` / `swisslipids` / `bh26microbes`; for the LIPID MAPS join,
-`database=lipidmaps` with `endpoint_name=ebi`), not the one inside
-`SERVICE`: routed to the remote endpoint instead it fails or returns 0 rows. The direction
-matters, and it is NOT a property of the domain: `swisslipids` calls out to Rhea in ~3 s,
-while `lipidmaps` — the other lipid database — cannot call out at all, every `SERVICE`
-from it returning HTTP 502 after ~60 s. `marpolbase` refuses `SERVICE` by permission
-(verified 2026-09-18: HTTP 500, `SQ070:SECURITY: Must have select privileges on view
-DB.DBA.SPARQL_SINV_2`, in 0.1 s) — a deterministic refusal, not an outage, so its
-cross-DB work is always two separate calls. Do not carry one lipid DB's answer over to the
-other. Copy the MIE's `cross_db` example rather than writing one; each carries its own
-limits (bind the join key locally first, cap the bindings before crossing). Other RDF
-Portal endpoints have not been verified as callers — do not assume it works there.
-
-**Endpoints outside RDF Portal carry their own infrastructure, and it can reject valid
-SPARQL before the engine ever sees it.** Verified 2026-09-16: a Cloudflare WAF rejects `substr(`,
-`concat(` and `char(` on `lipidmaps` with **HTTP 403 and an HTML body**. The rule matches the
-**raw request body**, not the parsed query — a bare string literal `"SUBSTR("` inside a `BIND`
-is blocked too, which is the proof it never reaches SPARQL. It is deterministic, so retrying
-does not help, and because the reply is not SPARQL it reads as an endpoint outage rather than a
-rejected query. The fix is one character: **put a space before the paren** — `SUBSTR (?s, 33, 2)`
-and `CONCAT (?a, ?b)` are valid SPARQL and clear the rule. `GROUP_CONCAT(` already passes (the
-preceding `_` defeats the word boundary), as do `REPLACE`, `STRBEFORE`, `STRAFTER`, `REGEX`,
-`STRLEN`, `UCASE`, `CONTAINS` and `STRSTARTS`. Slicing an accession is the obvious thing to reach
-for, so this bites on a first attempt. Two more non-SPARQL bodies from the same host: a ~30 s
-timeout answers `HTTP 503 Query timed out`, and rapid sequential querying draws transient 403s
-that clear on retry. Expect the same class of thing on the next non-RDF-Portal endpoint added.
+Before writing a `SERVICE` federation query, or on an **HTTP 403 / HTML reply** from an
+endpoint outside RDF Portal (`lipidmaps`: put a space before the paren — `SUBSTR (?s, 33, 2)`),
+fetch reference file `endpoints.md`: federation works only from a few verified callers.
 
 ---
 

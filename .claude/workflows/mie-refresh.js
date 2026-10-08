@@ -149,7 +149,7 @@ Run, from the repo root:
 then confirm it is in sync:
   Bash: uv run python scripts/generate_usage_guide_catalog.py --check   (exit 0 == in sync)
 Report regenerated=true, in_sync=(the --check exit was 0), and a one-line note naming the catalog part
-file if it changed (togo_mcp/data/resources/usage_guide_v6/02b_database_catalog.md). Do not edit MIE files.`,
+file if it changed (togo_mcp/data/resources/usage_guide_v7/02b_database_catalog.md). Do not edit MIE files.`,
   { label: 'catalog-regen', phase: 'Catalog', schema: CATALOG_SCHEMA }
 )
 if (catalog && !catalog.in_sync) log('WARNING: catalog drift guard still failing after regen — inspect 02b_database_catalog.md')

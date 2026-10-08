@@ -50,10 +50,13 @@ CWD = Path(os.getenv("TOGOMCP_DIR", str(_PACKAGE_DATA_DIR)))
 # unchanged.
 MIE_DIR = os.getenv("TOGOMCP_MIE_DIR", str(CWD.joinpath("mie")))
 # Directory of usage-guide part files, split by change-cadence and assembled
-# (sorted *.md, joined by the section separator) at serve time. The "_v6" in
+# (sorted top-level *.md, joined by the section separator) at serve time into the
+# CORE guide. Its `references/` subdirectory holds the on-demand sections, served
+# through get_workflow(name="usage-guide", path="references/<file>"); `local_only/`
+# holds parts gated on tools that are not on every transport. The "_v7" in
 # the dir name is what _detect_usage_guide_version() reads — bumping the guide
 # means renaming this directory, not editing a version string.
-TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v6"))
+TOGOMCP_USAGE_GUIDE = str(CWD.joinpath("resources", "usage_guide_v7"))
 ENDPOINTS_CSV = str(CWD.joinpath("resources", "endpoints.csv"))
 INDEX_HTML = str(CWD.joinpath("docs", "togomcp-intro.html"))
 TUTORIAL_DIR = CWD.joinpath("docs", "tutorial")

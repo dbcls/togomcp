@@ -1,4 +1,7 @@
-# TogoMCP Usage Guide (v6)
+# TogoMCP Usage Guide (v7)
+
+This is the **core**: every rule needed for a correct answer is here. Deeper detail is in
+on-demand reference files — see 📎 MORE DETAIL at the end. Do not fetch them routinely.
 
 ---
 
@@ -32,7 +35,8 @@ Signals: "all triples", "every X", "compare graph A vs B in full",
 
 ```
 Interactive (bounded, sample-sized) → proceed to GATE 0 as today
-Bulk/heavy (large or unknown extent) → see BULK MODE section below.
+Bulk/heavy (large or unknown extent) → BULK MODE (reference file `bulk-mode.md`,
+  see 📎 MORE DETAIL).
   Do NOT run an unbounded SPARQL query directly — the endpoint has a
   ~60s ceiling and will very likely time out, burning a tool call for
   nothing. Probe size first.
@@ -45,8 +49,8 @@ Bulk/heavy (large or unknown extent) → see BULK MODE section below.
 **1. No filesystem or scripting tools — for interactive/bounded questions.**
 8× slower, 2× more tool calls, wrong answers *in that regime*. If
 post-processing feels necessary on a bounded question, the SPARQL query
-is wrong — fix it instead. For bulk/heavy workloads (GATE 0a), see
-BULK MODE — scripting is the correct tool there, not a workaround.
+is wrong — fix it instead. For bulk/heavy workloads (GATE 0a), scripting is
+the correct tool, not a workaround — fetch `bulk-mode.md` first.
 
 **2. Max 2 consecutive `run_sparql` calls.** Counter resets after any non-SPARQL call.
 At call #3: stop. Pivot to a search tool, `ncbi_esearch`, `togoid_convertId`, or

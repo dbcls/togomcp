@@ -13,6 +13,30 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- **The Usage Guide is tiered (v7): `TogoMCP_Usage_Guide` returns a 34 KB core, and the rest
+  is fetched on demand.** The v6 guide was 57,287 characters, past the size at which an MCP host
+  stops showing a tool result to the model. Claude Code has two such limits (50,000 characters;
+  25,000 tokens) and the guide crossed both. Measured on the 2026-10 benchmark transcripts:
+  Sonnet 4.5 sessions got a saved file and a 2 KB preview; Sonnet 5.5 sessions got an error and
+  a saved file with no preview, and **none of 330 received the whole guide** (median 2 KB read,
+  31% read nothing). Nothing failed visibly, which is why it lasted.
+  - The core keeps every rule a correct answer depends on (gates, critical rules, budgets, MIE
+    reading order, the endpoint table, TogoID, SPARQL discipline, the eleven silent-failure
+    traps as one line each) plus a **compact catalog**: one line per database with its top six
+    keywords, because the transcripts show agents use the catalog as a keyword lookup.
+  - Six reference files hold the depth: the full catalog, co-tenancy worked examples,
+    endpoint/federation detail, the full troubleshooting table, bulk mode, tool tiers. Fetch
+    with `get_workflow(name="usage-guide", path="references/<file>")`; the guide's last section
+    says when each is needed, and `get_workflow()` lists them. No new tool and no new parameter:
+    `get_workflow` already served files by name and path.
+  - A client whose cached tool list predates `get_workflow` gets the core only. That is why the
+    core is self-sufficient, and why the stale-tool-list row stays in it.
+- **`TogoMCP_Usage_Guide` returns plain text, with no structured `{"result": ...}` copy.** A host
+  that saves an oversized result saves the structured form: one JSON line that a line-paged
+  file reader cannot page. Return-shape change, hence MINOR.
+
 ### Added
 
 - **`TOGOMCP_TRIAL_CHAT`: an off switch for the landing-page trial chat.** The chat added in
@@ -22,6 +46,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   default, so an existing deployment does not change. The variable is wired through
   `deploy.sh`, `compose.yaml` and `.env.example` (with a `_TEST` variant), because a knob missing
   from `deploy.sh`'s list is inert in production.
+- `tests/test_usage_guide_size.py`: fails when the core grows past 40,000 characters, when a
+  reference file is unindexed or unreachable, or when the guide regains an output schema. The
+  catalog gains a row with every database, so without a guard the core drifts back over the
+  limit one release at a time.
+- `scripts/generate_usage_guide_catalog.py` now writes both catalogs (compact in the core, full
+  under `references/`); the sync test and the CI check cover both.
 
 ## [2.22.0] - 2026-10-08
 

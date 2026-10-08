@@ -25,7 +25,7 @@ and it is a blanket ban on the two-argument form rather than a hunt for the
 specific metacharacters, because the two known-broken constructs are what has
 been *tested*, not a proof that nothing else is affected.
 
-The rule itself lives in `usage_guide_v6/03_workflows.md` (SILENT-FAILURE TRAPS
+The rule itself lives in `usage_guide_v7/references/co-tenancy.md` (SILENT-FAILURE TRAPS
 #10) and in the mie-generator skill's `query-strategy.md`; this test enforces it
 against the corpus that ships.
 
@@ -51,7 +51,10 @@ import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 MIE_DIR = REPO / "togo_mcp" / "data" / "mie"
-GUIDE = REPO / "togo_mcp" / "data" / "resources" / "usage_guide_v6" / "03_workflows.md"
+GUIDE_DIR = REPO / "togo_mcp" / "data" / "resources" / "usage_guide_v7"
+# v7: the core keeps the one-line rule; the worked example moved to a reference file.
+GUIDE_CORE = GUIDE_DIR / "03_workflows.md"
+GUIDE = GUIDE_DIR / "references" / "co-tenancy.md"
 
 # Field names whose string values are executed as SPARQL (as opposed to prose that
 # may legitimately quote a broken form as a counter-example).
@@ -178,7 +181,7 @@ def test_no_two_arg_regex_in_executable_sparql(mie_path: Path):
     assert not offenders, (
         "Two-argument REGEX() found in executable SPARQL. It silently returns 0 rows for "
         "alternation and brace quantifiers on every endpoint — pass a third argument "
-        '(REGEX(?x, "pat", "")). See usage_guide_v6/03_workflows.md SILENT-FAILURE TRAPS #10.\n  '
+        '(REGEX(?x, "pat", "")). See usage_guide_v7/references/co-tenancy.md SILENT-FAILURE TRAPS #10.\n  '
         + "\n  ".join(offenders)
     )
 
@@ -192,3 +195,9 @@ def test_guide_documents_the_rule():
         "the guide must show the three-argument fix verbatim — it is what authors copy"
     )
     assert "a{1,2}b" in text, "the brace-quantifier case must stay documented alongside alternation"
+    # The core is all a client with a stale tool list ever sees (it cannot fetch the
+    # reference file), so the prescription itself must stay there too.
+    core = GUIDE_CORE.read_text()
+    assert 'REGEX(?x, "A|B", "")' in core and "third argument" in core, (
+        "the core guide must keep the one-line three-argument REGEX rule"
+    )

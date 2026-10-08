@@ -28,7 +28,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
-GUIDE_DIR = REPO / "togo_mcp" / "data" / "resources" / "usage_guide_v6"
+GUIDE_DIR = REPO / "togo_mcp" / "data" / "resources" / "usage_guide_v7"
 CHECKER = REPO / "scripts" / "check_guide_claims.py"
 
 
@@ -48,7 +48,12 @@ def checker():
 
 @pytest.fixture(scope="module")
 def guide_text() -> str:
-    parts = [p.read_text(encoding="utf-8") for p in sorted(GUIDE_DIR.glob("*.md"))]
+    # Core parts AND the on-demand reference files: since v7 the worked examples a
+    # claim anchors to mostly live under references/ (still served, via get_workflow).
+    parts = [
+        p.read_text(encoding="utf-8")
+        for p in [*sorted(GUIDE_DIR.glob("*.md")), *sorted(GUIDE_DIR.glob("references/*.md"))]
+    ]
     assert parts, f"no guide sections found in {GUIDE_DIR}"
     return "\n".join(parts)
 

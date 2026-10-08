@@ -186,7 +186,7 @@ Then restart Claude Desktop completely.
 1. `togo_mcp/data/resources/endpoints.csv` — the registration row (**this alone determines the valid `database=` values**)
 2. `togo_mcp/data/mie/<db>.yaml` — the MIE file (the specification is in `togo_mcp/data/docs/`)
 3. `uv run python scripts/generate_usage_guide_catalog.py` — regenerate the database catalogue in the usage guide
-4. `togo_mcp/data/resources/usage_guide_v6/02_budgets_and_discovery.md` — **a hand-written copy the generator does not touch**. Update both the counts and the keys
+4. `togo_mcp/data/resources/usage_guide_v7/02_budgets_and_discovery.md` — **a hand-written copy the generator does not touch**. Update both the counts and the keys
 5. `togo_mcp/data/docs/togomcp-intro.html` — the landing-page card (not generated)
 
 ---
