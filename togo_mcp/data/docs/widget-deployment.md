@@ -25,9 +25,9 @@ unchanged. Unset, or any other value, leaves the chat on. `deploy.sh` forwards t
 variable (`TOGOMCP_TRIAL_CHAT_TEST` for the test container), so no rebuild is needed.
 
 The server removes everything between `<!-- TRIAL-CHAT:START -->` and
-`<!-- TRIAL-CHAT:END -->`. Each page has two such regions, the panel and the widget.
-Keep anything chat-specific inside them. A static web server ignores the variable:
-delete the two regions by hand there.
+`<!-- TRIAL-CHAT:END -->`. Each page has three such regions: the launcher's style
+rule in `<head>`, the panel and the widget. Keep anything chat-specific inside them.
+A static web server ignores the variable: delete the three regions by hand there.
 
 ## Configuration
 
