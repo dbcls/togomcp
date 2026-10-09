@@ -13,6 +13,15 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-10-09
+
+<!-- whatsnew: 2026-10-09 | Variant search can now filter on four more allele-frequency panels — BioBank Japan <code>bbj1k</code> and <code>bbj2k</code>, <code>jogo</code> and <code>tommo_jsv1</code> — and returns gene and dbSNP/ClinVar cross-links again after a TogoVar data reload. -->
+
+Follow-up to 2.24.0, finishing the adjustment to TogoVar's October 2026 reload and correcting
+figures that had gone stale in the text every client reads. MINOR: `togovar_search_variant`
+accepts four new values for its existing `dataset` parameter. No tool or parameter was added,
+renamed or removed, and no return shape changed.
+
 ### Added
 
 - **`togovar_search_variant` accepts four more frequency panels: `bbj1k`, `bbj2k`, `jogo` and
@@ -3294,7 +3303,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.24.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.0...HEAD
+[2.25.0]: https://github.com/dbcls/togomcp/compare/v2.24.0...v2.25.0
 [2.24.0]: https://github.com/dbcls/togomcp/compare/v2.23.3...v2.24.0
 [2.23.3]: https://github.com/dbcls/togomcp/compare/v2.23.2...v2.23.3
 [2.23.2]: https://github.com/dbcls/togomcp/compare/v2.23.1...v2.23.2
