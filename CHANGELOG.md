@@ -13,7 +13,19 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-10-09
+
 <!-- whatsnew: 2026-10-09 | Two new databases: <code>jogo</code> — phased human gene haplotypes from 258 long-read genomes, with per-population counts and annotated variants — and <code>tismed</code> — 3,347 genes and 1,930 proteins called tissue-specific across independent transcriptome and proteome datasets. -->
+
+Two new databases, and repairs for a TogoVar reload that had quietly broken both the `togovar`
+MIE and the variant search tool. MINOR: `jogo` and `tismed` are new `database` values; no tool
+or parameter was added, renamed or removed, and `togovar_search_variant` returns the same
+fields as before — three of them are populated again, and `variant_iri` is non-null on more
+rows.
+
+**If you use TogoVar:** counts from the `togovar` SPARQL database are not comparable with
+those taken before early October 2026 (the variant set roughly tripled), and saved queries
+that use the old `togovar.biosciencedbc.jp/vocabulary/` prefix now return nothing.
 
 ### Added
 
@@ -3251,7 +3263,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.3...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.24.0...HEAD
+[2.24.0]: https://github.com/dbcls/togomcp/compare/v2.23.3...v2.24.0
 [2.23.3]: https://github.com/dbcls/togomcp/compare/v2.23.2...v2.23.3
 [2.23.2]: https://github.com/dbcls/togomcp/compare/v2.23.1...v2.23.2
 [2.23.1]: https://github.com/dbcls/togomcp/compare/v2.23.0...v2.23.1
