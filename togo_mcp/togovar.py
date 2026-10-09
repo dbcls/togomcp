@@ -169,8 +169,7 @@ _SO_LABELS = {
 #   - The compact `variant` label truncates each allele past _ALLELE_HEAD so the
 #     locus string stays bounded (SNVs like "12:111766887:A>T" are unaffected).
 #   - The reconstructed variant IRI embeds the full allele, so it is omitted for
-#     alleles over _IRI_ALLELE_MAX (a multi-kb SV would reintroduce the bloat);
-#     `tgv_id` is always emitted as the compact SPARQL round-trip key instead.
+#     alleles over _IRI_ALLELE_MAX (a multi-kb SV would reintroduce the bloat).
 _ALLELE_INLINE_MAX = 50
 _ALLELE_HEAD = 20
 _IRI_ALLELE_MAX = 50
@@ -247,7 +246,8 @@ def _variant_iri(
 
     Returns None when coordinates are incomplete or when either allele exceeds
     _IRI_ALLELE_MAX (embedding a multi-kb SV allele would reintroduce the bloat
-    T1 fixes — callers use `tgv_id` for those).
+    T1 fixes). The REST row's position/reference/alternate are VCF-style (anchor
+    base included), which is exactly what the SPARQL IRI is built from.
     """
     if not (chromosome and position and reference and alternate):
         return None
@@ -460,13 +460,17 @@ def _project_variant(
 ) -> dict[str, Any]:
     """Flatten a /search/variant data row into the fields agents actually use.
 
-    `tgv_id` (the row's `id`) is the stable key for a SPARQL round-trip. It is
-    NULL for variants outside the SPARQL subset, and `variant_iri` is emitted ONLY
-    when it is non-null: the IRI is built mechanically from coordinates, so a row
-    with no tgv_id would otherwise carry an IRI that resolves to nothing (verified:
-    ClinVar-Pathogenic CFTR 7:117480132-C-T has tgv_id=null and no node in the
-    SPARQL variant graph). Cross-database identifiers live under `external_link`
-    (dbsnp -> rs, clinvar -> VCV), surfaced as `rs`/`clinvar`.
+    `variant_iri` is the SPARQL round-trip key and is emitted for every row with
+    complete coordinates. Until 2026-10 it was gated on `tgv_id` (the row's `id`),
+    because a row without one had no node in the then-smaller SPARQL graph; since
+    the reload the graph holds ~99.9% of the REST set and most variants have NO
+    tgv ID at all (verified 2026-10-09: ClinVar-Pathogenic CFTR 7:117480132-C-T is
+    tgv_id=null and present in SPARQL), so that gate hid the key for most rows.
+
+    Cross-database identifiers live under `external_links` (dbsnp -> rs, clinvar
+    -> VCV), surfaced as `rs`/`clinvar`, and genes under `genes`. Both were renamed
+    upstream in the same reload (from `external_link` / `symbols`); the old names
+    are still read so a rollback does not empty the fields again.
 
     Per-dataset frequencies are reshaped into a `{source: {...}}` map carrying
     af/ac/an plus the QC `filter` and whatever genotype counts that panel has
@@ -485,12 +489,16 @@ def _project_variant(
     length-bounded and `reference`/`alternate` are summarized (with true
     `ref_length`/`alt_length`) unless include_full_alleles=True.
     """
-    ext = row.get("external_link") or {}
+    ext = row.get("external_links") or row.get("external_link") or {}
 
     def _titles(key: str) -> list[str]:
         return [e.get("title") for e in ext.get(key, []) if e.get("title")]
 
-    symbols = [s.get("name") for s in row.get("symbols", []) if s.get("name")]
+    symbols = [
+        s.get("name")
+        for s in (row.get("genes") or row.get("symbols") or [])
+        if s.get("name")
+    ]
 
     freqs: dict[str, Any] = {}
     for f in row.get("frequencies") or []:
@@ -536,8 +544,7 @@ def _project_variant(
     projected = {
         "tgv_id": tgv,
         "variant": f"{chrom}:{pos}:{_compact_allele(ref)}>{_compact_allele(alt)}",
-        # Only emit an IRI that actually resolves in the SPARQL subset.
-        "variant_iri": _variant_iri(chrom, pos, ref, alt) if tgv else None,
+        "variant_iri": _variant_iri(chrom, pos, ref, alt),
         "type": vtype,
         "type_label": _SO_LABELS.get(vtype) if vtype else None,
         "chromosome": chrom,
@@ -769,13 +776,13 @@ async def search_variant(
     counterpart elsewhere in TogoMCP.
 
     All filters are optional and combined with AND. Supply zero filters to
-    browse; but scope tightly — the database holds ~1 billion variants.
+    browse; but scope tightly — the database holds ~1.2 billion variants.
 
-    COUNTS: `total` is the size of the whole REST backend (1,097,708,150) and is
-    constant across queries; `filtered` is the count matching your filters. Note
-    the REST backend is LARGER than TogoMCP's `togovar` SPARQL graph (~2.8x: the
-    SPARQL side is the annotated subset, 390,725,782), so REST counts will not
-    match SPARQL `COUNT(*)` — they measure different sets.
+    COUNTS: `total` is the size of the whole REST backend (1,229,026,068 on
+    2026-10-09) and is constant across queries; `filtered` is the count matching
+    your filters. TogoMCP's `togovar` SPARQL graph is now about the same size
+    (1,227,614,941), but the two are not the same set, so do not expect a REST
+    count and a SPARQL `COUNT` to agree to the last variant.
 
     PAGING CAP: the API allows `offset + limit <= 10,000` and returns HTTP 400
     beyond it, so a result set larger than 10,000 cannot be fully paged. Narrow the
@@ -790,12 +797,11 @@ async def search_variant(
     significance sums exceed `filtered` and must NOT be summed against it (they
     are not per-variant counts). See `statistics_caveats` for the per-facet rule.
 
-    ROUND-TRIP TO SPARQL: gate on `tgv_id`. It is NULL for variants that exist in
-    the REST backend but NOT in the (smaller) SPARQL subset — including some
-    ClinVar-Pathogenic ones. `variant_iri` is emitted ONLY when `tgv_id` is
-    non-null, so a non-null `variant_iri` is safe to query in the `togovar` SPARQL
-    graph; a row with `tgv_id: null` has no SPARQL record at all, and REST is the
-    only source for it.
+    ROUND-TRIP TO SPARQL: use `variant_iri` — it is the subject IRI in the
+    `togovar` SPARQL graph and is present on every row except one with a very
+    long allele. Do NOT gate on `tgv_id`: most variants have none (it is null),
+    and they are in SPARQL all the same. About 0.1% of REST variants have no
+    SPARQL node, so an empty result for one IRI is possible and is not an error.
 
     TWO-STEP WORKFLOW for gene/disease filters:
         1. `search_gene("ALDH2")` -> hgnc_id -> pass as `gene_hgnc_id`.
@@ -848,9 +854,9 @@ async def search_variant(
         str: JSON string
         `{"data": [...], "total"?, "filtered"?, "statistics"?,
           "statistics_caveats"?, "truncated"?}`.
-        Each data row carries `tgv_id` (null if the variant is not in the SPARQL
-        subset), `variant` (a length-bounded chr:pos:ref>alt locus label),
-        `variant_iri` (non-null only when `tgv_id` is — see ROUND-TRIP above),
+        Each data row carries `tgv_id` (null for most variants), `variant` (a
+        length-bounded chr:pos:ref>alt locus label), `variant_iri` (the SPARQL
+        subject IRI — see ROUND-TRIP above),
         coordinates, `reference`/`alternate` (summarized unless
         include_full_alleles) with `ref_length`/`alt_length`,
         `type`(+`type_label`), genes, `rs` (dbSNP) and `clinvar` (VCV)

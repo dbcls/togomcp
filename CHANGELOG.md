@@ -13,6 +13,28 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **`togovar_search_variant` returns `genes`, `rs` and `clinvar` again.** The TogoVar REST API
+  renamed two row fields (`external_link` → `external_links`, `symbols` → `genes`) when it was
+  reloaded in early October 2026. The wrapper read only the old names, so all three fields came
+  back as empty lists on every row, with no error. It now reads either spelling.
+- **`variant_iri` is present on rows without a `tgv_id`.** It used to be withheld there, because
+  a variant with no tgv ID had no record in the SPARQL graph. After the reload most variants
+  have no tgv ID and are in SPARQL regardless, so the gate was hiding the round-trip key for
+  most rows. The tool description no longer tells agents to gate on `tgv_id`, and its totals
+  are current (REST 1,229,026,068; SPARQL 1,227,614,941 — no longer a 2.8× subset).
+- **The `togovar` MIE works against the restructured endpoint.** The vocabulary namespace
+  moved to `http://togovar.org/vocabulary/` and the ClinVar annotation graph was folded into
+  the core graph, so four of the eight example queries returned nothing and the counts were a
+  quarter of the live figures. Re-authored and re-verified on 2026-10-09; counts over
+  annotations must now be `COUNT(DISTINCT ?variant)`, because annotation nodes are stored
+  repeatedly.
+- **The weekly MIE drift sweep reports what it finds.** A shell-option mistake made the job
+  abort at the first checker that found drift, before it could file the issue or print the
+  report, so four sweeps ended as a bare failure with no findings. A measurement that times
+  out is also no longer counted as drift.
+
 ## [2.23.3] - 2026-10-09
 
 A regression fix. 2.23.0 broke `TogoMCP_Usage_Guide` for any client holding a cached tool list;

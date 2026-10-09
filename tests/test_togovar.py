@@ -162,8 +162,8 @@ def test_project_variant():
         "position": 111803962,
         "reference": "G",
         "alternate": "A",
-        "symbols": [{"name": "ALDH2", "id": 404}],
-        "external_link": {
+        "genes": [{"name": "ALDH2", "id": 404}],
+        "external_links": {
             "dbsnp": [{"title": "rs671"}],
             "clinvar": [{"title": "VCV000018390"}],
         },
@@ -192,10 +192,10 @@ def test_project_variant():
     assert p["significance"][0]["conditions"] == [
         {"name": "Alcohol sensitivity", "medgen": "C123"}
     ]
-    # C5: no tgv_id on this row -> the variant is not in the SPARQL subset, so no
-    # IRI is emitted (it would resolve to nothing).
+    # no tgv_id on this row, as for most variants since the 2026-10 reload; the IRI
+    # is the round-trip key and is emitted regardless.
     assert p["tgv_id"] is None
-    assert p["variant_iri"] is None
+    assert p["variant_iri"] == "http://identifiers.org/hco/12/GRCh38#111803962-G-A"
 
 
 # --------------------------------------------------------------------------- #
@@ -237,20 +237,37 @@ def test_project_variant_unknown_code_falls_through():
     assert p["significance"][0]["interpretation_labels"] == ["ZZ"]
 
 
+def test_project_variant_reads_both_upstream_field_names():
+    """The API renamed `external_link`->`external_links` and `symbols`->`genes` in
+    the 2026-10 reload; reading only the old names emptied `rs`/`clinvar`/`genes`
+    on every row with no error. Both spellings must populate them."""
+    base = {"chromosome": "12", "position": 111803962, "reference": "G", "alternate": "A"}
+    new = _project_variant({**base, "genes": [{"name": "ALDH2", "id": 404}],
+                            "external_links": {"dbsnp": [{"title": "rs671"}]}})
+    old = _project_variant({**base, "symbols": [{"name": "ALDH2", "id": 404}],
+                            "external_link": {"dbsnp": [{"title": "rs671"}]}})
+    for p in (new, old):
+        assert p["genes"] == ["ALDH2"] and p["rs"] == ["rs671"]
+
+
 # --------------------------------------------------------------------------- #
 # C2-C5, C7 — stop discarding data the REST backend already returns
 # --------------------------------------------------------------------------- #
-def test_variant_iri_gated_on_tgv_id():
-    """C5: variant_iri is a constructed coordinate IRI, so it must NOT be emitted
-    for a variant absent from the SPARQL subset (tgv_id is null there) — the IRI
-    would resolve to zero rows. Real case: ClinVar-Pathogenic CFTR 7:117480132-C-T.
+def test_variant_iri_not_gated_on_tgv_id():
+    """variant_iri is emitted with or without a tgv ID. It was gated on one while a
+    tgv-less row had no SPARQL node; since the 2026-10 reload most variants have no
+    tgv ID and are in SPARQL anyway. Real case, verified live 2026-10-09:
+    ClinVar-Pathogenic CFTR 7:117480132-C-T is tgv_id=null and has a SPARQL node.
     """
-    absent = {"id": None, "chromosome": "7", "position": 117480132,
+    no_tgv = {"id": None, "chromosome": "7", "position": 117480132,
               "reference": "C", "alternate": "T"}
     present = {"id": "tgv207092446", "chromosome": "7", "position": 117480108,
                "reference": "C", "alternate": "T"}
 
-    assert _project_variant(absent)["variant_iri"] is None
+    assert (
+        _project_variant(no_tgv)["variant_iri"]
+        == "http://identifiers.org/hco/7/GRCh38#117480132-C-T"
+    )
     assert (
         _project_variant(present)["variant_iri"]
         == "http://identifiers.org/hco/7/GRCh38#117480108-C-T"

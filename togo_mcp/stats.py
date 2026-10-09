@@ -122,7 +122,7 @@ SIGNATURE_PREFIXES = {
     "pdbo": "pdb",              # http://rdf.wwpdb.org/schema/pdbx-*
     "compound": "pubchem",      # http://rdf.ncbi.nlm.nih.gov/pubchem/compound/
     "vocab": "pubchem",         # http://rdf.ncbi.nlm.nih.gov/pubchem/vocabulary#
-    "tgvo": "togovar",          # http://togovar.biosciencedbc.jp/vocabulary/
+    "tgvo": "togovar",          # http://togovar.org/vocabulary/ (biosciencedbc.jp until 2026-10)
     "cvo": "clinvar",           # http://purl.jp/bio/10/clinvar/
     "meshv": "mesh",            # http://id.nlm.nih.gov/mesh/vocab#
     "mesh": "mesh",             # http://id.nlm.nih.gov/mesh/
