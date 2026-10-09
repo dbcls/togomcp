@@ -62,18 +62,36 @@ _SIGNIFICANCE_SOURCES = frozenset(["clinvar", "mgend"])
 
 # Base frequency panels. Sub-population strata (e.g. gnomad_genomes.eas,
 # ncbn.jpn.hondo, bbj_riken.mpheno1) are passed through by validating only the
-# dotted prefix, so new strata don't require a code change.
+# dotted prefix, so new strata don't require a code change. A new BASE does: the
+# 2026-10 reload added bbj1k, bbj2k, jogo and tommo_jsv1, and this list rejected
+# all four until it was updated. The statistics `dataset` facet of any stat=True
+# response is the live roster to compare against.
 _FREQUENCY_DATASET_BASES = frozenset([
     "gnomad_genomes",
     "gnomad_exomes",
     "tommo",
+    "tommo_jsv1",
     "ncbn",
     "gem_j_wga",
     "jga_wgs",
     "jga_wes",
     "jga_snp",
+    "bbj1k",
+    "bbj2k",
     "bbj_riken",
+    "jogo",
 ])
+
+# Bases the API no longer accepts on their own (HTTP 400 on the bare name, verified
+# 2026-10-09) although it still accepts their dotted strata. Caught here so the
+# caller is told what replaced it instead of getting an opaque schema error.
+_STRATA_ONLY_DATASETS = {
+    "bbj_riken": (
+        "TogoVar no longer accepts the bare 'bbj_riken' panel. Use 'bbj1k' or "
+        "'bbj2k' for the BioBank Japan whole-genome cohorts, or a 'bbj_riken.<stratum>' "
+        "sub-population."
+    ),
+}
 
 # --------------------------------------------------------------------------- #
 # Code -> human-readable label maps (the API returns opaque codes; agents and
@@ -418,6 +436,10 @@ def _build_variant_query(
                 "(sub-populations like gnomad_genomes.eas are allowed)."
             )
         base = dataset.split(".", 1)[0]
+        if dataset in _STRATA_ONLY_DATASETS:
+            raise ValueError(
+                f"{_STRATA_ONLY_DATASETS[dataset]} Do not retry with the same value."
+            )
         if base not in _FREQUENCY_DATASET_BASES:
             raise ValueError(
                 f"Unknown frequency dataset {dataset!r} (base {base!r}); valid "
@@ -771,7 +793,7 @@ async def search_variant(
     """Search TogoVar for human genome variants with population frequencies.
 
     TogoVar integrates allele frequencies from gnomAD, ToMMo (Japanese), NCBN,
-    GEM-J, JGA, and BioBank Japan, plus ClinVar + MGeND clinical significance
+    GEM-J, JGA, BioBank Japan, and JoGo, plus ClinVar + MGeND clinical significance
     and SIFT/PolyPhen/AlphaMissense predictions — data with no SPARQL
     counterpart elsewhere in TogoMCP.
 
@@ -823,10 +845,13 @@ async def search_variant(
             "uncertain_significance", "risk_factor".
         significance_source: Restrict significance source(s): "clinvar", "mgend".
         dataset: Frequency panel for a frequency filter, e.g. "gnomad_genomes",
-            "gnomad_exomes", "tommo", "ncbn", "gem_j_wga", "jga_wgs", "jga_wes",
-            "jga_snp". Sub-populations allowed (e.g.
-            "gnomad_genomes.eas", "ncbn.jpn", "bbj_riken.mpheno1"; the bare
-            "bbj_riken" is rejected upstream).
+            "gnomad_exomes", "tommo", "tommo_jsv1", "ncbn", "gem_j_wga", "jga_wes",
+            "jga_snp", "bbj1k", "bbj2k", "jogo". Sub-populations allowed (e.g.
+            "gnomad_genomes.eas", "ncbn.jpn", "jga_wgs.jgad000758"). Two names
+            that look valid match nothing: the bare "bbj_riken" is rejected
+            (use "bbj1k"/"bbj2k"), and a filter on the bare "jga_wgs" returns 0
+            variants although rows report it — filter on "jga_wgs.jgad000758" or
+            "jga_wgs.jgad000868" instead (verified 2026-10-09).
         min_frequency, max_frequency: Allele-frequency bounds in [0, 1] on
             `dataset` (e.g. dataset="tommo", max_frequency=0.01 for rare-in-Japan).
         limit: Max variant rows to return, in [0, 1000]. Default 100.

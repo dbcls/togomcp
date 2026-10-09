@@ -13,6 +13,16 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **`togovar_search_variant` accepts four more frequency panels: `bbj1k`, `bbj2k`, `jogo` and
+  `tommo_jsv1`.** TogoVar added them in its October 2026 reload. Their frequencies already
+  appeared in each row, but the `dataset` filter refused the names, so there was no way to ask
+  for, say, variants rare in JoGo. The bare `bbj_riken` panel, which TogoVar now rejects with an
+  opaque schema error, is refused up front with a message naming `bbj1k`/`bbj2k` as its
+  replacement; its sub-populations still pass. The description also warns that a filter on the
+  bare `jga_wgs` matches no variants and names the two cohort keys that do.
+
 ### Fixed
 
 - **Usage Guide endpoints reference no longer says TogoVar re-types 2.9M variant IRIs across two
