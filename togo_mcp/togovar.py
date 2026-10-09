@@ -692,7 +692,7 @@ async def search_disease(
     here (e.g. MONDO_0007254 "breast cancer" does NOT appear in these results).
     But a broad/parent MONDO ID still WORKS as a `disease_id` in `search_variant`
     even when unlisted here — the variant search resolves it via MONDO descendant
-    expansion (MONDO_0007254 -> ~24,550 variants). So if you know or can resolve
+    expansion (MONDO_0007254 -> ~28,000 variants). So if you know or can resolve
     the canonical MONDO ID (e.g. via OLS4 or the `mondo` RDF database), pass it
     straight to `search_variant`; do not assume this resolver is exhaustive.
 
@@ -824,8 +824,9 @@ async def search_variant(
         significance_source: Restrict significance source(s): "clinvar", "mgend".
         dataset: Frequency panel for a frequency filter, e.g. "gnomad_genomes",
             "gnomad_exomes", "tommo", "ncbn", "gem_j_wga", "jga_wgs", "jga_wes",
-            "jga_snp", "bbj_riken". Sub-populations allowed (e.g.
-            "gnomad_genomes.eas", "ncbn.jpn").
+            "jga_snp". Sub-populations allowed (e.g.
+            "gnomad_genomes.eas", "ncbn.jpn", "bbj_riken.mpheno1"; the bare
+            "bbj_riken" is rejected upstream).
         min_frequency, max_frequency: Allele-frequency bounds in [0, 1] on
             `dataset` (e.g. dataset="tommo", max_frequency=0.01 for rare-in-Japan).
         limit: Max variant rows to return, in [0, 1000]. Default 100.

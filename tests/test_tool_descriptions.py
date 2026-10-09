@@ -98,7 +98,7 @@ def test_run_sparql_mandates_the_mie_file_in_what_clients_receive(assembled_tool
     that the MIE file must be read first, and that skipping it yields a wrong
     answer rather than an error. An agent told to expect a failure will read a
     clean result as success, which is the precise mechanism these MIEs exist to
-    prevent (measured inflation on unpinned queries: x3.27, x6.29, x45,360 — all
+    prevent (measured inflation on unpinned queries: x2.84, x6.29, x45,848 — all
     returned in seconds, none of them an error).
     """
     tool = next(t for t in assembled_tools if t.name == "run_sparql")
@@ -114,6 +114,30 @@ def test_run_sparql_mandates_the_mie_file_in_what_clients_receive(assembled_tool
         "the description must say skipping the MIE yields a WRONG ANSWER, not a "
         "failure — an agent watching for an error will trust a clean wrong result"
     )
+
+
+def test_usage_guide_description_endpoint_counts_match_the_registry(assembled_tools) -> None:
+    """The guide tool's description quotes how many databases each shared endpoint hosts.
+
+    It is hand-written prose over a registry that grows: it said "primary: 18" for a
+    release after `jogo` and `tismed` made it 20. Every client reads this description
+    on every session, so a wrong figure here outlives the catalog that corrects it.
+    """
+    import csv
+    import re
+    from collections import Counter
+    from pathlib import Path
+
+    registry = Path(__file__).resolve().parents[1] / "togo_mcp/data/resources/endpoints.csv"
+    with registry.open(encoding="utf-8") as fh:
+        hosted = Counter(row["endpoint_name"] for row in csv.DictReader(fh))
+
+    tool = next(t for t in assembled_tools if t.name == "TogoMCP_Usage_Guide")
+    quoted = re.search(r"host MANY databases \(([^)]*)\)", tool.description or "", re.S)
+    assert quoted, "the description no longer quotes per-endpoint database counts"
+    counts = {name: int(n) for name, n in re.findall(r"(\w+):\s*(\d+)", quoted.group(1))}
+    assert counts, "no `endpoint: N` pairs found in the quoted list"
+    assert counts == {name: hosted[name] for name in counts}
 
 
 def test_every_parameter_has_a_served_description(assembled_tools) -> None:

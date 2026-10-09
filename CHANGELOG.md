@@ -21,6 +21,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 - **Usage Guide graph counts re-measured (2026-10-09).** PubChem serves 69 graphs, not 68, and
   UniProt owns 17 on `sib`, not about 16. The other counts (GlyCosmos ~150, PDB 46, DDBJ 43,
   IDSM 39, MarpolBase 7, TogoVar 16) and the ×2.00 MarpolBase multiplier were confirmed unchanged.
+- **Stale figures in tool descriptions corrected (all re-measured 2026-10-09).** Every client
+  reads these on every session, so they outlive the documents that correct them.
+  - `TogoMCP_Usage_Guide` said the `primary` endpoint hosts 18 databases; it hosts 20 since
+    `jogo` and `tismed`. A test now checks the quoted counts against the registry.
+  - `get_MIE_file` still promised a "ShEx schema", which the v3 MIE format dropped in 2.9.0.
+    The intro pages repeated it.
+  - `run_sparql` quoted ×3.27 as a measured inflation; that query (GO) now measures ×2.84, and
+    the HCO figure is ×45,848 rather than ×45,360.
+  - `togoid_getRelation`: 274 of 308 pairs have no reverse entry (was 270 of 302).
+  - `togovar_search_disease`: MONDO_0007254 expands to about 28,000 variants (was ~24,550).
+  - `togovar_search_variant` offered `bbj_riken` as a frequency panel; TogoVar now rejects the
+    bare name and accepts only its sub-populations.
 
 ## [2.24.0] - 2026-10-09
 
