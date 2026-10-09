@@ -7,8 +7,9 @@ This file holds what the table cannot: graph multiplicity, drift, `SERVICE` fede
 and non-RDF-Portal infrastructure.
 
 > **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
-> (43), IDSM (39), MarpolBase (7) and TogoVar serve many graphs from their *own* endpoint —
-> TogoVar re-types 2.9M variant IRIs across two of its own, MarpolBase re-declares gene
+> (43), IDSM (39), MarpolBase (7) and TogoVar (16) serve many graphs from their *own* endpoint —
+> TogoVar keeps a variant's coordinates and its annotation in two graphs (and until its 2026-10
+> reload re-typed 2.9M variant IRIs in a third, now removed), MarpolBase re-declares gene
 > identifiers and symbols across two of its own (×2.00 on the plain gene lookup), and IDSM re-hosts nine chemical
 > datasets under their original IRIs with a union default graph. Co-tenancy is a property
 > of **graphs**, not of this table. Only SuperCon (2) and SwissLipids (3, of which just one

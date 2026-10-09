@@ -13,6 +13,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **Usage Guide endpoints reference no longer says TogoVar re-types 2.9M variant IRIs across two
+  graphs.** That was true until TogoVar's October 2026 reload removed the graph that did it;
+  2.24.0 corrected the `togovar` MIE and the tool description but missed this sentence.
+
 ## [2.24.0] - 2026-10-09
 
 <!-- whatsnew: 2026-10-09 | Two new databases: <code>jogo</code> — phased human gene haplotypes from 258 long-read genomes, with per-population counts and annotated variants — and <code>tismed</code> — 3,347 genes and 1,930 proteins called tissue-specific across independent transcriptome and proteome datasets. -->
