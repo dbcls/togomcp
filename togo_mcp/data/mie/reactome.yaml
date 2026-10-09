@@ -84,8 +84,9 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       expect: {ratio: 1.0, tolerance: 0.001}
   - id: subject_iri_unguessable
     say: >
-      BioPAX subject IRIs are a per-export counter (…/biopax/95/48887#Pathway2221) — UNGUESSABLE from a
-      Reactome stable ID (R-HSA-…) and NOT stable across releases. NEVER hand-build or paste an stId as a
+      BioPAX subject IRIs are a per-export counter — UNGUESSABLE from a Reactome stable ID (R-HSA-…) and
+      NOT stable across releases: Apoptosis (R-HSA-109581) was …/biopax/95/48887#Pathway2221 on 2026-07-22
+      and is …/biopax/97/48887#Pathway2026 on 2026-10-09. NEVER hand-build, paste or save one as a
       SPARQL subject (0 rows silently). Anchor via the Reactome stId xref instead (example stid_bridge).
 
 # ── examples: verified, executable atoms. The physical-entity hub is bp:left/bp:right on reactions;
@@ -202,7 +203,7 @@ examples:
         ?entity bp:xref [ bp:db "Reactome"^^xsd:string ; bp:id "R-HSA-109581"^^xsd:string ] ;
                 bp:displayName ?name .
       }
-    verified: {row_count: 1, has_values: ["Pathway2221", "Apoptosis"], date: "2026-07-22", first_row: "…#Pathway2221 = Apoptosis"}
+    verified: {row_count: 1, has_values: ["Apoptosis"], date: "2026-10-09", note: "the entity IRI is deliberately NOT asserted — it changes every release (gotcha subject_iri_unguessable)"}
     teaches: "The ONLY safe anchor for a search/stId result: bridge the Reactome stId through bp:xref (bp:db \"Reactome\"^^xsd:string). The stId is species-scoped (R-HSA=human, R-MMU=mouse), so it pins exactly ONE organism's entity — cleaner than matching displayName across 57 species."
     traps_avoided:
       - "Do NOT paste the stId or a hand-built reactome.org URL as the subject IRI — BioPAX subjects are per-export counters (gotcha subject_iri_unguessable), so that returns 0 rows silently."
@@ -365,9 +366,9 @@ examples:
           FILTER(?phase >= 3)
         }
       }
-      ORDER BY DESC(?phase)
+      ORDER BY DESC(?phase) ?proteinName ?drugName     # a total order: phase alone ties at 4, and LIMIT then returns ANY 10
       LIMIT 10
-    verified: {min_rows: 10, has_values: ["TAOK1", "PAZOPANIB"], date: "2026-07-22", first_row: "TAOK1 → PAZOPANIB (phase 4)"}
+    verified: {min_rows: 10, has_values: ["A4", "AMODIAQUINE"], date: "2026-10-09", first_row: "A4 → AMODIAQUINE (phase 4)"}
     teaches: "Reactome UniProt accession STRING → IRI purl.uniprot.org/uniprot/ACC to join ChEMBL's skos:exactMatch on cco:hasTargetComponent. bif:contains on bp:displayName is the ONE legit text route (Virtuoso-indexed free-text pathway names); apply the organism + keyword + phase pre-filters inside each GRAPH before joining."
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
@@ -380,7 +381,7 @@ schema_delta:
 # ── id_join_map: the least-recoverable asset — how to anchor stably and cross to other DBs. ──
 id_join_map:
   stable_anchor: >
-    BioPAX subject IRIs (…/biopax/95/N#Pathway123) are per-export counters — UNSTABLE, UNGUESSABLE.
+    BioPAX subject IRIs (…/biopax/{release}/N#Pathway123) are per-export counters — UNSTABLE, UNGUESSABLE.
     The stable anchor is the Reactome stable ID via bp:xref [bp:db "Reactome"^^xsd:string ; bp:id "R-HSA-…"]
     (species-scoped: R-HSA=human, R-MMU=mouse …). See example stid_bridge.
   same_endpoint_joins:            # co-hosted on the ebi endpoint — direct GRAPH join, NO TogoID

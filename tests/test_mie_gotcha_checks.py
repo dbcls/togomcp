@@ -119,6 +119,50 @@ class TestQueryErrorClassification:
         assert checker._is_query_error(500, "<html><body>Internal Server Error</body></html>") is False
 
 
+class TestTimeoutOnAMeasurement:
+    """A timeout proves a `kind: error` claim and settles nothing for any other kind.
+
+    Counting it as drift made a loaded endpoint look like a wrong MIE: on 2026-10-09
+    togovar timed out a different one-triple check on each run.
+    """
+
+    S1TAT = "HTTP 500: Virtuoso S1TAT Error Query did not complete due to ANYTIME timeout."
+
+    def _evaluate(self, monkeypatch, check, outcome):
+        monkeypatch.setattr(checker, "run", lambda *a, **k: outcome)
+        return checker.evaluate(check, "http://example.invalid/sparql", {}, 1.0, 0)
+
+    @pytest.mark.parametrize("kind,expect", [
+        ("zero_rows", None), ("absent", None), ("count", {"value": 3})])
+    def test_timeout_is_unmeasured_not_drift(self, monkeypatch, kind, expect) -> None:
+        check = {"kind": kind, "query": "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1"}
+        if expect:
+            check["expect"] = expect
+        status, _ = self._evaluate(
+            monkeypatch, check, checker.Outcome(detail=self.S1TAT, query_error=True))
+        assert status == "net"
+
+    def test_timeout_on_a_ratio_leg_is_unmeasured(self, monkeypatch) -> None:
+        check = {"kind": "ratio", "expect": {"ratio": 4.0},
+                 "numerator": "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }",
+                 "denominator": "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }"}
+        status, _ = self._evaluate(
+            monkeypatch, check, checker.Outcome(detail="timed out after 180s", query_error=True))
+        assert status == "net"
+
+    def test_a_rejected_query_is_still_a_failure(self, monkeypatch) -> None:
+        check = {"kind": "zero_rows", "query": "SELECT ?s WHERE { ?s ?p ?o } LIMIT 1"}
+        status, _ = self._evaluate(monkeypatch, check, checker.Outcome(
+            detail="HTTP 500: Virtuoso 37000 Error SP030: SPARQL compiler", query_error=True))
+        assert status == "fail"
+
+    def test_timeout_still_confirms_an_error_claim(self, monkeypatch) -> None:
+        check = {"kind": "error", "query": "SELECT ?s WHERE { ?s ?p ?o }"}
+        status, _ = self._evaluate(
+            monkeypatch, check, checker.Outcome(detail=self.S1TAT, query_error=True))
+        assert status == "ok"
+
+
 class TestFalsifiableHeuristic:
     """The un-checked-claim scanner. It over-reports by design; it must not UNDER-report
     the shapes that were actually wrong in the 2026-08-25 sweep."""

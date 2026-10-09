@@ -13,6 +13,65 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.24.0] - 2026-10-09
+
+<!-- whatsnew: 2026-10-09 | Two new databases: <code>jogo</code> — phased human gene haplotypes from 258 long-read genomes, with per-population counts and annotated variants — and <code>tismed</code> — 3,347 genes and 1,930 proteins called tissue-specific across independent transcriptome and proteome datasets. -->
+
+Two new databases, and repairs for a TogoVar reload that had quietly broken both the `togovar`
+MIE and the variant search tool. MINOR: `jogo` and `tismed` are new `database` values; no tool
+or parameter was added, renamed or removed, and `togovar_search_variant` returns the same
+fields as before — three of them are populated again, and `variant_iri` is non-null on more
+rows.
+
+**If you use TogoVar:** counts from the `togovar` SPARQL database are not comparable with
+those taken before early October 2026 (the variant set roughly tripled), and saved queries
+that use the old `togovar.biosciencedbc.jp/vocabulary/` prefix now return nothing.
+
+### Added
+
+- **New database `jogo` (JoGo).** Phased human gene haplotypes from 258 long-read genomes across
+  1000 Genomes populations: 19,194 gene regions catalogued at protein, CDS, transcript and
+  gene-body level, per-population haplotype counts, the sample phases that carry each haplotype,
+  and 16.3 million snpEff-annotated variant records with allele frequencies on GRCh38. It answers
+  "which protein sequences of this gene exist, and in whom" — something no variant-frequency
+  database on the server can, because those lose phase. Joins to `hgnc` on the same endpoint,
+  and its variant IRIs equal the `variant_iri` that `togovar_search_variant` returns.
+- **New database `tismed` (TiSMeD).** 3,347 human genes and 1,930 proteins called
+  tissue-specific by agreement across independent transcriptome and proteome datasets, each
+  linked to a tissue, organ or organ system with a confidence score, a specificity score and a
+  supporting-dataset count. The graph holds no gene symbols; the MIE shows the join to `hgnc`
+  that supplies them, and the join to UBERON for anatomy.
+
+Both reach every client without a tool-list refresh: `database` is validated server-side and
+the catalog ships inside `TogoMCP_Usage_Guide`.
+
+### Fixed
+
+- **`togovar_search_variant` returns `genes`, `rs` and `clinvar` again.** The TogoVar REST API
+  renamed two row fields (`external_link` → `external_links`, `symbols` → `genes`) when it was
+  reloaded in early October 2026. The wrapper read only the old names, so all three fields came
+  back as empty lists on every row, with no error. It now reads either spelling.
+- **`variant_iri` is present on rows without a `tgv_id`.** It used to be withheld there, because
+  a variant with no tgv ID had no record in the SPARQL graph. After the reload most variants
+  have no tgv ID and are in SPARQL regardless, so the gate was hiding the round-trip key for
+  most rows. The tool description no longer tells agents to gate on `tgv_id`, and its totals
+  are current (REST 1,229,026,068; SPARQL 1,227,614,941 — no longer a 2.8× subset).
+- **The `togovar` MIE works against the restructured endpoint.** The vocabulary namespace
+  moved to `http://togovar.org/vocabulary/` and the ClinVar annotation graph was folded into
+  the core graph, so four of the eight example queries returned nothing and the counts were a
+  quarter of the live figures. Re-authored and re-verified on 2026-10-09; counts over
+  annotations must now be `COUNT(DISTINCT ?variant)`, because annotation nodes are stored
+  repeatedly.
+- **The weekly MIE drift sweep reports what it finds.** A shell-option mistake made the job
+  abort at the first checker that found drift, before it could file the issue or print the
+  report, so four sweeps ended as a bare failure with no findings. A measurement that times
+  out is also no longer counted as drift.
+- **`reactome` and `chebi` examples re-measured.** Reactome moved from BioPAX export 95 to 97,
+  which renumbered every entity IRI as the file warns it will; the stable-ID example no longer
+  asserts one. The Reactome→ChEMBL example had `ORDER BY` on phase alone with `LIMIT 10`, so
+  the ten rows it returned were arbitrary; it now has a total order. ChEBI's amino-acid
+  subclass count is 1,669 (was 1,577).
+
 ## [2.23.3] - 2026-10-09
 
 A regression fix. 2.23.0 broke `TogoMCP_Usage_Guide` for any client holding a cached tool list;
@@ -3204,7 +3263,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.23.3...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.24.0...HEAD
+[2.24.0]: https://github.com/dbcls/togomcp/compare/v2.23.3...v2.24.0
 [2.23.3]: https://github.com/dbcls/togomcp/compare/v2.23.2...v2.23.3
 [2.23.2]: https://github.com/dbcls/togomcp/compare/v2.23.1...v2.23.2
 [2.23.1]: https://github.com/dbcls/togomcp/compare/v2.23.0...v2.23.1

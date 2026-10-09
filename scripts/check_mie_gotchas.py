@@ -178,6 +178,18 @@ def _is_query_error(code, body):
                           re.IGNORECASE | re.MULTILINE))
 
 
+def _is_timeout(detail):
+    """Did a measurement fail because the endpoint ran out of time?
+
+    For `kind: error` a timeout IS the claim. For every other kind it means the figure
+    could not be taken, which says nothing about whether the claim is true — a loaded
+    Virtuoso returns "S1TAT ... ANYTIME timeout" for a one-triple lookup it answered in
+    0.1s a minute earlier (togovar, 2026-10-09: a different check each run).
+    """
+    return bool(re.search(r"timed out|S1TAT|ANYTIME timeout|result timeout",
+                          detail or "", re.IGNORECASE))
+
+
 class Outcome:
     """One query result: rows/scalar, or a failure classified as query vs network."""
 
@@ -294,11 +306,15 @@ def evaluate(check, endpoint, prefixes, timeout, delay):
         a = go(num, timeout)
         if a.net_fail:
             return "net", f"numerator leg: {a.detail}"
+        if a.query_error and _is_timeout(a.detail):
+            return "net", f"numerator leg could not be measured: {a.detail}"
         if a.query_error:
             return "fail", f"numerator leg errored: {a.detail}"
         b = go(den, timeout)
         if b.net_fail:
             return "net", f"denominator leg: {b.detail}"
+        if b.query_error and _is_timeout(b.detail):
+            return "net", f"denominator leg could not be measured: {b.detail}"
         if b.query_error:
             return "fail", f"denominator leg errored: {b.detail}"
         if a.scalar is None or b.scalar is None:
@@ -334,6 +350,8 @@ def evaluate(check, endpoint, prefixes, timeout, delay):
     out = go(query, timeout)
     if out.net_fail:
         return "net", out.detail
+    if out.query_error and _is_timeout(out.detail):
+        return "net", f"could not be measured: {out.detail}"
     if out.query_error:
         return "fail", f"query errored: {out.detail}"
 

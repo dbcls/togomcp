@@ -1,0 +1,395 @@
+# MIE v3 — TiSMeD (tissue-specific genes and proteins, human). Format: togo_mcp/data/docs/MIE_v3_spec.md.
+# Authored 2026-10-09; every example, count and check below was run live on the RDF Portal primary
+# endpoint on that date.
+mie_spec: 3
+database: tismed
+
+discovery:
+  title: TiSMeD — tissue-specific human genes and proteins
+  description: >
+    Human genes and proteins judged tissue-specific by agreement across multiple independent
+    transcriptome and proteome datasets, each linked to the tissue, organ or organ system it is
+    enriched in with a cross-dataset confidence score (T-score), a specificity score (SPMadjust) and
+    the number of supporting datasets.
+  keywords: [tissue specificity, tissue-specific gene, tissue-specific protein, tissue-enriched,
+             gene expression, protein expression, transcriptome, proteome, organ, tissue marker,
+             biomarker, anatomy, uberon, human]
+  categories: [gene, protein]
+
+endpoint: https://rdfportal.org/primary/sparql
+base_uri: http://med2rdf.org/tismed/ontology#
+graphs:
+  primary: http://rdfportal.org/dataset/tismed   # one small graph (~59,000 triples): records, tissue vocabulary and the t: ontology
+  co_hosted:
+    probe: >
+      2g reverse probe run 2026-10-09 on a gene IRI, a tissue term, a record class and the UBERON hub.
+      TiSMeD's own t: terms and its Ensembl gene IRIs appear in NO other graph on this endpoint (no
+      re-declaration, no re-typing). The one shared hub is UBERON — entry below.
+    ontology_uberon: >
+      JOIN TARGET + LABEL INFLATION — a tissue's skos:closeMatch is an obo:UBERON_ IRI. Its rdfs:label
+      is declared in ontology/uberon AND re-imported by ontology/cl, clo, efo and mondo, so an unpinned
+      label join returns up to ×5 rows (liver ×5, "muscle organ" ×3). Pin
+      <http://rdfportal.org/ontology/uberon> (example xdb_uberon).
+    hgnc: >
+      JOIN TARGET, by string — TiSMeD has no gene symbols or names. HGNC's typed xref nodes carry the
+      bare Ensembl gene ID and UniProt accession as dct:identifier, which equal the local part of
+      TiSMeD's gene and protein IRIs (example xdb_hgnc_symbols). HGNC's IRIs are
+      http://identifiers.org/ensembl/… — a different namespace, so there is no IRI join.
+    other: >
+      refexo, glycosmos glycomeatlas, open-tggates and refex fantom5 also point at UBERON IRIs with
+      their own predicates; they never touch a t: predicate. ensembl and uniprot data are NOT on this
+      endpoint (ebi and sib).
+
+entity_counts:                       # graph-pinned, 2026-10-09
+  genes: 3347                        # t:ts_evaluated_gene, IRI http://rdf.ebi.ac.uk/resource/ensembl/ENSG…
+  proteins: 1930                     # t:ts_evaluated_protein, IRI http://purl.uniprot.org/uniprot/<acc>
+  gene_specificity_records: 4609     # one per (gene, tissue term); 1,179 genes have more than one
+  protein_specificity_records: 2838
+  tissue_terms: 290                  # 11 organ-system roots; only 56 are the target of any record
+  tissue_terms_with_uberon: 256      # skos:closeMatch, at most one each; 34 have none
+  gene_records_flagged_protein_confirmed: 1102   # t:hasTissueSpecificProtein true (23.9%)
+  genes_resolvable_to_hgnc_symbol: 3333          # 99.6%
+
+global_gotchas:
+  - id: no_names_in_graph
+    say: >
+      Genes and proteins are bare IRIs with exactly two predicates: rdf:type and the link to their
+      specificity records. There is no symbol, name, description, taxon or gene↔protein edge, and the
+      IRI namespaces are Ensembl-EBI and UniProt, so start from an Ensembl gene ID or UniProt accession,
+      or resolve symbols through HGNC on this endpoint (example xdb_hgnc_symbols).
+    check:
+      kind: absent
+      date: "2026-10-09"
+      query: |
+        PREFIX t: <http://med2rdf.org/tismed/ontology#>
+        SELECT ?p WHERE { GRAPH <http://rdfportal.org/dataset/tismed> {
+          ?s a t:ts_evaluated_gene ; ?p ?o .
+          FILTER(?p NOT IN (rdf:type, t:hasGeneExpressionSpecificity)) } } LIMIT 1
+  - id: positives_only
+    say: >
+      Only positive calls are stored. Every record already satisfies TiSMeD's own cut-offs (T-score ≥
+      0.6, mean SPMadjust ≥ 0.8, at least 2 supporting datasets), so filtering on those thresholds
+      changes nothing and "evaluated" in the class names does not mean a negative result is recorded.
+      A gene with no record is simply absent: it may be non-specific or never assessed.
+    check:
+      kind: zero_rows
+      date: "2026-10-09"
+      query: |
+        PREFIX t: <http://med2rdf.org/tismed/ontology#>
+        SELECT ?b WHERE { GRAPH <http://rdfportal.org/dataset/tismed> {
+          ?b t:tScore ?ts ; t:meanSpmAdjustValue ?spm ; t:supportDatasetCount ?n .
+          FILTER(?ts < 0.6 || ?spm < 0.8 || ?n < 2) } } LIMIT 1
+  - id: hierarchy_not_a_rollup
+    say: >
+      Do NOT roll records up with rdfs:subClassOf. Specificity is recorded separately at each level
+      (organ-system term, organ term, sub-region term) and the stored tree does not follow the
+      system-level records: "brain" (and "testis") is filed under "Endocrine System" and "muscle" under
+      "Digestive System", yet 271 of the 272 brain-specific genes carry their system-level record on
+      "Nervous System" and none on "Endocrine System". To ask about a system, query the system term's
+      own records (example enum_by_tissue); a subClassOf* walk from "Digestive System" doubles the
+      answer (638 genes vs 313) by sweeping in every term filed beneath it.
+    check:
+      kind: zero_rows
+      date: "2026-10-09"
+      query: |
+        PREFIX t: <http://med2rdf.org/tismed/ontology#>
+        SELECT ?g WHERE { GRAPH <http://rdfportal.org/dataset/tismed> {
+          ?g t:hasGeneExpressionSpecificity ?b , ?b2 .
+          ?b t:isPositivelySpecificTo t:TISMEDT_000051 . ?b2 t:isPositivelySpecificTo t:TISMEDT_000048 } } LIMIT 1
+  - id: literal_forms
+    say: >
+      Tissue rdfs:label is a PLAIN literal ("liver"); "liver"^^xsd:string and "liver"@en match nothing.
+      Organ-system labels are capitalised ("Digestive System"), organs lower-case ("liver"),
+      sub-regions "<organ>_<part>" ("liver_right lobe"). t:tScore and t:meanSpmAdjustValue mix
+      xsd:decimal with xsd:integer (a score of exactly 1 is stored as the integer 1 — 2,898 T-scores);
+      numeric FILTERs coerce correctly, string comparison does not.
+    check:
+      kind: zero_rows
+      date: "2026-10-09"
+      query: |
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?t WHERE { GRAPH <http://rdfportal.org/dataset/tismed> {
+          ?t <http://www.w3.org/2000/01/rdf-schema#label> "liver"^^xsd:string } } LIMIT 1
+
+examples:
+  - id: gene_tissue_specificity
+    intent: look up every tissue a gene is specific to, with all three scores
+    question: "In which tissues is the gene ENSG00000163631 (albumin) specifically expressed, and how well supported is each call?"
+    complexity: basic
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?tissue ?tissueLabel ?tScore ?spm ?datasets ?proteinConfirmed
+      FROM <http://rdfportal.org/dataset/tismed>
+      WHERE {
+        <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000163631> t:hasGeneExpressionSpecificity ?rec .
+        ?rec t:isPositivelySpecificTo ?tissue ; t:tScore ?tScore ; t:meanSpmAdjustValue ?spm ;
+             t:supportDatasetCount ?datasets ; t:hasTissueSpecificProtein ?proteinConfirmed .
+        ?tissue rdfs:label ?tissueLabel .
+      }
+      ORDER BY ?tissue
+    verified: {row_count: 2, has_values: ["liver", "Digestive System"], date: "2026-10-09"}
+    teaches: >
+      Gene IRI = http://rdf.ebi.ac.uk/resource/ensembl/<ENSG, no version>. Each
+      t:hasGeneExpressionSpecificity object is a blank record holding one tissue
+      (t:isPositivelySpecificTo), t:tScore (cross-dataset consistency, 0.6–1), t:meanSpmAdjustValue
+      (specificity, 0.8–1), t:supportDatasetCount (2–10) and the boolean t:hasTissueSpecificProtein.
+    traps_avoided:
+      - "One gene usually returns an organ row AND an organ-system row (liver + Digestive System); they are separate calls with separate scores, not duplicates."
+      - "t:hasTissueSpecificProtein exists on GENE records only; protein records have the three scores but no flag."
+
+  - id: protein_tissue_specificity
+    intent: the protein-level counterpart, anchored on a UniProt accession
+    question: "In which tissues is the protein P45379 (cardiac troponin T) specific?"
+    complexity: basic
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?tissueLabel ?tScore ?spm ?datasets
+      FROM <http://rdfportal.org/dataset/tismed>
+      WHERE {
+        <http://purl.uniprot.org/uniprot/P45379> t:hasProteinExpressionSpecificity ?rec .
+        ?rec t:isPositivelySpecificTo ?tissue ; t:tScore ?tScore ; t:meanSpmAdjustValue ?spm ;
+             t:supportDatasetCount ?datasets .
+        ?tissue rdfs:label ?tissueLabel .
+      }
+      ORDER BY ?tissueLabel
+    verified: {row_count: 2, has_values: ["heart", "Cardiovascular System"], date: "2026-10-09"}
+    teaches: >
+      Protein IRI = http://purl.uniprot.org/uniprot/<accession>; the link is
+      t:hasProteinExpressionSpecificity and the record class t:ProteinExpressionSpecificity. Gene and
+      protein records are independent evidence layers — query both for a full picture.
+    traps_avoided:
+      - "Protein evidence is thinner: 32 tissue terms have protein records against 54 for genes, and blood, skin, bone marrow, retina and skeletal muscle have none."
+
+  - id: tissue_vocabulary
+    intent: find the tissue term IRI for a name and see whether it actually has data
+    question: "Which TiSMeD tissue terms cover the pancreas, and which of them carry any records?"
+    complexity: basic
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?tissue ?label ?parentLabel ?uberon (COUNT(DISTINCT ?rec) AS ?records)
+      FROM <http://rdfportal.org/dataset/tismed>
+      WHERE {
+        ?tissue rdfs:label ?label .
+        FILTER(STRSTARTS(STR(?tissue), "http://med2rdf.org/tismed/ontology#TISMEDT_"))
+        FILTER(STRSTARTS(?label, "pancreas"))
+        OPTIONAL { ?tissue rdfs:subClassOf ?parent . ?parent rdfs:label ?parentLabel }
+        OPTIONAL { ?tissue skos:closeMatch ?uberon }
+        OPTIONAL { ?rec t:isPositivelySpecificTo ?tissue }
+      }
+      GROUP BY ?tissue ?label ?parentLabel ?uberon ORDER BY ?tissue
+    verified: {row_count: 2, has_values: ["pancreas_islets of langerhans", "UBERON_0001264"], date: "2026-10-09"}
+    teaches: >
+      Tissue terms are t:TISMEDT_NNNNNN (owl:Class) with a plain rdfs:label, one rdfs:subClassOf parent
+      and at most one skos:closeMatch to UBERON. Sub-regions are named "<organ>_<part>", so a label
+      prefix lists an organ with its parts. Check the record count before using a term.
+    traps_avoided:
+      - "Only 56 of the 290 terms are ever the target of a record. Most sub-regions (163 brain areas, islets of Langerhans …) are vocabulary only: zero rows for them is not a biological negative."
+      - "rdfs:label also sits on the 12 classes, properties and ontology header of the t: vocabulary; the TISMEDT_ prefix filter keeps them out."
+      - "The parent shown is TiSMeD's own filing and can be anatomically surprising (gotcha hierarchy_not_a_rollup)."
+
+  - id: enum_by_tissue
+    intent: enumerate ALL genes specific to a tissue term, best-supported first
+    question: "Which genes are heart-specific, ranked by how many datasets support the call?"
+    complexity: intermediate
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      SELECT ?gene ?tScore ?spm ?datasets ?proteinConfirmed
+      FROM <http://rdfportal.org/dataset/tismed>
+      WHERE {
+        ?gene t:hasGeneExpressionSpecificity ?rec .
+        ?rec t:isPositivelySpecificTo t:TISMEDT_000010 ;
+             t:tScore ?tScore ; t:meanSpmAdjustValue ?spm ; t:supportDatasetCount ?datasets ;
+             t:hasTissueSpecificProtein ?proteinConfirmed .
+      }
+      ORDER BY DESC(?datasets) DESC(?tScore) DESC(?spm) ?gene
+    verified: {row_count: 49, date: "2026-10-09"}
+    teaches: >
+      Set-level route: bind the tissue term IRI on t:isPositivelySpecificTo and read the genes off the
+      records. One term = one exact level: t:TISMEDT_000010 is "heart" itself; the system-level calls
+      are on t:TISMEDT_000001 "Cardiovascular System" and are a different, larger gene set.
+    traps_avoided:
+      - "Rank by t:supportDatasetCount first — a T-score of 1 with 2 datasets only means two datasets agreed."
+      - "For proteins swap the link to t:hasProteinExpressionSpecificity; do not expect the same gene set (heart: 49 genes, 102 proteins)."
+
+  - id: multi_tissue_genes
+    intent: intersect two tissue sets — genes specific to both of two terms
+    question: "Which genes are called specific to both blood and bone marrow?"
+    complexity: intermediate
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      SELECT ?gene ?bloodScore ?marrowScore
+      FROM <http://rdfportal.org/dataset/tismed>
+      WHERE {
+        ?gene t:hasGeneExpressionSpecificity ?r1 , ?r2 .
+        ?r1 t:isPositivelySpecificTo t:TISMEDT_000059 ; t:tScore ?bloodScore .
+        ?r2 t:isPositivelySpecificTo t:TISMEDT_000061 ; t:tScore ?marrowScore .
+      }
+      ORDER BY ?gene
+    verified: {row_count: 5, date: "2026-10-09"}
+    teaches: >
+      Join two record nodes on the same gene to intersect two tissue sets. 2,168 of 3,347 genes have a
+      single record and 1,098 have two — nearly always an organ plus its organ system — so a true
+      two-organ overlap is rare (blood ∩ bone marrow: 5 genes; liver ∩ kidney: none).
+    traps_avoided:
+      - "Use two distinct record variables; a single ?rec cannot point at two tissues (each record has exactly one t:isPositivelySpecificTo)."
+
+  - id: agg_records_per_tissue
+    intent: count specific genes and proteins per tissue term
+    question: "Which tissues have the most tissue-specific genes, and how many proteins do they have?"
+    complexity: aggregation
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?label (COUNT(DISTINCT ?gene) AS ?genes) (COUNT(DISTINCT ?protein) AS ?proteins)
+      FROM <http://rdfportal.org/dataset/tismed>
+      WHERE {
+        ?rec t:isPositivelySpecificTo ?tissue . ?tissue rdfs:label ?label .
+        OPTIONAL { ?gene t:hasGeneExpressionSpecificity ?rec }
+        OPTIONAL { ?protein t:hasProteinExpressionSpecificity ?rec }
+      }
+      GROUP BY ?label ORDER BY DESC(?genes) ?label LIMIT 10
+    verified: {min_rows: 10, has_values: ["testis", 848, "Nervous System", 677], date: "2026-10-09"}
+    teaches: >
+      Start from the records and attach whichever owner exists; COUNT(DISTINCT) per tissue. Organ-system
+      and organ terms appear side by side in the ranking — they are parallel calls, so never sum rows.
+    traps_avoided:
+      - "Testis dominates (848 genes); a 'most tissue-specific genes' answer should say so rather than read it as a ranking of tissue complexity."
+
+  - id: agg_protein_confirmed_share
+    intent: count gene-level calls that are also confirmed at protein level, per tissue
+    question: "For each organ, what share of tissue-specific genes is also confirmed at the protein level?"
+    complexity: aggregation
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?label (COUNT(DISTINCT ?gene) AS ?genes) (SUM(IF(?flag, 1, 0)) AS ?proteinConfirmed)
+      FROM <http://rdfportal.org/dataset/tismed>
+      WHERE {
+        ?gene t:hasGeneExpressionSpecificity ?rec .
+        ?rec t:isPositivelySpecificTo ?tissue ; t:hasTissueSpecificProtein ?flag .
+        ?tissue rdfs:label ?label .
+      }
+      GROUP BY ?label ORDER BY DESC(?proteinConfirmed) ?label LIMIT 10
+    verified: {min_rows: 10, date: "2026-10-09"}
+    teaches: >
+      t:hasTissueSpecificProtein is the in-graph bridge between the two layers: true on 1,102 of 4,609
+      gene records. It is an xsd:boolean — match it with true (1 also works) or use it directly in IF().
+    traps_avoided:
+      - "The flag is per (gene, tissue) record, not per gene: a gene can be protein-confirmed in the organ and not at the system level."
+      - "To get the protein's own scores you must leave the graph — TiSMeD stores no gene↔protein edge; map through HGNC (example xdb_hgnc_symbols) and look up the UniProt IRI."
+
+  - id: xdb_hgnc_symbols
+    intent: "cross-DB: attach HGNC gene symbols to TiSMeD genes and proteins by ID string"
+    question: "Where are ALB, TNNT2, INS and GFAP tissue-specific, at gene and at protein level?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?symbol ?level ?tissue ?tScore ?spm ?support
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/tismed> {
+          VALUES (?link ?level) { (t:hasGeneExpressionSpecificity "gene")
+                                  (t:hasProteinExpressionSpecificity "protein") }
+          ?entity ?link ?rec .
+          ?rec t:isPositivelySpecificTo ?tt ; t:tScore ?tScore ; t:meanSpmAdjustValue ?spm ;
+               t:supportDatasetCount ?support .
+          ?tt rdfs:label ?tissue .
+          BIND(REPLACE(STR(?entity), "^.*/", "") AS ?id)
+        }
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?x dct:identifier ?id . ?hgnc rdfs:seeAlso ?x ; rdfs:label ?symbol .
+          FILTER(?symbol IN ("ALB", "TNNT2", "INS", "GFAP"))
+        }
+      }
+      ORDER BY ?symbol ?level ?tissue
+    verified: {row_count: 12, has_values: ["GFAP", "brain", "pancreas", "heart"], date: "2026-10-09"}
+    teaches: >
+      The local part of a TiSMeD IRI (ENSG… or a UniProt accession) equals the dct:identifier of an HGNC
+      xref node, and the HGNC gene that rdfs:seeAlso-points at that node carries the symbol as
+      rdfs:label. One join names genes and proteins alike; 3,333 of 3,347 genes resolve.
+    traps_avoided:
+      - say: >
+          Write the join in THIS direction: bind the ID string inside the tismed GRAPH, then match it as
+          a variable in the hgnc GRAPH. Starting from the symbol and building the TiSMeD IRI with
+          IRI(CONCAT(…)) inside the second GRAPH returns 0 rows on this endpoint, without an error.
+        check:
+          kind: zero_rows
+          date: "2026-10-09"
+          query: |
+            PREFIX t: <http://med2rdf.org/tismed/ontology#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX dct: <http://purl.org/dc/terms/>
+            SELECT ?symbol ?tt WHERE {
+              GRAPH <http://rdfportal.org/dataset/hgnc> {
+                VALUES ?symbol { "ALB" }
+                ?hgnc rdfs:label ?symbol ; rdfs:seeAlso ?e .
+                ?e a <http://identifiers.org/ensembl> ; dct:identifier ?ensg . }
+              GRAPH <http://rdfportal.org/dataset/tismed> {
+                BIND(IRI(CONCAT("http://rdf.ebi.ac.uk/resource/ensembl/", ?ensg)) AS ?entity)
+                ?entity t:hasGeneExpressionSpecificity ?rec . ?rec t:isPositivelySpecificTo ?tt } }
+      - "HGNC symbols are plain literals too, and a symbol with no row may be non-specific OR one of the 14 genes HGNC cannot resolve — check with the Ensembl ID before concluding."
+      - "ALB and INS return gene rows only: their proteins have no TiSMeD record, which is absence of a call, not evidence of non-specificity."
+
+  - id: xdb_uberon
+    intent: "cross-DB: start from an UBERON anatomy term and reach TiSMeD tissues and their gene counts"
+    question: "Given UBERON terms for heart, kidney and mucosa, which TiSMeD tissues match and how many specific genes does each have?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?uberon ?uberonLabel ?tissue ?tismedLabel (COUNT(DISTINCT ?gene) AS ?genes)
+      WHERE {
+        VALUES ?uberon { obo:UBERON_0000948 obo:UBERON_0002113 obo:UBERON_0000344 }
+        GRAPH <http://rdfportal.org/ontology/uberon> { ?uberon rdfs:label ?uberonLabel }
+        GRAPH <http://rdfportal.org/dataset/tismed> {
+          ?tissue skos:closeMatch ?uberon ; rdfs:label ?tismedLabel .
+          OPTIONAL { ?gene t:hasGeneExpressionSpecificity ?rec . ?rec t:isPositivelySpecificTo ?tissue }
+        }
+      }
+      GROUP BY ?uberon ?uberonLabel ?tissue ?tismedLabel ORDER BY ?uberon ?tissue
+    verified: {min_rows: 3, has_values: ["heart", "esophagus_mucosa", "rectum_mucosa"], date: "2026-10-09"}
+    teaches: >
+      skos:closeMatch on the tissue term is a real obo:UBERON_ IRI, so an anatomy ID from OLS4 or any
+      other UBERON-annotated resource joins directly. UBERON labels and definitions come from GRAPH
+      <http://rdfportal.org/ontology/uberon>.
+    traps_avoided:
+      - "The mapping is many-to-one: 13 UBERON terms are the closeMatch of more than one TiSMeD term (UBERON_0000344 mucosa ← esophagus_mucosa AND rectum_mucosa), so an UBERON ID can fan out to unrelated tissues."
+      - "closeMatch is approximate and 34 terms have none (testis_interstitial, bone marrow_red, neurons …); TiSMeD 'muscle' maps to UBERON 'muscle organ'."
+      - say: "Pin the uberon graph on the label leg — cl, clo, efo and mondo re-declare the same label (liver: ×5 unpinned)."
+        check:
+          kind: ratio
+          date: "2026-10-09"
+          unpinned: |
+            SELECT (COUNT(*) AS ?n) WHERE { <http://purl.obolibrary.org/obo/UBERON_0002107> <http://www.w3.org/2000/01/rdf-schema#label> ?l }
+          pinned: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/ontology/uberon> { <http://purl.obolibrary.org/obo/UBERON_0002107> <http://www.w3.org/2000/01/rdf-schema#label> ?l } }
+          expect: {ratio: 5, tolerance: 0.05}
+
+schema_delta:
+  - "Record classes: t:GeneExpressionSpecificity (4,609) and t:ProteinExpressionSpecificity (2,838), always blank nodes — re-reach them through the owner, never by IRI."
+  - "t:isPositivelySpecificTo is the only direction stored; there is no 'negatively specific' or 'depleted in' predicate."
+  - "The graph documents itself: every t: class and property has rdfs:label and dct:description (score definitions and the 0.6 / 0.8 / 2 cut-offs are quoted from there)."
+  - "The 11 roots (no rdfs:subClassOf): Cardiovascular, Digestive, Endocrine, Hemic and Immune, Integumentary, Musculoskeletal, Nervous, Respiratory, Stomatognathic, Urogenital System(s) and 'Other Systems' (placenta, retina, adipose tissue, breast, saliva)."
+
+id_join_map:
+  stable_anchor: >
+    Gene http://rdf.ebi.ac.uk/resource/ensembl/<ENSG, unversioned>; protein
+    http://purl.uniprot.org/uniprot/<accession>; tissue http://med2rdf.org/tismed/ontology#TISMEDT_<6
+    digits> with a plain rdfs:label as the human key. Records are blank nodes.
+  same_endpoint_joins:
+    hgnc: "local part of the gene / protein IRI == dct:identifier of an HGNC xref node (a <http://identifiers.org/ensembl> or <http://identifiers.org/uniprot>); the HGNC gene rdfs:seeAlso that node (example xdb_hgnc_symbols). 3,333 of 3,347 genes resolve"
+    ontology_uberon: "tissue skos:closeMatch obo:UBERON_NNNNNNN == the class IRI in GRAPH <http://rdfportal.org/ontology/uberon> (256 of 290 terms; example xdb_uberon)"
+  xrefs:
+    ensembl: "the gene IRI is the Ensembl RDF gene IRI used by database=ensembl on the ebi endpoint — same IRI, different endpoint, so carry the ENSG across in a second query"
+    uniprot: "the protein IRI is the UniProt entry IRI used by database=uniprot on the sib endpoint — same IRI, different endpoint"
+  bridged_via_togoid:
+    - "ensembl_gene or uniprot → ncbigene, hgnc, refseq, pdb, reactome_pathway … via togoid_convertId, starting from the ID in the IRI's local part"

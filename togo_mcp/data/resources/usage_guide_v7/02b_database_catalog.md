@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 45 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
+All 47 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -12,8 +12,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `wikipathways`
-- **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `marpolbase` `mco` `mogplus` `oma` `togovar`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
+- **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `jogo` `marpolbase` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
@@ -21,12 +21,12 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
-- **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `uniprot`
+- **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `tismed` `uniprot`
 - **reaction** — `brenda` `rhea`
 - **sequence** — `ddbj` `ensembl`
 - **structure** — `pdb`
 - **taxonomy** — `bgee` `taxonomy`
-- **variant** — `clinvar` `gwascatalog` `mogplus` `togovar`
+- **variant** — `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
 
 **All databases** (alphabetical):
 
@@ -47,6 +47,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **hco** — HCO. The human cytogenetic map: every Giemsa-stained chromosome band (ISCN name, e.g. _[cytoband, chromosome band, karyotype, cytogenetic, giemsa stain, ideogram]_
 - **hgnc** — HGNC. Authoritative approved human gene nomenclature: official symbol, full name, HGNC ID, chromosomal band, and a… _[human gene, gene nomenclature, gene symbol, approved gene, gene name, hgnc id]_
 - **idsm** — IDSM. Chemical structure search engine (substructure, similarity, exact) over nine integrated small-molecule datase… _[chemical structure, substructure search, similarity search, smiles, molfile, cheminformatics]_
+- **jogo** — JoGo. Per-gene catalogue of phased human haplotypes (protein, CDS, transcript and gene-body sequence levels) from 2… _[haplotype, phased genome, long-read sequencing, human genetic variation, variant, allele frequency]_
 - **jpostdb** — jPOST. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimenta… _[proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification]_
 - **lipidmaps** — LIPID MAPS Structure Database. Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthan… _[lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol]_
 - **marpolbase** — MarpolBase. Genome structural annotation, functional annotation, co-expression, orthogroups and curated gene-literature a… _[plant, liverwort, bryophyte, genome, gene model, genome annotation]_
@@ -72,6 +73,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **supercon** — SuperCon. Curated experimental records for oxide and metallic superconductors (NIMS), extracted from ~7,249 journal art… _[superconductor, superconducting material, critical temperature, tc, critical field, cuprate]_
 - **swisslipids** — SwissLipids. Expert-curated lipid reference knowledge base of ~778,000 lipids arranged in a six-level classification hiera… _[lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol]_
 - **taxonomy** — NCBI Taxonomy RDF. Hierarchical biological classification of ~2.84M taxa (species → root) with scientific/common names, synonyms… _[taxonomy, organism, species, taxon, rank, lineage]_
+- **tismed** — TiSMeD. Human genes and proteins judged tissue-specific by agreement across multiple independent transcriptome and pr… _[tissue specificity, tissue-specific gene, tissue-specific protein, tissue-enriched, gene expression, protein expression]_
 - **togovar** — TogoVar. GRCh38 human genome variants (SNV/Deletion/Insertion/MNV/Indel) with normalized+VCF coordinates, Ensembl-VEP… _[variant, variation, mutation, snv, snp, indel]_
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTM… _[protein, sequence, swiss-prot, trembl, reviewed, function]_
 - **wikipathways** — WikiPathways. Community-curated biological pathway diagrams for 39 organisms, exposing pathways, their gene-product/protein… _[pathway, pathway diagram, gene product, metabolite, interaction, signaling]_

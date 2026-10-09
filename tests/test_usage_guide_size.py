@@ -27,13 +27,33 @@ REPO = Path(__file__).resolve().parent.parent
 GUIDE_DIR = REPO / "togo_mcp" / "data" / "resources" / "usage_guide_v7"
 REFERENCES = GUIDE_DIR / "references"
 
-# Budget for the core, in characters of the served text. The hard client limit is
-# 50,000; 40,000 leaves room for the JSON framing, for a host that counts bytes, and
-# for a tokenizer denser than today's (Sonnet 5.5: ~0.44 tokens/char, so 40,000
-# characters is ~17,500 tokens against the 25,000-token limit). When this fails, move
-# detail into a reference file or tighten the compact catalog row — do not raise it
-# without re-measuring delivery on real transcripts.
+# Budget for the core, measured on what a host RECEIVES, not on the Markdown. The tool
+# has an output schema, so a host is handed the JSON-framed {"result": "..."} form:
+# 34,175 characters as Claude Code delivers it (verified on transcripts, 2026-10-09),
+# and 36,059 if a serializer escapes non-ASCII (the guide's emoji become \uXXXX pairs)
+# — 2% and 7% over the 33,584 characters of Markdown. The budget applies to the LARGER
+# form. The hard client limit is 50,000; 40,000 leaves room for a host that counts
+# bytes and for a tokenizer denser than today's (Sonnet 5.5: ~0.44 tokens/char, so
+# 40,000 characters is ~17,500 tokens against the 25,000-token limit). When this fails,
+# move detail into a reference file or tighten the compact catalog row — do not raise
+# it without re-measuring delivery on real transcripts.
 CORE_MAX_CHARS = 40_000
+
+
+def _host_forms(core: str) -> dict[str, int]:
+    """Lengths of the forms in which a host may receive the core."""
+    return {
+        "markdown": len(core),
+        "json (as Claude Code delivers it)": len(
+            json.dumps({"result": core}, ensure_ascii=False, separators=(",", ":"))
+        ),
+        "json, non-ASCII escaped": len(json.dumps({"result": core})),
+        "utf-8 bytes of the json": len(
+            json.dumps({"result": core}, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ),
+    }
+
+
 # A reference file is fetched alone, so it only has to clear the 50,000 limit itself.
 REFERENCE_MAX_CHARS = 45_000
 
@@ -56,14 +76,13 @@ def _core() -> str:
 
 
 def test_core_fits_inline() -> None:
-    core = _core()
-    assert len(core) <= CORE_MAX_CHARS, (
-        f"Usage Guide core is {len(core):,} characters (budget {CORE_MAX_CHARS:,}). "
-        "Past 50,000 a host saves it to a file instead of showing it to the model."
+    forms = _host_forms(_core())
+    worst = max(forms, key=forms.get)
+    assert forms[worst] <= CORE_MAX_CHARS, (
+        f"Usage Guide core is {forms[worst]:,} in its largest host form ({worst}); budget "
+        f"{CORE_MAX_CHARS:,}. All forms: {forms}. Past 50,000 a host saves it to a file "
+        "instead of showing it to the model."
     )
-    # A host that counts the JSON-framed or byte length must stay under the limit too.
-    assert len(json.dumps({"result": core}, ensure_ascii=False)) < 50_000
-    assert len(core.encode("utf-8")) < 50_000
 
 
 def test_guide_keeps_its_output_schema_and_structured_content() -> None:

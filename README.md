@@ -188,7 +188,7 @@ TogoMCP exposes tools for querying the following (via SPARQL or REST APIs):
 | Category | Resources |
 |---|---|
 | Proteins / Proteomics | UniProt, PDB, jPOST |
-| Genes / Genomics | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase |
+| Genes / Genomics | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, JoGo, GWAS Catalog, Fanta.bio, TiSMeD, MarpolBase |
 | Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM |
 | Lipidomics | LIPID MAPS, SwissLipids |
 | Pathways | Reactome, WikiPathways |
@@ -299,7 +299,7 @@ Contributions are welcome!
 2. `togo_mcp/data/mie/<db>.yaml` — the MIE file (see the MIE spec in `togo_mcp/data/docs/`).
 3. `uv run python scripts/generate_usage_guide_catalog.py` — regenerates the Usage Guide's database catalog. Guarded by `tests/test_catalog_in_sync.py`.
 4. `togo_mcp/data/resources/usage_guide_v7/02_budgets_and_discovery.md` — a **hand-written** copy of the registry that no generator touches. Bump the per-endpoint count *and* add the key. Guarded by `TestUsageGuideEndpointTable` in `tests/test_server.py`.
-5. `togo_mcp/data/docs/togomcp-intro.html` — add a card to the database grid (not generated).
+5. `togo_mcp/data/docs/togomcp-intro.html` — add a card to the database grid (not generated), and the same card to `togomcp-intro-ja.html`. Guarded by `tests/test_trial_pages.py`, which requires the two pages to match.
 
 Note that a database *removal* really is just step 1: nothing validates against the other four.
 

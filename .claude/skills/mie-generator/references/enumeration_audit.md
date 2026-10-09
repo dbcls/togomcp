@@ -46,7 +46,7 @@ away*, ranked by exposure.
 | clinvar | significance value (`cvo:description "Pathogenic"`), variation_type | first-class | **B** | 3 classification branches + bnode-inflation caveat must accompany |
 | ensembl | `terms:has_biotype` / `has_transcript_flag` (glossary IRIs) | first-class | **B/C** | must pin GRAPH (grch37/expressionatlas 3× inflation) |
 | taxonomy | `tax:rank` IRI **and** `rdfs:subClassOf`(+/*) subtree | first-class (core axis) | **C** | MUST pin `ontology/taxonomy`; `tax:Superkingdom` IRI does not exist |
-| togovar | SO consequence / SIFT-PolyPhen / ClinVar significance | first-class | **C** | SPARQL is the ~2.8× subset — **comprehensive pathogenic enum = REST tool**, not SPARQL |
+| togovar | SO consequence / SIFT-PolyPhen / ClinVar significance | first-class | **C** | anchor on a gene IRI and count DISTINCT variants (annotation bnodes are stored repeatedly); the ~2.8× SPARQL-subset caveat was retired 2026-10-09 (SPARQL ≈ REST in size) |
 | oma | `orth:hasTaxonomicRange <tax>`; `orth:organism` | first-class | **C** | fragile: `hasHomologousMember+` & organism-subtree time out — never property-path |
 | amrportal | ARO IRI + `amrClass`(47-val) + phenotype(5-val) | first-class | OK | value sets small/enumerable |
 | bgee | `genex:hasAnatomicalEntity <UBERON>` | first-class | OK (pin graph) | anatomy-scoped count; pin GRAPH to avoid label inflation |
