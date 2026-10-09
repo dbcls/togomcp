@@ -6,7 +6,7 @@ The endpoint table (which `database` keys share which endpoint) is in the core g
 This file holds what the table cannot: graph multiplicity, drift, `SERVICE` federation,
 and non-RDF-Portal infrastructure.
 
-> **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (68), PDB (46), DDBJ
+> **One database ≠ one graph.** GlyCosmos (~150 graphs), PubChem (69), PDB (46), DDBJ
 > (43), IDSM (39), MarpolBase (7) and TogoVar (16) serve many graphs from their *own* endpoint —
 > TogoVar keeps a variant's coordinates and its annotation in two graphs (and until its 2026-10
 > reload re-typed 2.9M variant IRIs in a third, now removed), MarpolBase re-declares gene

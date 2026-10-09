@@ -18,6 +18,9 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 - **Usage Guide endpoints reference no longer says TogoVar re-types 2.9M variant IRIs across two
   graphs.** That was true until TogoVar's October 2026 reload removed the graph that did it;
   2.24.0 corrected the `togovar` MIE and the tool description but missed this sentence.
+- **Usage Guide graph counts re-measured (2026-10-09).** PubChem serves 69 graphs, not 68, and
+  UniProt owns 17 on `sib`, not about 16. The other counts (GlyCosmos ~150, PDB 46, DDBJ 43,
+  IDSM 39, MarpolBase 7, TogoVar 16) and the ×2.00 MarpolBase multiplier were confirmed unchanged.
 
 ## [2.24.0] - 2026-10-09
 
