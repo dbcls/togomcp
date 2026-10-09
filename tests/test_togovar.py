@@ -127,6 +127,26 @@ def test_unknown_dataset_raises():
         _build_variant_query(dataset="1000genomes", max_frequency=0.1)
 
 
+@pytest.mark.parametrize("panel", ["bbj1k", "bbj2k", "jogo", "tommo_jsv1"])
+def test_frequency_panels_added_in_the_2026_10_reload_are_accepted(panel):
+    """TogoVar gained four panels in its 2026-10 reload; the allowlist rejected
+    all of them, so a caller could see their frequencies in a row but not filter
+    on them. Each was verified to filter upstream on 2026-10-09."""
+    q = _build_variant_query(dataset=panel, max_frequency=0.01)
+    assert q == {
+        "frequency": {"dataset": {"name": panel}, "frequency": {"lte": 0.01}}
+    }
+
+
+def test_bare_bbj_riken_is_refused_with_its_replacement():
+    """Upstream answers the bare name with an opaque schema error (HTTP 400) while
+    still accepting its strata; say what replaced it instead."""
+    with pytest.raises(ValueError, match="bbj1k"):
+        _build_variant_query(dataset="bbj_riken", max_frequency=0.01)
+    q = _build_variant_query(dataset="bbj_riken.mpheno1", max_frequency=0.01)
+    assert "bbj_riken.mpheno1" in json.dumps(q)
+
+
 def test_frequency_bounds_without_dataset_raises():
     with pytest.raises(ValueError, match="require `dataset`"):
         _build_variant_query(max_frequency=0.1)

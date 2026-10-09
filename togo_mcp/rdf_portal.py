@@ -127,7 +127,7 @@ async def togomcp_usage_guide() -> str:
     to pick 1–3), plus the EXPLORATION habits (Seed Definition, concierge
     check, prioritized Next Steps) for open-ended deep dives.
 
-    Most RDF Portal endpoints host MANY databases (primary: 18, ebi: 6, ncbi: 5,
+    Most RDF Portal endpoints host MANY databases (primary: 20, ebi: 6, ncbi: 5,
     sib: 4) and every endpoint hosts many GRAPHS. An unpinned query silently
     reads all of them, so a co-hosted graph can supply a predicate you believe is
     native and return a plausible, correctly-shaped, WRONG number — with no error.
@@ -189,8 +189,8 @@ async def get_sparql_endpoints() -> dict[str, Any]:
         "literal types and join paths for that endpoint, each live-verified. "
         "SKIPPING IT DOES NOT MAKE YOUR QUERY FAIL — that is the danger. It makes it return a "
         "WRONG ANSWER THAT LOOKS RIGHT: well-formed rows, plausible magnitude, no error, no "
-        "warning. Unpinned queries on these endpoints have been measured returning x3.27, x6.29 "
-        "and x45,360 the correct row count, all in under 4 seconds. Speed and a clean result "
+        "warning. Unpinned queries on these endpoints have been measured returning x2.84, x6.29 "
+        "and x45,848 the correct row count, all in under 4 seconds. Speed and a clean result "
         "are NOT evidence of correctness here; the graph pin from the MIE file is. "
         f"ALWAYS pass database (required; valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) "
         "for single-database queries. For cross-database queries on a shared endpoint, "
@@ -222,8 +222,8 @@ async def run_sparql(
                 "PIN EVERY GRAPH: copy the FROM/GRAPH clause from this database's "
                 "get_MIE_file examples. An unpinned pattern silently reads every "
                 "co-hosted graph on the endpoint — it does not error, it returns "
-                "inflated or foreign rows that look correct (measured: x3.27, x6.29, "
-                "x45,360). DISTINCT does not fix it; only the graph pin does."
+                "inflated or foreign rows that look correct (measured: x2.84, x6.29, "
+                "x45,848). DISTINCT does not fix it; only the graph pin does."
             ),
             default="",
         ),
@@ -569,7 +569,7 @@ SELECT DISTINCT ?graph WHERE {
 @mcp.tool(
     annotations=READ_ONLY_TOOL,
     name="get_MIE_file",
-    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file containing the ShEx schema, RDF and SPARQL examples of a specific RDF database. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names.",
+    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file for a specific RDF database: its graphs to pin, database-wide gotchas, live-verified SPARQL examples and ID join map. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names.",
 )
 async def get_MIE_file(
     database: Annotated[

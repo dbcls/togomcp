@@ -16,7 +16,7 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
 1. **Pin every pattern.** `FROM <g>` or `GRAPH <g> { ... }`. Partial pinning still
    leaks — the unpinned patterns read the union. **"Your database" may be *several*
    graphs** (the MIE `graphs:` list), not one — list them all as repeated `FROM`
-   clauses. UniProt owns **~16 graphs**: protein triples live in `.../uniprot`, but a
+   clauses. UniProt owns **17 graphs**: protein triples live in `.../uniprot`, but a
    taxon's `scientificName`/`rank` live in `.../taxonomy` (and GO defs in `.../go`,
    diseases in `.../diseases`, …), so pinning only `.../uniprot` returns **empty** for
    a taxon-name leg (silent). Pin the *set* your DB owns — that also

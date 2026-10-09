@@ -13,6 +13,46 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.25.0] - 2026-10-09
+
+<!-- whatsnew: 2026-10-09 | Variant search can now filter on four more allele-frequency panels — BioBank Japan <code>bbj1k</code> and <code>bbj2k</code>, <code>jogo</code> and <code>tommo_jsv1</code> — and returns gene and dbSNP/ClinVar cross-links again after a TogoVar data reload. -->
+
+Follow-up to 2.24.0, finishing the adjustment to TogoVar's October 2026 reload and correcting
+figures that had gone stale in the text every client reads. MINOR: `togovar_search_variant`
+accepts four new values for its existing `dataset` parameter. No tool or parameter was added,
+renamed or removed, and no return shape changed.
+
+### Added
+
+- **`togovar_search_variant` accepts four more frequency panels: `bbj1k`, `bbj2k`, `jogo` and
+  `tommo_jsv1`.** TogoVar added them in its October 2026 reload. Their frequencies already
+  appeared in each row, but the `dataset` filter refused the names, so there was no way to ask
+  for, say, variants rare in JoGo. The bare `bbj_riken` panel, which TogoVar now rejects with an
+  opaque schema error, is refused up front with a message naming `bbj1k`/`bbj2k` as its
+  replacement; its sub-populations still pass. The description also warns that a filter on the
+  bare `jga_wgs` matches no variants and names the two cohort keys that do.
+
+### Fixed
+
+- **Usage Guide endpoints reference no longer says TogoVar re-types 2.9M variant IRIs across two
+  graphs.** That was true until TogoVar's October 2026 reload removed the graph that did it;
+  2.24.0 corrected the `togovar` MIE and the tool description but missed this sentence.
+- **Usage Guide graph counts re-measured (2026-10-09).** PubChem serves 69 graphs, not 68, and
+  UniProt owns 17 on `sib`, not about 16. The other counts (GlyCosmos ~150, PDB 46, DDBJ 43,
+  IDSM 39, MarpolBase 7, TogoVar 16) and the ×2.00 MarpolBase multiplier were confirmed unchanged.
+- **Stale figures in tool descriptions corrected (all re-measured 2026-10-09).** Every client
+  reads these on every session, so they outlive the documents that correct them.
+  - `TogoMCP_Usage_Guide` said the `primary` endpoint hosts 18 databases; it hosts 20 since
+    `jogo` and `tismed`. A test now checks the quoted counts against the registry.
+  - `get_MIE_file` still promised a "ShEx schema", which the v3 MIE format dropped in 2.9.0.
+    The intro pages repeated it.
+  - `run_sparql` quoted ×3.27 as a measured inflation; that query (GO) now measures ×2.84, and
+    the HCO figure is ×45,848 rather than ×45,360.
+  - `togoid_getRelation`: 274 of 308 pairs have no reverse entry (was 270 of 302).
+  - `togovar_search_disease`: MONDO_0007254 expands to about 28,000 variants (was ~24,550).
+  - `togovar_search_variant` offered `bbj_riken` as a frequency panel; TogoVar now rejects the
+    bare name and accepts only its sub-populations.
+
 ## [2.24.0] - 2026-10-09
 
 <!-- whatsnew: 2026-10-09 | Two new databases: <code>jogo</code> — phased human gene haplotypes from 258 long-read genomes, with per-population counts and annotated variants — and <code>tismed</code> — 3,347 genes and 1,930 proteins called tissue-specific across independent transcriptome and proteome datasets. -->
@@ -3263,7 +3303,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.24.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.0...HEAD
+[2.25.0]: https://github.com/dbcls/togomcp/compare/v2.24.0...v2.25.0
 [2.24.0]: https://github.com/dbcls/togomcp/compare/v2.23.3...v2.24.0
 [2.23.3]: https://github.com/dbcls/togomcp/compare/v2.23.2...v2.23.3
 [2.23.2]: https://github.com/dbcls/togomcp/compare/v2.23.1...v2.23.2

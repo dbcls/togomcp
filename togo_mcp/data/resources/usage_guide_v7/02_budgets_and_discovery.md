@@ -88,7 +88,7 @@ is the bold row label.
 | **marpolbase** | 1 | `marpolbase` ← Marchantia polymorpha genome; own endpoint, 7 graphs, 10k row cap, no `SERVICE` |
 
 **One database ≠ one graph.** A database alone on its endpoint still serves many graphs
-(GlyCosmos ~150, PubChem 68, PDB 46, DDBJ 43, IDSM 39), so co-tenancy is a property of
+(GlyCosmos ~150, PubChem 69, PDB 46, DDBJ 43, IDSM 39), so co-tenancy is a property of
 **graphs**, not of this table. `lipidmaps` declares **no named graphs at all**: every
 `GRAPH`/`FROM` pin returns 0 rows there.
 

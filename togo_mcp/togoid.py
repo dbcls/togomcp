@@ -390,7 +390,7 @@ async def getRelation(source: str, target: str) -> str:
     no direct route exists.
 
     DIRECTION IS NOT A CONSTRAINT ON TRAVERSAL. TogoID registers each pair in
-    one direction only (270 of 302 pairs have no reverse entry), but convertId
+    one direction only (274 of 308 pairs have no reverse entry), but convertId
     and countId traverse a pair BOTH ways. So this tool falls back to the
     swapped pair when the requested orientation is unregistered: the labels are
     swapped into YOUR orientation and the object carries
