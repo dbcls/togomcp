@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 45 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 47 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -14,8 +14,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `wikipathways`
-- **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `marpolbase` `mco` `mogplus` `oma` `togovar`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
+- **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `jogo` `marpolbase` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `pubmed` `pubtator`
 - **materials** — `supercon`
@@ -23,12 +23,12 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
-- **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `uniprot`
+- **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `tismed` `uniprot`
 - **reaction** — `brenda` `rhea`
 - **sequence** — `ddbj` `ensembl`
 - **structure** — `pdb`
 - **taxonomy** — `bgee` `taxonomy`
-- **variant** — `clinvar` `gwascatalog` `mogplus` `togovar`
+- **variant** — `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
 
 **All databases** (alphabetical):
 
@@ -66,6 +66,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: human gene, gene nomenclature, gene symbol, approved gene, gene name, hgnc id, chromosomal location, cross-reference, id mapping, ncbi gene, ensembl, uniprot, omim, orphanet, ec code, mirbase, ortholog, gene alias
 - **idsm** — IDSM (Integrated Database of Small Molecules). Chemical structure search engine (substructure, similarity, exact) over nine integrated small-molecule datasets — PubChem, ChEMBL, ChEBI, Wikidata, DrugBank, PDB-CCD, MolMeDB, MoNA and ISDB — queryab… _(categories: compound, drug_target)_  
   keywords: chemical structure, substructure search, similarity search, smiles, molfile, cheminformatics, small molecule, compound, bioactivity, mass spectra, scaffold, chemical identifier mapping
+- **jogo** — JoGo — phased human gene haplotypes and variants. Per-gene catalogue of phased human haplotypes (protein, CDS, transcript and gene-body sequence levels) from 258 long-read genomes across 1000 Genomes populations, with per-population haplotype counts… _(categories: genomics, variant)_  
+  keywords: haplotype, phased genome, long-read sequencing, human genetic variation, variant, allele frequency, population frequency, population genetics, 1000 genomes, japanese, jpt, diplotype, star allele, missense, snpeff, hgvs, mane select, grch38, snv, indel
 - **jpostdb** — jPOST — Japan ProteOme STandard repository. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimental Profiles (sample tissue/disease/species, enzyme, MS mode) plus identified Peptides, PSMs… _(categories: protein)_  
   keywords: proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification, post-translational modification, ptm, unimod, psi-ms, reanalysis, proteome, shotgun proteomics
 - **lipidmaps** — LIPID MAPS Structure Database (LMSD). Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthand notation, organised under the eight-category LIPID MAPS classification hierarchy. _(categories: compound, ontology)_  
@@ -116,6 +118,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol, metabolite, molecular formula, smiles, inchikey, sn-position, lipid hierarchy, mass spectrometry
 - **taxonomy** — NCBI Taxonomy RDF. Hierarchical biological classification of ~2.84M taxa (species → root) with scientific/common names, synonyms, 45 rank IRIs, nuclear+mitochondrial genetic codes, and owl:sameAs/rdfs:seeAlso cross-lin… _(categories: taxonomy)_  
   keywords: taxonomy, organism, species, taxon, rank, lineage, phylogeny, classification, scientific name, common name, synonym, genetic code, subtree, clade, ncbi taxonomy
+- **tismed** — TiSMeD — tissue-specific human genes and proteins. Human genes and proteins judged tissue-specific by agreement across multiple independent transcriptome and proteome datasets, each linked to the tissue, organ or organ system it is enriched in with a… _(categories: gene, protein)_  
+  keywords: tissue specificity, tissue-specific gene, tissue-specific protein, tissue-enriched, gene expression, protein expression, transcriptome, proteome, organ, tissue marker, biomarker, anatomy, uberon, human
 - **togovar** — TogoVar — Japanese/human genome variation. GRCh38 human genome variants (SNV/Deletion/Insertion/MNV/Indel) with normalized+VCF coordinates, Ensembl-VEP per-transcript consequences (SO terms, SIFT/PolyPhen/AlphaMissense, HGVS), dbSNP links, an… _(categories: disease, genomics, variant)_  
   keywords: variant, variation, mutation, snv, snp, indel, genome, human, japanese, dbsnp, clinvar, vep, consequence, sequence ontology, sift, polyphen, pathogenic, clinical significance
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTMs, isoforms, natural variants, disease links, GO terms, EC/enzyme activity, catalysed Rhea… _(categories: annotation, protein)_  

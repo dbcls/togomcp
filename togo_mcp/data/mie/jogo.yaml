@@ -1,0 +1,566 @@
+# MIE v3 — JoGo (gene-region haplotype catalogue from long-read phased human genomes).
+# Format: togo_mcp/data/docs/MIE_v3_spec.md. Authored 2026-10-09; every example, count and check
+# below was run live on the RDF Portal primary endpoint on that date.
+mie_spec: 3
+database: jogo
+
+discovery:
+  title: JoGo — phased human gene haplotypes and variants
+  description: >
+    Per-gene catalogue of phased human haplotypes (protein, CDS, transcript and gene-body sequence
+    levels) from 258 long-read genomes across 1000 Genomes populations, with per-population
+    haplotype counts, the sample phases carrying each haplotype, and snpEff-annotated variants
+    with allele frequencies on GRCh38.
+  keywords: [haplotype, phased genome, long-read sequencing, human genetic variation, variant,
+             allele frequency, population frequency, population genetics, 1000 genomes, japanese,
+             jpt, diplotype, star allele, missense, snpeff, hgvs, mane select, grch38, snv, indel]
+  categories: [variant, genomics]
+
+endpoint: https://rdfportal.org/primary/sparql
+base_uri: http://jogo.csml.org/rdf/
+graphs:
+  primary: http://rdfportal.org/dataset/jogo   # single graph: data AND the jogo: ontology (labels/comments in en + ja)
+  co_hosted:
+    probe: >
+      2g reverse probe run 2026-10-09 on gene, haplotype, gene-variant, genomic-variant, population and
+      sample IRIs plus the hub IRIs they point at. Every http://jogo.csml.org/ IRI and every jogo:/gvo:
+      class lives ONLY in this graph (no re-declaration, no re-typing). The traps are scope bleed on
+      shared vocabulary and a re-declared label on the HGNC hub — entries below.
+    shared_vocabulary: >
+      SCOPE BLEED — faldo:ExactPosition / faldo:Region, rdfs:label, dct:identifier and rdfs:seeAlso are
+      used by dozens of co-hosted graphs (mogplus, mbgd, jpost, fantabio, glycosmos …). Unpinned,
+      `?x a faldo:ExactPosition` is ×22.4 and `?x rdfs:label "ALDH2"` is ×262 (gotcha graph_pin).
+    hgnc: >
+      JOIN TARGET — a GeneRegion's rdfs:seeAlso <http://identifiers.org/hgnc/N> IS the HGNC gene IRI
+      (example xdb_hgnc). ontology/mondo re-declares rdfs:label on the same IRIs (×2 for ALDH2) and
+      fantabio re-types them, so pin <http://rdfportal.org/dataset/hgnc> on the HGNC leg.
+    hco: >
+      NOT a direct join — faldo:reference here carries a stray backslash (gotcha chromosome_iri), so it
+      never equals the <http://identifiers.org/hco/12/GRCh38> IRIs that fantabio uses, and the hco graph
+      itself only declares the unversioned <http://identifiers.org/hco/12>.
+    togoid_relation_graphs: >
+      rdfportal.org/dataset/togoid/relation/* reference the same identifiers.org hgnc/ensembl IRIs with
+      tio:TIO_* predicates only — noise for an unpinned pattern, never a re-declaration of jogo data.
+
+entity_counts:                       # graph-pinned, 2026-10-09
+  gene_regions: 19194                # 19,159 "MANE Select" + 35 "MANE Plus Clinical"; 19,159 distinct symbols
+  gene_variants: 16299204            # jogo:Variant — gene-context records (annotation + AF), one per region
+  genomic_variants: 15459969         # gvo:SNV 12,559,048 / gvo:Ins 1,659,377 / gvo:Del 1,240,655 / gvo:Indel 889
+  haplotypes:
+    A_protein: 174376
+    C_cds: 300610
+    T_transcript: 485997
+    G_genebody: 3695204
+    AC: 300610
+    ACT: 784577
+    ACTG: 3832273
+  sample_haplotypes: 6791612         # one per (region, sample, hp1|hp2) actually phased
+  samples: 258                       # JPT 105; EAS 130, AFR 50, AMR 44, SAS 25, EUR 9
+  populations: 27                    # 24 with samples (CEU, ITU, MXL are empty stubs) + 5 jogo:SuperPopulation
+  population_frequency_nodes: 16238674
+  variant_impact: {MODIFIER: 15997298, MODERATE: 154180, LOW: 141259, HIGH: 6467}
+  variants_with_hgvsP: 272615        # 1.7% — OPTIONAL it
+
+global_gotchas:
+  - id: graph_pin
+    say: >
+      ALWAYS `FROM <http://rdfportal.org/dataset/jogo>` (or GRAPH-pin). The primary endpoint co-hosts
+      hundreds of graphs that share faldo/rdfs/dct vocabulary. Unpinned, `?x rdfs:label "ALDH2"` returns 262
+      rows instead of 1 (glycosmos, fantabio, homologene, hgnc …) and `?x a faldo:ExactPosition` counts
+      349,696,746 instead of 15,608,168 (×22.4) — all foreign entities, so DISTINCT cannot help.
+    check:
+      kind: ratio
+      date: "2026-10-09"
+      unpinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { ?x <http://www.w3.org/2000/01/rdf-schema#label> "ALDH2" }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> { ?x <http://www.w3.org/2000/01/rdf-schema#label> "ALDH2" } }
+      expect: {ratio: 262, tolerance: 0.05}
+  - id: plain_literals
+    say: >
+      Every string here is a PLAIN literal: write "MANE Select", "missense_variant", "HIGH", "JPT",
+      "ALDH2". DATATYPE() reports xsd:string, but adding ^^xsd:string (or @en) matches NOTHING, silently.
+      Integers and decimals (alleleCount, alleleFrequency, faldo:position) compare as bare numbers.
+    check:
+      kind: zero_rows
+      date: "2026-10-09"
+      query: |
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?v WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+          ?v <http://jogo.csml.org/ontology#annotationImpact> "HIGH"^^xsd:string } } LIMIT 1
+  - id: gene_region_scope
+    say: >
+      Everything is scoped to a GENE REGION, and a region is not a gene. (1) 35 genes have two regions
+      ("MANE Select" at gene/<SYMBOL> and "MANE Plus Clinical" at gene/<regionName>) sharing one
+      rdfs:label, each with its OWN haplotype numbering and its own jogo:Variant records. (2) There is NO
+      gene→variant edge: reach variants through a haplotype (region jogo:gHaplotype ?h . ?h
+      jogo:hasVariant ?v), and reach the region of a variant the same way backwards. (3) Haplotype IDs
+      (a1, c2, g47 …) are meaningless outside their region. Filter jogo:maneStatus "MANE Select" when you
+      want one row per gene.
+    check:
+      kind: count
+      date: "2026-10-09"
+      query: |
+        PREFIX jogo: <http://jogo.csml.org/ontology#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+          ?r a jogo:GeneRegion ; jogo:maneStatus "MANE Plus Clinical" } }
+      expect: {value: 35, tolerance: 0}
+  - id: per_region_denominator
+    say: >
+      Not every sample is phased at every gene, so NEVER use 2 × sampleSize (or 516) as a denominator.
+      ALDH2 has 340 sample haplotypes from 170 of the 258 samples (60 of the 105 JPT). Use the variant's
+      own jogo:alleleNumber, or count the region's SampleHaplotypes per population (example
+      phased_denominator). jogo:frequency nodes carry a COUNT (jogo:alleleCount) only — no fraction.
+      jogo:totalCount can exceed the listed copies by a couple per region (ALDH2:a1 311 vs 309).
+    check:
+      kind: count
+      date: "2026-10-09"
+      query: |
+        PREFIX jogo: <http://jogo.csml.org/ontology#>
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+          <http://jogo.csml.org/rdf/gene/ALDH2> jogo:aHaplotype ?h .
+          ?h jogo:hasSampleHaplotype ?sh . ?sh jogo:sample ?s } }
+      expect: {value: 170, tolerance: 0}
+  - id: chromosome_iri
+    say: >
+      faldo:reference IRIs contain a literal backslash — http://identifiers.org/hco/12\/GRCh38 — so the
+      clean IRI <http://identifiers.org/hco/12/GRCh38> matches 0 rows and a backslash cannot be written
+      inside <...>. Compare the string: FILTER(STR(?chr) = "http://identifiers.org/hco/12\\/GRCh38").
+      Chromosomes are 1–22, X, Y without "chr"; all coordinates are GRCh38.
+    check:
+      kind: zero_rows
+      date: "2026-10-09"
+      query: |
+        PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+        SELECT ?b WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+          ?b faldo:position 111803962 ; faldo:reference <http://identifiers.org/hco/12/GRCh38> } } LIMIT 1
+  - id: declared_but_absent
+    say: >
+      The in-graph ontology declares more than the data holds: jogo:isMANEReference, isCHM13Reference,
+      isGRCh38Reference, dHaplotype, uHaplotype and the classes DHaplotype / UHaplotype have NO instances
+      — there is no "reference haplotype" flag and no flanking-region haplotype to query.
+    check:
+      kind: absent
+      date: "2026-10-09"
+      query: |
+        PREFIX jogo: <http://jogo.csml.org/ontology#>
+        SELECT ?s WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+          VALUES ?p { jogo:isMANEReference jogo:isCHM13Reference jogo:isGRCh38Reference jogo:dHaplotype jogo:uHaplotype }
+          ?s ?p ?o } } LIMIT 1
+
+examples:
+  - id: gene_region_lookup
+    intent: resolve a gene symbol to its region(s), coordinates, MANE status, HGNC xref and haplotype diversity
+    question: "What does JoGo hold for CDKN2A — which regions, where, and how many distinct protein and gene-body haplotypes?"
+    complexity: basic
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      SELECT ?region ?regionName ?mane ?begin ?end ?xref
+             (COUNT(DISTINCT ?a) AS ?proteinHaplotypes) (COUNT(DISTINCT ?g) AS ?genebodyHaplotypes)
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        ?region a jogo:GeneRegion ; rdfs:label "CDKN2A" ;
+                jogo:regionName ?regionName ; jogo:maneStatus ?mane ;
+                faldo:location [ faldo:begin [ faldo:position ?begin ] ; faldo:end [ faldo:position ?end ] ] ;
+                rdfs:seeAlso ?xref ;
+                jogo:aHaplotype ?a ; jogo:gHaplotype ?g .
+        FILTER(STRSTARTS(STR(?xref), "http://identifiers.org/hgnc/"))
+      }
+      GROUP BY ?region ?regionName ?mane ?begin ?end ?xref ORDER BY ?region
+    verified: {row_count: 2, has_values: ["CDKN2A_chr9_21962752_21999392", "MANE Plus Clinical"], date: "2026-10-09"}
+    teaches: >
+      rdfs:label is the exact, plain-literal gene symbol; the region links to its catalogue at each level
+      by jogo:aHaplotype / cHaplotype / tHaplotype / gHaplotype (individual) and acHaplotype /
+      actHaplotype / actgHaplotype (composite). COUNT(DISTINCT) because two level joins cross-multiply.
+    traps_avoided:
+      - "One symbol can return TWO regions (MANE Select + MANE Plus Clinical) with different haplotype sets — 7 vs 2 protein haplotypes here. Do not add them up; pick by jogo:maneStatus."
+      - say: >
+          rdfs:seeAlso mixes three object kinds: identifiers.org/hgnc/N (19,145 regions), identifiers.org/ensembl/ENSG… (all 19,194) and, on a Plus Clinical region, the IRI of its MANE Select sibling. Filter by prefix.
+        check:
+          kind: count
+          date: "2026-10-09"
+          query: |
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT (COUNT(DISTINCT ?r) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> { ?r a jogo:GeneRegion ; <http://www.w3.org/2000/01/rdf-schema#seeAlso> ?o FILTER(STRSTARTS(STR(?o), "http://identifiers.org/hgnc/")) } }
+          expect: {value: 19145, tolerance: 0}
+      - "faldo:begin/end are the gene span; jogo:regionName embeds the wider catalogued window (5 kb flanks: 21962752 vs begin 21967752)."
+
+  - id: protein_haplotypes_by_superpopulation
+    intent: list a gene's protein-level haplotypes with their copy counts rolled up to super-populations
+    question: "Which distinct ALDH2 protein sequences are observed, and how many copies of each in each continental group?"
+    complexity: intermediate
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?hapId ?length ?superPop (SUM(?ac) AS ?copies)
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        <http://jogo.csml.org/rdf/gene/ALDH2> jogo:aHaplotype ?h .
+        ?h dct:identifier ?hapId ; jogo:sequenceLength ?length ; jogo:frequency ?f .
+        ?f jogo:alleleCount ?ac ; jogo:population ?pop .
+        ?pop jogo:superPopulation ?sp . ?sp dct:identifier ?superPop .
+      }
+      GROUP BY ?hapId ?length ?superPop ORDER BY ?hapId ?superPop
+    verified: {row_count: 9, has_values: ["ALDH2:a2", "EAS"], date: "2026-10-09"}
+    teaches: >
+      Haplotype → jogo:frequency → a blank PopulationFrequency node {jogo:population, jogo:alleleCount};
+      frequencies exist per POPULATION only, so roll up with jogo:superPopulation and SUM. Swap
+      jogo:aHaplotype for cHaplotype / tHaplotype / gHaplotype / actgHaplotype to change the sequence
+      level; jogo:sequenceLength is residues at A level and nucleotides elsewhere.
+    traps_avoided:
+      - "These are copy COUNTS, not frequencies — divide by the region's phased haplotypes per population (example phased_denominator), not by sample size."
+      - say: >
+          552 of 174,376 A haplotypes have no jogo:frequency node at all; OPTIONAL it when listing every haplotype.
+        check:
+          kind: count
+          date: "2026-10-09"
+          query: |
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT (COUNT(DISTINCT ?h) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> { ?h a jogo:AHaplotype FILTER NOT EXISTS { ?h jogo:frequency ?f } } }
+          expect: {value: 552, tolerance: 0}
+      - "jogo:alleleCount is also a property of jogo:Variant (overall AC) — anchor on the frequency node to avoid mixing the two."
+
+  - id: gene_variants_by_impact
+    intent: enumerate the variants of one gene region, filtered by snpEff impact
+    question: "Which protein-altering (HIGH or MODERATE impact) variants are observed in ALDH2, and at what allele frequency?"
+    complexity: intermediate
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      SELECT DISTINCT ?variant ?annotation ?impact ?hgvsC ?hgvsP ?ac ?an ?af
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        <http://jogo.csml.org/rdf/gene/ALDH2> jogo:gHaplotype ?h .
+        ?h jogo:hasVariant ?variant .
+        ?variant jogo:annotationImpact ?impact ; jogo:annotation ?annotation ; jogo:hgvsC ?hgvsC ;
+                 jogo:alleleCount ?ac ; jogo:alleleNumber ?an ; jogo:alleleFrequency ?af .
+        FILTER(?impact IN ("HIGH", "MODERATE"))
+        OPTIONAL { ?variant jogo:hgvsP ?hgvsP }
+      }
+      ORDER BY DESC(?ac)
+    verified: {row_count: 4, has_values: ["p.Glu504Lys", "c.1510G>A"], date: "2026-10-09"}
+    teaches: >
+      region → jogo:gHaplotype → jogo:hasVariant is THE route to "all variants of a gene" (ALDH2: 628);
+      jogo:annotationImpact is a four-value controlled vocabulary (HIGH / MODERATE / LOW / MODIFIER).
+      A jogo:Variant carries snpEff annotation, HGVS.c/.p and AC / AN / AF for that region.
+    traps_avoided:
+      - say: >
+          DISTINCT is mandatory: the same variant sits on many haplotypes (ALDH2: 10,208 hasVariant links for 628 variants).
+        check:
+          kind: count
+          date: "2026-10-09"
+          query: |
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT (COUNT(?v) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> { <http://jogo.csml.org/rdf/gene/ALDH2> jogo:gHaplotype ?h . ?h jogo:hasVariant ?v } }
+          expect: {value: 10208, tolerance: 0}
+      - "jogo:hasVariant exists on A / C / T / G haplotypes only — composite AC / ACT / ACTG haplotypes have none; go through their jogo:aHaplotype … jogo:gHaplotype components."
+      - "jogo:hgvsP is present on 1.7% of variants (coding only): a required pattern silently restricts the result to coding changes."
+      - say: >
+          The 872 chrX / chrY regions have haplotypes, frequencies and sample phases but NO variants: none
+          of their 104,995 G haplotypes carries jogo:hasVariant. An empty variant list there is a data gap,
+          not an invariant gene.
+        check:
+          kind: zero_rows
+          date: "2026-10-09"
+          query: |
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT ?v WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+              ?r a jogo:GeneRegion ; jogo:regionName ?rn ; jogo:gHaplotype ?h . ?h jogo:hasVariant ?v .
+              FILTER(REGEX(?rn, "_chr[XY]_")) } } LIMIT 1
+
+  - id: variant_carriers_by_population
+    intent: from a named protein change to the phased sample haplotypes and populations that carry it
+    question: "Which populations carry ALDH2 p.Glu504Lys, on how many haplotypes and in how many individuals?"
+    complexity: advanced
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?pop (COUNT(DISTINCT ?sh) AS ?carrierHaplotypes) (COUNT(DISTINCT ?s) AS ?carrierSamples)
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        <http://jogo.csml.org/rdf/gene/ALDH2> jogo:gHaplotype ?h .
+        ?h jogo:hasVariant ?v . ?v jogo:hgvsP "p.Glu504Lys" .
+        ?h jogo:hasSampleHaplotype ?sh . ?sh jogo:sample ?s .
+        ?s jogo:population ?p . ?p dct:identifier ?pop .
+      }
+      GROUP BY ?pop ORDER BY DESC(?carrierHaplotypes)
+    verified: {row_count: 3, has_values: ["JPT", 21, "CHS"], date: "2026-10-09"}
+    teaches: >
+      Carrier chain: G haplotype —jogo:hasVariant→ variant, and the same haplotype
+      —jogo:hasSampleHaplotype→ SampleHaplotype (one phase of one person) —jogo:sample→ Sample
+      —jogo:population→ Population. carrierHaplotypes = carrierSamples means every carrier is heterozygous.
+    traps_avoided:
+      - say: >
+          Use the G (gene-body) level for carriers. A / C / T haplotypes each merge many gene-body
+          sequences and list the UNION of their variants, so a coarser level over-counts carriers:
+          12-111766623-A-G (AC 225) has 225 carrier phases via gHaplotype but 335 via aHaplotype.
+        check:
+          kind: ratio
+          date: "2026-10-09"
+          numerator: |
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT (COUNT(DISTINCT ?sh) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+              ?h jogo:hasVariant <http://jogo.csml.org/rdf/variant/ALDH2:12-111766623-A-G> ; a jogo:AHaplotype ;
+                 jogo:hasSampleHaplotype ?sh } }
+          denominator: |
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT (COUNT(DISTINCT ?sh) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+              ?h jogo:hasVariant <http://jogo.csml.org/rdf/variant/ALDH2:12-111766623-A-G> ; a jogo:GHaplotype ;
+                 jogo:hasSampleHaplotype ?sh } }
+          expect: {ratio: 1.489, tolerance: 0.02}
+      - "Anchor the gene region: an HGVS.p string carries no gene, so an un-anchored match can return the same notation from another region (including the gene's own MANE Plus Clinical twin)."
+
+  - id: phased_denominator
+    intent: count how many haplotypes and individuals are actually phased at a gene, per population
+    question: "How many phased ALDH2 haplotypes does each population contribute (the denominator for a frequency)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?pop (COUNT(DISTINCT ?sh) AS ?phasedHaplotypes) (COUNT(DISTINCT ?s) AS ?samples)
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        <http://jogo.csml.org/rdf/gene/ALDH2> jogo:aHaplotype ?h .
+        ?h jogo:hasSampleHaplotype ?sh . ?sh jogo:sample ?s .
+        ?s jogo:population ?p . ?p dct:identifier ?pop .
+      }
+      GROUP BY ?pop ORDER BY DESC(?phasedHaplotypes) ?pop
+    verified: {row_count: 21, has_values: ["JPT", 120, 60], date: "2026-10-09"}
+    teaches: >
+      Every SampleHaplotype belongs to exactly one haplotype at each of the seven levels, so any single
+      level (here A) enumerates the region's phased copies once. Divide a per-population carrier or
+      haplotype count by this, e.g. p.Glu504Lys in JPT = 21 / 120.
+
+  - id: sample_diplotype
+    intent: read the two phased haplotypes one individual carries at a gene
+    question: "Which ALDH2 haplotypes does sample NA18946 carry on each phase?"
+    complexity: basic
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?phase ?level ?hapId ?length
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        VALUES ?phase { <http://jogo.csml.org/rdf/sample/ALDH2:NA18946.hp1>
+                        <http://jogo.csml.org/rdf/sample/ALDH2:NA18946.hp2> }
+        ?h jogo:hasSampleHaplotype ?phase ; a ?level ; dct:identifier ?hapId ; jogo:sequenceLength ?length .
+        FILTER(?level IN (jogo:AHaplotype, jogo:ACTGHaplotype))
+      }
+      ORDER BY ?phase ?level
+    verified: {row_count: 4, has_values: ["ALDH2:a2c2t9g3", "ALDH2:a1"], date: "2026-10-09"}
+    teaches: >
+      SampleHaplotype IRI = http://jogo.csml.org/rdf/sample/<region>:<sampleId>.hp1|hp2 (region = the
+      symbol for MANE Select, the full regionName for Plus Clinical); the edge points FROM the haplotype
+      TO the phase. The ACTG identifier (a2c2t9g3) spells out the component haplotype at every level.
+    traps_avoided:
+      - "http://jogo.csml.org/rdf/sample/NA18946 (no region prefix) is the jogo:Sample — the person — not a phase; it carries only dct:identifier, jogo:population and jogo:group."
+      - "A sample not phased at this gene simply has no SampleHaplotype here (gotcha per_region_denominator); an empty result is not a homozygous-reference call."
+
+  - id: variants_in_genomic_window
+    intent: find variants by GRCh38 coordinate and read both the genomic and the gene-context layer
+    question: "Which variants lie in chr12:111,803,900-111,804,000, and how are they annotated?"
+    complexity: advanced
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX gvo: <http://genome-variation.org/resource/gvo#>
+      PREFIX faldo: <http://biohackathon.org/resource/faldo#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?id ?class ?pos ?ref ?alt ?geneVariant ?annotation ?af
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        ?loc faldo:position ?pos ; faldo:reference ?chr .
+        FILTER(?pos >= 111803900 && ?pos <= 111804000)
+        FILTER(STR(?chr) = "http://identifiers.org/hco/12\\/GRCh38")
+        ?gv faldo:location ?loc ; a ?class ; dct:identifier ?id ; gvo:ref ?ref ; gvo:alt ?alt ;
+            jogo:hasGeneVariant ?geneVariant .
+        ?geneVariant jogo:annotation ?annotation ; jogo:alleleFrequency ?af .
+      }
+      ORDER BY ?pos ?id
+    verified: {row_count: 2, has_values: ["12-111803962-G-A", "missense_variant"], date: "2026-10-09"}
+    teaches: >
+      Two variant layers. The GENOMIC variant (http://jogo.csml.org/rdf/variant/<chr>-<pos>-<ref>-<alt>,
+      typed gvo:SNV / gvo:Ins / gvo:Del / gvo:Indel) holds gvo:ref, gvo:alt, dct:identifier and a
+      faldo:ExactPosition; the GENE-CONTEXT jogo:Variant (…/variant/<region>:<chr>-<pos>-<ref>-<alt>)
+      holds annotation and AF. jogo:hasGeneVariant goes genomic → gene-context, jogo:genomicVariant back.
+    traps_avoided:
+      - "Known coordinates? Skip the range scan and use the IRI directly: <http://jogo.csml.org/rdf/variant/12-111803962-G-A>."
+      - "The chromosome must be compared as a string with the escaped backslash (gotcha chromosome_iri); a position filter alone returns hits from every chromosome."
+      - "Positions are VCF-style left-anchored: an insertion or deletion sits at the base BEFORE the change (ref C, alt CA)."
+
+  - id: variant_across_regions
+    intent: one genomic variant, several gene-context records with different annotation and frequency
+    question: "How is the genomic variant 9-21968200-C-G annotated in each gene region that contains it?"
+    complexity: intermediate
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      SELECT ?geneVariant ?annotation ?impact ?hgvsC ?an ?af
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        <http://jogo.csml.org/rdf/variant/9-21968200-C-G> jogo:hasGeneVariant ?geneVariant .
+        ?geneVariant jogo:annotation ?annotation ; jogo:annotationImpact ?impact ; jogo:hgvsC ?hgvsC ;
+                     jogo:alleleNumber ?an ; jogo:alleleFrequency ?af .
+      }
+      ORDER BY ?geneVariant
+    verified: {row_count: 2, has_values: ["c.*29G>C", "c.*144G>C"], date: "2026-10-09"}
+    teaches: >
+      Annotation, HGVS and even allele frequency are properties of the (variant, region) pair, not of the
+      genomic variant: the same change is c.*29G>C at AF 0.913 in one CDKN2A region and c.*144G>C at
+      0.903 in the other. Always say which region a frequency came from.
+    traps_avoided:
+      - "Counting jogo:Variant counts (variant, region) pairs, which outnumber genomic variants (entity_counts) because overlapping regions each get their own record. Count ?gv — the jogo:hasGeneVariant subject — for distinct genomic changes."
+
+  - id: enum_variants_by_consequence
+    intent: enumerate ALL variants of a consequence class across the database and map each back to its gene
+    question: "Which near-fixed (AF ≥ 0.9) stop-gained variants exist, and in which genes?"
+    complexity: advanced
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?gene ?variant ?annotation ?hgvsP ?af
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        ?variant jogo:annotationImpact "HIGH" ; jogo:annotation ?annotation ; jogo:alleleFrequency ?af .
+        FILTER(CONTAINS(?annotation, "stop_gained") && ?af >= 0.9)
+        OPTIONAL { ?variant jogo:hgvsP ?hgvsP }
+        ?h jogo:hasVariant ?variant ; a jogo:AHaplotype .
+        ?region jogo:aHaplotype ?h ; rdfs:label ?gene .
+      }
+      ORDER BY DESC(?af) ?variant
+    verified: {row_count: 6, has_values: ["FMO2", "p.Gln472*", "GPR33"], date: "2026-10-09"}
+    teaches: >
+      Set-level route: start from the controlled vocabulary on the variant (jogo:annotationImpact, then
+      jogo:annotation), filter, and only then walk variant ← jogo:hasVariant ← haplotype ←
+      jogo:aHaplotype ← region to name the gene. The 6,467 HIGH-impact variants make the selective anchor.
+    traps_avoided:
+      - "jogo:annotation holds snpEff strings that are often '&'-joined (\"stop_gained&splice_region_variant\", \"frameshift_variant&stop_gained\"); see agg_consequence_count for the size of the miss with an exact match."
+      - "Restrict the back-walk to ONE level (a jogo:AHaplotype); without it each variant is reached through four levels and thousands of haplotypes before DISTINCT."
+
+  - id: agg_consequence_count
+    intent: count variants of a consequence class (the compound-annotation-safe recipe)
+    question: "How many stop-gained variant records does JoGo contain?"
+    complexity: aggregation
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      SELECT (COUNT(DISTINCT ?variant) AS ?n)
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        ?variant jogo:annotationImpact "HIGH" ; jogo:annotation ?annotation .
+        FILTER(CONTAINS(?annotation, "stop_gained"))
+      }
+    verified: {n: 2601, date: "2026-10-09"}
+    teaches: >
+      Graph-pin + COUNT(DISTINCT) on the gene-context variant, narrowed first by the impact tier that
+      contains the consequence so CONTAINS scans 6,467 rows instead of 16.3 million.
+    traps_avoided:
+      - say: >
+          An exact match on jogo:annotation "stop_gained" returns 2,306 — it drops the 295 records whose
+          annotation is a compound string. The same holds for "missense_variant": 146,219 exact vs
+          149,468 containing it.
+        check:
+          kind: count
+          date: "2026-10-09"
+          query: |
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT (COUNT(DISTINCT ?v) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/jogo> {
+              ?v jogo:annotation "stop_gained" } }
+          expect: {value: 2306, tolerance: 0.02}
+      - "The figure counts (variant, region) records; a variant in two overlapping regions is counted twice (example variant_across_regions)."
+
+  - id: agg_protein_diversity_ranking
+    intent: rank gene regions by number of distinct protein haplotypes
+    question: "Which genes show the most distinct protein sequences across the cohort?"
+    complexity: aggregation
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      SELECT ?regionName (COUNT(DISTINCT ?a) AS ?proteinHaplotypes)
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE { ?region a jogo:GeneRegion ; jogo:regionName ?regionName ; jogo:aHaplotype ?a . }
+      GROUP BY ?regionName ORDER BY DESC(?proteinHaplotypes) ?regionName LIMIT 10
+    verified: {min_rows: 10, has_values: ["EPPK1_chr8_143852324_143883467", 306], date: "2026-10-09"}
+    teaches: >
+      Group by jogo:regionName (unique per region), not rdfs:label, so a gene's two MANE regions are not
+      merged. The same shape with cHaplotype / gHaplotype ranks coding or whole-gene diversity.
+
+  - id: cohort_composition
+    intent: describe the sample cohort — populations, super-populations, sequencing groups
+    question: "How many samples does each super-population contribute?"
+    complexity: basic
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT ?superPop (COUNT(DISTINCT ?pop) AS ?populations) (COUNT(DISTINCT ?s) AS ?samples)
+      FROM <http://rdfportal.org/dataset/jogo>
+      WHERE {
+        ?s a jogo:Sample ; jogo:population ?pop .
+        ?pop jogo:superPopulation ?sp . ?sp dct:identifier ?superPop .
+      }
+      GROUP BY ?superPop ORDER BY DESC(?samples)
+    verified: {row_count: 5, has_values: ["EAS", 130, "EUR", 9], date: "2026-10-09"}
+    teaches: >
+      Population IRI = http://jogo.csml.org/rdf/population/<1000 Genomes code>; dct:identifier is the
+      code, rdfs:label the full name, jogo:sampleSize the JoGo sample count, jogo:superPopulation the
+      continental group (AFR / AMR / EAS / EUR / SAS, typed jogo:SuperPopulation).
+    traps_avoided:
+      - "jogo:group on a Sample is multi-valued (\"JoGo_JPT_HPRC\" on all 258, \"JoGo_JPT\" on 105, \"1KG_ONT_VIENNA\" on 45) — selecting it fans a sample out to several rows."
+      - "The cohort is heavily Japanese (JPT 105 of 258) and has only 9 Europeans; an all-sample jogo:alleleFrequency is not a global frequency."
+      - "CEU, ITU and MXL exist as populations without samples or sampleSize; a population coded \"USA\" (2 samples) is filed under AFR."
+
+  - id: xdb_hgnc
+    intent: "cross-DB: JoGo gene region -> HGNC gene record (cytoband, UniProt, NCBI Gene) via the shared HGNC IRI"
+    question: "For the genes in cytoband 12q24.12, how many distinct protein haplotypes does each have, with UniProt and NCBI Gene IDs?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT ?regionName ?symbol ?band ?uniprot ?ncbigene (COUNT(DISTINCT ?a) AS ?proteinHaplotypes)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/jogo> {
+          ?region a jogo:GeneRegion ; jogo:regionName ?regionName ; jogo:maneStatus "MANE Select" ;
+                  rdfs:seeAlso ?hgnc ; jogo:aHaplotype ?a .
+        }
+        GRAPH <http://rdfportal.org/dataset/hgnc> {
+          ?hgnc rdfs:label ?symbol ; obo:so_part_of ?band ; rdfs:seeAlso ?u , ?n .
+          ?u a <http://identifiers.org/uniprot> ; dct:identifier ?uniprot .
+          ?n a <http://identifiers.org/ncbigene> ; dct:identifier ?ncbigene .
+          FILTER(STRSTARTS(?band, "12q24.12"))
+        }
+      }
+      GROUP BY ?regionName ?symbol ?band ?uniprot ?ncbigene ORDER BY DESC(?proteinHaplotypes) ?symbol
+    verified: {row_count: 7, has_values: ["ATXN2", "P05091", "Q99700"], date: "2026-10-09"}
+    teaches: >
+      The region's rdfs:seeAlso <http://identifiers.org/hgnc/N> is the HGNC gene IRI itself — a direct
+      two-GRAPH join, no TogoID and no symbol matching. HGNC then supplies cytoband (obo:so_part_of) and
+      typed xref nodes (rdfs:seeAlso → a <http://identifiers.org/uniprot|ncbigene> ; dct:identifier).
+    traps_avoided:
+      - "Pin BOTH graphs. With the HGNC leg unpinned, rdfs:label on the HGNC IRI doubles (ontology/mondo re-declares it)."
+      - "Keep jogo:maneStatus \"MANE Select\" or the 35 two-region genes appear twice; 49 regions have no HGNC xref and drop out of the join."
+
+schema_delta:
+  - "skos:altLabel on every haplotype = the zero-padded form used by the JoGo website (\"ALDH2:a0002c0002\"); dct:identifier is the short form (\"ALDH2:a2c2\")."
+  - "foaf:page on regions and haplotypes → the jogo.csml.org web page (gene?genename=<regionName>, haplotype_detail?hapid=…&regionname=…)."
+  - "A composite haplotype points at its components with the SAME predicates a region uses for its catalogue: <ALDH2:a1c1t100g47> jogo:aHaplotype <ALDH2:a1> ; jogo:cHaplotype <ALDH2:c1> ; jogo:tHaplotype <ALDH2:t100> ; jogo:gHaplotype <ALDH2:g47>. So `?x jogo:aHaplotype ?a` matches regions AND composites — type ?x."
+  - "jogo:totalCount on a haplotype = copies observed overall; jogo:maneVersion on a region = \"v1.2\" throughout; dct:description on a region = the full gene name."
+  - "Genomic variant rdfs:seeAlso <http://identifiers.org/hco/<chr>/GRCh38#<pos>-<ref>-<alt>> (no backslash here) is the TogoVar variant IRI; nothing else on THIS endpoint declares it."
+  - "Population rdfs:seeAlso → https://www.internationalgenome.org/data-portal/population/<code>."
+
+id_join_map:
+  stable_anchor: >
+    Gene region http://jogo.csml.org/rdf/gene/<SYMBOL> (MANE Select; rdfs:label = HGNC symbol, exact and
+    plain) or …/gene/<SYMBOL>_chr<N>_<start>_<end> (MANE Plus Clinical). Haplotype
+    …/rdf/haplotype/<region>:<levelId> (a1, c2, t9, g3, a2c2, a2c2t9, a2c2t9g3). Gene-context variant
+    …/rdf/variant/<region>:<chr>-<pos>-<ref>-<alt>; genomic variant …/rdf/variant/<chr>-<pos>-<ref>-<alt>
+    (GRCh38, no "chr"). Sample …/rdf/sample/<1000G id>; phase …/rdf/sample/<region>:<id>.hp1|hp2.
+    Population …/rdf/population/<code>.
+  same_endpoint_joins:
+    hgnc: "GeneRegion rdfs:seeAlso <http://identifiers.org/hgnc/N> == the gene IRI in GRAPH <http://rdfportal.org/dataset/hgnc> (19,145 of 19,194 regions; example xdb_hgnc). From HGNC, typed xref nodes reach UniProt, NCBI Gene, OMIM, Orphanet."
+  xrefs:
+    ensembl: "GeneRegion rdfs:seeAlso <http://identifiers.org/ensembl/ENSG…> — all 19,194 regions; version-less gene ID"
+    hco: "faldo:reference <http://identifiers.org/hco/<chr>\\/GRCh38> (backslash — string-compare only) and genomic-variant rdfs:seeAlso <…/hco/<chr>/GRCh38#<pos>-<ref>-<alt>>"
+    togovar: "genomic-variant rdfs:seeAlso <http://identifiers.org/hco/<chr>/GRCh38#<pos>-<ref>-<alt>> equals the `variant_iri` that togovar_search_variant(chromosome=, position=) returns (checked on 12:111803962 G>A → tgv47264307) — the route to ClinVar significance, gnomAD / ToMMo frequencies and SIFT / PolyPhen, none of which are in JoGo. TogoVar is a different endpoint: no SPARQL join"
+    1000genomes: "Sample dct:identifier = the 1000 Genomes / Coriell ID (NA18946, HG00099); Population dct:identifier = the 1000 Genomes population code"
+  bridged_via_togoid:
+    - "hgnc or ensembl_gene → uniprot, ncbigene, refseq, omim, togovar … via togoid_convertId, starting from the IDs in the region's rdfs:seeAlso"

@@ -13,6 +13,26 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+<!-- whatsnew: 2026-10-09 | Two new databases: <code>jogo</code> — phased human gene haplotypes from 258 long-read genomes, with per-population counts and annotated variants — and <code>tismed</code> — 3,347 genes and 1,930 proteins called tissue-specific across independent transcriptome and proteome datasets. -->
+
+### Added
+
+- **New database `jogo` (JoGo).** Phased human gene haplotypes from 258 long-read genomes across
+  1000 Genomes populations: 19,194 gene regions catalogued at protein, CDS, transcript and
+  gene-body level, per-population haplotype counts, the sample phases that carry each haplotype,
+  and 16.3 million snpEff-annotated variant records with allele frequencies on GRCh38. It answers
+  "which protein sequences of this gene exist, and in whom" — something no variant-frequency
+  database on the server can, because those lose phase. Joins to `hgnc` on the same endpoint,
+  and its variant IRIs equal the `variant_iri` that `togovar_search_variant` returns.
+- **New database `tismed` (TiSMeD).** 3,347 human genes and 1,930 proteins called
+  tissue-specific by agreement across independent transcriptome and proteome datasets, each
+  linked to a tissue, organ or organ system with a confidence score, a specificity score and a
+  supporting-dataset count. The graph holds no gene symbols; the MIE shows the join to `hgnc`
+  that supplies them, and the join to UBERON for anatomy.
+
+Both reach every client without a tool-list refresh: `database` is validated server-side and
+the catalog ships inside `TogoMCP_Usage_Guide`.
+
 ### Fixed
 
 - **`togovar_search_variant` returns `genes`, `rs` and `clinvar` again.** The TogoVar REST API
