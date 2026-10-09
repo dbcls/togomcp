@@ -34,6 +34,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   abort at the first checker that found drift, before it could file the issue or print the
   report, so four sweeps ended as a bare failure with no findings. A measurement that times
   out is also no longer counted as drift.
+- **`reactome` and `chebi` examples re-measured.** Reactome moved from BioPAX export 95 to 97,
+  which renumbered every entity IRI as the file warns it will; the stable-ID example no longer
+  asserts one. The Reactome→ChEMBL example had `ORDER BY` on phase alone with `LIMIT 10`, so
+  the ten rows it returned were arbitrary; it now has a total order. ChEBI's amino-acid
+  subclass count is 1,669 (was 1,577).
 
 ## [2.23.3] - 2026-10-09
 
