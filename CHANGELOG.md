@@ -34,6 +34,11 @@ changed; only the explanatory text did.
   sums exceed it, adding labels (Pathogenic + Likely pathogenic) double-counts
   variants that carry both, and labels you did not filter on can appear.
 - The tutorial's TogoVar exercise was rebuilt on the new units in #262.
+- **PubCaseFinder MIE:** the `absent_phenotypes_as_present` gotcha now says the
+  converter was fixed upstream (PubCaseFinder/pubcasefinder-rdf#8, 2026-10-09) but
+  RDF Portal still serves the old conversion, so the workaround still applies. Its
+  live check will fail when the corrected data is loaded, which is the cue to
+  retire the gotcha.
 
 ## [2.25.0] - 2026-10-09
 
