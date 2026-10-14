@@ -13,6 +13,21 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.25.2] - 2026-10-14
+
+The landing page's trial chat switches to a larger model. PATCH: no tool,
+parameter or return shape changed. The served intro pages are the only runtime
+artifacts that differ from 2.25.1.
+
+### Changed
+
+- **The trial chat now runs on `gpt-oss-120b`** (was `qwen3-8-27b-fast`; 6069b40, by @yayamamo).
+  The landing-page widget calls TogoMCP through `hub.aibranch.org`, so the model it names decides
+  how well a visitor's first questions are answered. A larger open-weight model should plan and
+  chain tool calls more reliably within the per-question round limit. The tool surface is
+  unchanged. The 2.24.0 note that the chat runs on "a smaller model than the assistants the rest
+  of the page describes" still applies, though the gap is narrower now.
+
 ## [2.25.1] - 2026-10-14
 
 `togovar_search_variant` now explains its `stat=True` breakdowns correctly. When
@@ -288,7 +303,7 @@ first.
 
 - **Anonymous trial chat on the landing page** (#251, by @yayamamo). A "Try TogoMCP chat" panel
   under the hero opens a chat widget that answers with the live TogoMCP tools. No sign-in. Each
-  conversation allows four submissions (`max-exchanges`) and four LLM/tool rounds per submission
+  conversation allows four submissions (`max-exchanges`) and up to ten LLM/tool rounds per submission
   (`max-rounds`). The count survives a reload, Clear starts a new conversation, and failed or
   cancelled submissions count too.
 - **The chat depends on an external service.** The widget talks to the public hub at
@@ -3330,7 +3345,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.2...HEAD
+[2.25.2]: https://github.com/dbcls/togomcp/compare/v2.25.1...v2.25.2
 [2.25.1]: https://github.com/dbcls/togomcp/compare/v2.25.0...v2.25.1
 [2.25.0]: https://github.com/dbcls/togomcp/compare/v2.24.0...v2.25.0
 [2.24.0]: https://github.com/dbcls/togomcp/compare/v2.23.3...v2.24.0

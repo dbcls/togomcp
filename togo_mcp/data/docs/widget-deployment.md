@@ -35,7 +35,7 @@ A static web server ignores the variable: delete the three regions by hand there
 ## Configuration
 
 Both pages select all active TogoMCP tools initially. Visitors can deselect tools.
-The configured model is `qwen3-8-27b-fast`; choose another tool-capable model if
+The configured model is `gpt-oss-120b` (set in the `model` attribute on both pages); choose another tool-capable model if
 hub availability changes. `max-exchanges="4"` limits user submissions per
 conversation. Set a positive integer such as `2` to change it. The widget shows
 remaining submissions and disables input when exhausted. Reload preserves the

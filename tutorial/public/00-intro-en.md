@@ -59,9 +59,9 @@ The text is full of **actual results**: accession numbers, counts, resolutions. 
 
 | | |
 |---|---|
-| Dates | 2026-08-20 (initial) / 2026-08-21 (everything re-measured and corrected) |
+| Dates | 2026-08-20 (initial) / 2026-08-21 (everything re-measured and corrected) / 2026-10-01 and 2026-10-14 (re-checked against live data as TogoMCP was updated) |
 | Model | Session configured as `claude-opus-5` and as `claude-sonnet-5`, both measured |
-| Server | Hosted instance, `https://togomcp.rdfportal.org/mcp` |
+| Server | Hosted instance, `https://togomcp.rdfportal.org/mcp` (around 2.9 in August, 2.25.0 on 10-14) |
 | Language | Prompts in Japanese |
 
 **And when you run the same queries, your numbers will be different.**
