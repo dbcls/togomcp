@@ -30,7 +30,7 @@ TogoMCP は、この 3 つを AI アシスタント側に肩代わりさせる�
 
 **SPARQL** は、この 3 つ組に対する問い合わせ言語です。表に対する SQL にあたります。
 
-3 つ組の「インスリン」や「ヒト」は、実際には日本語ではなく `http://purl.uniprot.org/uniprot/P01308` のような **URL の形をした名前**で書かれています。これを **IRI** と呼びます。**IRI は名前であって、リンク先ではありません。** クリックして開くためではなく、**同じものを世界中で同じ名前で呼ぶため**にあります。UniProt の言う「ヒト」と PDB の言う「ヒト」が同じ IRI なら、両者は機械的に繋がります。
+3 つ組の「インスリン」や「ヒト」は、実際には日本語ではなく `http://purl.uniprot.org/uniprot/P01308` のような **URL の形をした名前**で書かれています。これを **IRI** と呼びます。**IRI はリンクに見えますが、役目は名前です。** 開けるものもありますが、それが目的ではなく、**同じものを世界中で同じ名前で呼ぶため**にあります。UniProt の言う「ヒト」と PDB の言う「ヒト」が同じ IRI なら、両者は機械的に繋がります。
 
 最後に **グラフ**。1 つのデータベースの中で 3 つ組を入れておく**仕切り**のことです。1 つの置き場に複数のデータセットが同居していることがあり、**仕切りを指定し忘れると、隣のデータセットの行まで拾ってしまいます。** 第 3 章で実際にやってみます。
 
@@ -59,16 +59,17 @@ TogoMCP は、この 3 つを AI アシスタント側に肩代わりさせる�
 
 一言でいうと：
 
-> **RDF Portal を中心とする 45 の生命科学データベースを、自然言語で問い合わせられるようにする MCP サーバ**
+> **RDF Portal を中心とする 47 の生命科学データベースを、自然言語で問い合わせられるようにする MCP サーバ**
 
 | 分野 | データベース |
 |---|---|
 | タンパク質・プロテオミクス | UniProt, PDB, jPOST |
-| 遺伝子・ゲノム | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase |
+| 遺伝子・ゲノム | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase, JoGo |
 | 化学 | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM |
 | 脂質 | LIPID MAPS, SwissLipids |
 | パスウェイ | Reactome, WikiPathways |
 | 疾患・臨床 | ClinVar, MedGen, MONDO, NANDO, PubCaseFinder |
+| 発現 | TiSMeD（組織特異的な遺伝子・タンパク質） |
 | 文献 | PubMed, PubTator |
 | 微生物 | BacDive, MediaDive, AMR Portal, NBRC |
 | 糖鎖 | GlyCosmos |
@@ -76,7 +77,7 @@ TogoMCP は、この 3 つを AI アシスタント側に肩代わりさせる�
 | 分類 | NCBI Taxonomy |
 | 材料科学 | SuperCon |
 
-（2026-10-01 時点。このほか試験運用中のものが 1 つあります。2026-08 の時点では 37 でした。DB は今後も増えます。最新の一覧は接続して「どんなデータベースが使える？」と聞くのが確実です）
+（2026-10-14 時点。このほか試験運用中のものが 1 つあります。2026-08 の時点では 37、10-01 には 45 でした。DB は今後も増えます。最新の一覧は接続して「どんなデータベースが使える？」と聞くのが確実です）
 
 日本発のデータベース（TogoVar、jPOST、GlyCosmos、NBRC、MoG+、NANDO、MediaDive、PubCaseFinder）が揃っている点は、他では代えがきかない特徴です。第 4 章でその価値が具体的に見えます。
 

@@ -55,7 +55,7 @@ Which of them are frequent in the Japanese population?
 
 **(b2)** Get the HGVS notation (`NM_...` / `p....`) out. **It does not come back on the first call.** What do you have to add?
 
-**(c)** Does the number of pathogenic + likely pathogenic variants match the total number of `significance` classification records? **If not, what is each of them counting?**
+**(c)** Does the number of pathogenic + likely pathogenic variants match the sum of the `significance` breakdown? **If not, what is each of them counting?**
 
 **(d)** How much did the frequencies differ between the Japanese cohorts and the international cohorts?
 

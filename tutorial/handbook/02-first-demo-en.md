@@ -31,7 +31,7 @@ Function (verbatim from UniProt):
 
 That is the right reaction. You were taught that **insulin is 51 amino acids** (A chain 21 + B chain 30).
 
-110 is the length of the **preproinsulin precursor**. Signal peptide (24) + B chain (30) + C peptide (31) + A chain (21) + the cleavage sites. What P01308 in UniProt points at is the translation product, not the mature hormone circulating in your blood. That is why the name in the answer says `[Cleaved into: Insulin B chain; Insulin A chain]`.
+110 is the length of the **preproinsulin precursor**. Signal peptide (24) + B chain (30) + C peptide (31) + A chain (21) + 4 residues cut out at the cleavage sites. What P01308 in UniProt points at is the translation product, not the mature hormone circulating in your blood. That is why the name in the answer says `[Cleaved into: Insulin B chain; Insulin A chain]`.
 
 **This is the first thing you learn in this tutorial.**
 
@@ -94,7 +94,7 @@ In Demo 1, this was the order of operations.
 
 ### What we want you to notice
 
-**Step 1 runs every single time you say something.** Not once at the start of the session.
+**Step 1 is designed to run every single time you say something.** Not once at the start of the session. (Whether the model complies every time is another matter — Chapter 4's failure demo shows a run where it is never called.)
 
 > **📖 Terminology: "turn"**
 >
@@ -113,7 +113,7 @@ In Demo 1, this was the order of operations.
 
 This is by design — the tool description says explicitly "call this every turn, before any other tool," on the premise that **nothing from the previous turn's work carries over**.
 
-The guide itself is **58,118 characters** (as of 2026-10-01; five English markdown files concatenated; a rough estimate of 14,000–17,000 tokens). It grows with the database catalog each time a database is added (it was 44,570 characters in 2026-08). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.
+What arrives every time is the guide's **core, 34,123 characters** (2026-10-14, TogoMCP 2.25.0; five English markdown files plus the list of workflows, concatenated; a rough estimate of 8,000–10,000 tokens). Detail such as federated queries and the full troubleshooting table lives in six reference files that are fetched with `get_workflow` only when needed. The core grows with the database catalog each time a database is added (history: 44,570 characters in August 2026; 58,118 on 10-01 under 2.21, before the guide was split). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.
 
 > 💡 If you have KEGG enabled in a local installation, the KEGG section is added and it grows further.
 

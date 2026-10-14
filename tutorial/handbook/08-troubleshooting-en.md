@@ -158,7 +158,7 @@ The SPARQL endpoint is not responding. Can you answer the same question using on
 
 | Question | How to answer |
 |---|---|
-| "How many tokens does it use?" | The usage guide is **re-read on every message** (once per round trip, no matter how many times tools are called; it is designed that way). It is 58,118 characters (2026-10-01) ≒ 14,000–17,000 tokens (rough estimate). It accumulates over a long conversation |
+| "How many tokens does it use?" | The usage guide is **designed to be re-read on every message** (once per round trip, no matter how many times tools are called; it is designed that way). The core that arrives each time is 34,123 characters (2026-10-14) ≒ 8,000–10,000 tokens (rough estimate); the detail sits in reference files fetched only when needed. It accumulates over a long conversation |
 | "Does it work on the free plan?" | It does. On Free you get one custom connector |
 | "What about KEGG?" | Local stdio only. Because of the licence conditions for academic use (→ [appendix](99-appendix-local-install-en.md)) |
 | "Is my own data sent anywhere?" | The question text, and the query where needed, are passed to the server. Tell people not to paste sensitive data |

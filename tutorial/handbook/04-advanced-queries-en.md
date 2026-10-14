@@ -35,10 +35,12 @@ So it proceeds to `get_MIE_file("pdb")` → `run_sparql`. This is one of the few
 | 4 | 9HJH | 1.20 | compound 1 bound to Mpro |
 | 5 | 7GBE | 1.224 | COVID Moonshot — JAG-UCB-a3ef7265-20 |
 | 6 | 7GEH | 1.23 | COVID Moonshot — EDJ-MED-06d94977-2 |
-| 7 | 9HAK | 1.25 | compound 119 bound to Mpro |
-| 8 | 9RJ5 | 1.25 | SARS-CoV-2 with a bound inhibitor |
-| 9 | 6YB7 | 1.25 | unliganded active site |
-| 10 | 7GBT | 1.25 | COVID Moonshot — BEN-DND-7e92b6ca-2 |
+| 7 | 6YB7 | 1.25 | unliganded active site |
+| 8 | 7GBT | 1.25 | COVID Moonshot — BEN-DND-7e92b6ca-2 |
+| 9 | 7GEC | 1.25 | COVID Moonshot — VLA-UCB-00f2c2b3-7 |
+| 10 | 7JKV | 1.25 | complex with inhibitor GRL-2420 |
+
+Ranks 7–10 are **4 of the 6 entries tied at 1.25 Å**. `ORDER BY ?res` alone leaves ties unordered, so they reshuffle from run to run (9HAK and 9RJ5 sometimes make the cut). The query uses `?entry_id` as a second sort key to fix the order (checked 2026-10-14).
 
 You can also get the breakdown by method: **X-ray 1,799 / cryo-EM 25 / neutron 4 / solution NMR 3 / electron crystallography 1** (1,832 total, measured 2026-08-21).
 
@@ -64,7 +66,7 @@ WHERE {
   OPTIONAL { ?entry dc:title ?title }
 }
 GROUP BY ?entry_id ?res
-ORDER BY ?res
+ORDER BY ?res ?entry_id
 LIMIT 10
 ```
 
@@ -94,7 +96,7 @@ This requires connecting UniProt (function and localization annotations) with Ch
 |---|---|---|---|
 | **GLA** | migalastat | **STABILISER** | A pharmacological chaperone for Fabry disease. **Within these 52, the only case that targets the causative enzyme of a lysosomal disease itself** |
 | **GAA** | miglitol, voglibose | INHIBITOR | The intent is not Pompe disease but **type 2 diabetes** (inhibition of intestinal α-glucosidase) |
-| **PDGFRB** | imatinib, sunitinib and 11 others | INHIBITOR | A receptor tyrosine kinase. **Not a lysosomal enzyme** |
+| **PDGFRB** | 11 drugs incl. imatinib, sunitinib | INHIBITOR (becaplermin: AGONIST) | A receptor tyrosine kinase. **Not a lysosomal enzyme** |
 
 > 💡 **An easy confusion.** In ChEMBL, the drug carrying an indication for Pompe disease (Glycogen Storage Disease Type II) is **miglustat**, not miglitol. The names are similar.
 
@@ -104,7 +106,7 @@ Set PDGFRB aside and here is what can be read off.
 
 > **Within these 52, the only approved small molecule aimed directly at a lysosomal enzyme was migalastat for GLA.** The two GAA drugs are diabetes drugs with a different indication.
 >
-> That is not surprising. **Lysosomal diseases are treated by "replacing" the enzyme, not by "inhibiting" it.**
+> That is not surprising. **Lysosomal diseases are treated by replacing the enzyme, reducing its substrate or stabilizing it with a chaperone — never by inhibiting the causative enzyme.**
 
 > ⚠️ **Be careful how you say this.** It is **not** a claim that migalastat is the only such drug in the world. It is a **measurement**: "cross-referencing the 52 human reviewed enzymes carrying GO:0043202 against approved drugs in ChEMBL produced this." Generalize past that scope and you are doing to yourself exactly what this tutorial warns against in Chapter 7.
 
@@ -135,7 +137,7 @@ Eliglustat is a UGCG inhibitor too, but **you have to cross-check that in the li
 
 How you define "lysosomal enzyme" makes the answer **an entirely different thing**.
 
-Take UniProt's keyword **KW-0458 "Lysosome"** at face value and 161 proteins match. But that is **a subcellular-localization keyword, not "lysosomal enzyme."** In come INSR (the insulin receptor), PDGFRB, MTOR, PCSK9, LRRK2, and about 20 RAB GTPases.
+Take UniProt's keyword **KW-0458 "Lysosome"** at face value and 161 proteins match even counting only those with an EC number (442 carry the keyword in all). But that is **a subcellular-localization keyword, not "lysosomal enzyme."** In come INSR (the insulin receptor), PDGFRB, MTOR, PCSK9, LRRK2, and a dozen or so RAB GTPases.
 
 The approved-drug side then looks like this:
 
@@ -143,7 +145,7 @@ The approved-drug side then looks like this:
 
 Put that under the heading "approved drugs targeting lysosomal enzymes" and in a room of biologists you would be called out within seconds.
 
-**Narrowing by EC number to `3.*` (hydrolases) does not fix it either.** 113 of the 161 survive. RAB GTPases are EC 3.6.5.2 — respectable hydrolases.
+**Narrowing by EC number to `3.*` (hydrolases) does not fix it either.** 114 of the 161 survive. RAB GTPases are EC 3.6.5.2 — respectable hydrolases.
 
 **The fix that worked was switching to a GO term.**
 
@@ -177,7 +179,7 @@ PDGFRB genuinely carries GO:0043202. **A localization annotation ≠ a functiona
 
 **Q. It looks like the same drug appears twice?**
 
-Because salt forms are registered as separate molecules (migalastat / its hydrochloride, sunitinib / its malate). **Row count ≠ drug count.** There are 16 rows and 14 drugs, but effectively 12 active ingredients.
+Because salt forms are registered as separate molecules (migalastat / its hydrochloride, sunitinib / its malate). **Row count ≠ drug count.** There are 16 rows, but merging each salt form with its parent leaves 14 drugs.
 
 ### ⚠️ The query you must not write
 
@@ -296,7 +298,7 @@ human genes associated with that disease as a table — the top 20, ordered by s
 association — stating the source database and field names. Cross-check the counts with COUNT.
 ```
 
-**Measured at 182 s, with 8 tool calls. Roughly 15× the cost.**
+**Measured at 182 s, with 8 tool calls. Roughly 15× the cost.** — That run gets as far as cross-checking one gene, TP53 (step 4 below). The **re-ranking of all top-20 genes by a full count comes from a second run of the same prompt**, which took **369 s, 13 tool calls and 8 SPARQL queries (one of which timed out) — roughly 30×**. Both runs drew the same 20,000-row sample, so their sample ranks agree.
 
 ### What changed
 
@@ -340,7 +342,7 @@ The value on the sample (1,581) and the strict value (32,597) are **off by about
 
 The sample is 20,000 out of 236,144 = **8.47%**. Under a uniform sample the full-set value should be **11.81×** the sample value. The measured ratios ran **14.97× to 32.33×**, all 20 genes exceeded the expected value, and the spread between genes was **2.2×**.
 
-As a result, **the ranking actually changed.**
+As a result, **the ranking actually changed** (from here on, the results are from the 369 s run).
 
 | Gene | Rank on the sample | Rank on all rows | |
 |---|---:|---:|---|
@@ -365,9 +367,9 @@ Do not stop here. **The specified version's answer has clear flaws too.**
 
 **(a) Things that are not biological have crept into the top ranks**
 
-- **INS (insulin) at 6th** — co-occurrence via the organ, the pancreas. Insulin turning up in pancreatic cancer papers is a matter of course, not a causal relationship
-- **GAPDH at 16th** — it appears in the Methods section of a great many papers simply because it has served for years as a housekeeping gene used as an internal control
-- **POTEF at 14th** — a primate-specific chimeric gene formed by the fusion of an actin retrogene (UniProt A5A3E0 even names it "Chimeric POTE-actin protein"). Its C-terminal region is highly similar to ACTB, and in mass spectrometry **some peptides assigned to ACTB are reported to be shared with POTEF/POTEE/POTEI/POTEJ**
+- **INS (insulin), 6th on the sample, 16th in full** — co-occurrence via the organ, the pancreas. Insulin turning up in pancreatic cancer papers is a matter of course, not a causal relationship
+- **GAPDH, 16th on the sample, 13th in full** — it appears in the Methods section of a great many papers simply because it has served for years as a housekeeping gene used as an internal control
+- **POTEF, 14th on the sample, 18th in full** — a primate-specific chimeric gene formed by the fusion of an actin retrogene (UniProt A5A3E0 even names it "Chimeric POTE-actin protein"). Its C-terminal region is highly similar to ACTB, and in mass spectrometry **some peptides assigned to ACTB are reported to be shared with POTEF/POTEE/POTEI/POTEJ**
   - ⚠️ **But whether that is "the reason it lands at 14th in pancreatic cancer papers" has not been confirmed.** All we have is a suspicion of identification ambiguity from sequence similarity. **Do not promote a guess into an assertion** — do not do here the very thing this tutorial warns against in Chapter 7
 
 **(b) The genuine drivers are missing**
