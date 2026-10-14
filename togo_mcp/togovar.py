@@ -197,18 +197,25 @@ _MAX_RESPONSE_CHARS = 90_000
 
 # Per-facet counting granularity of the `stat=True` statistics block. ALL four
 # facets ARE scoped to the filtered set (verified live: each responds to the
-# gene/disease/consequence/location filters), but they count at DIFFERENT
-# granularities, so only `type` sums to `filtered`:
-#   - `type`/`dataset` count per variant.
-#   - `consequence` counts per variant-TRANSCRIPT (VEP fan-out): its sum is
-#     `filtered` x mean transcripts/variant, a locus-dependent multiple — ~5-6
-#     for a typical gene (e.g. ALDH2) but 400+ in transcript-dense regions
-#     (e.g. the BRCA1 locus, where one variant has ~460 transcript annotations).
-#   - `significance` counts per variant-CONDITION classification record (a
-#     variant classified under several conditions counts once each).
-# So consequence/significance sums legitimately exceed `filtered` and must NOT
-# be compared to it — but they are not "unscoped" and not whole-database. We
-# ship these caveats alongside the raw numbers as `statistics_caveats`.
+# gene/disease/consequence/location filters), and since TogoVar's 2026-10-09
+# data reload all four count VARIANTS — but a variant can fall under several
+# values of `dataset`, `consequence` and `significance`, so only `type` sums to
+# `filtered`:
+#   - `type` counts each variant once.
+#   - `dataset` counts a variant once per cohort it appears in.
+#   - `consequence` counts a variant once per consequence term found on ANY of
+#     its transcripts. Before the reload it counted per variant-TRANSCRIPT (a
+#     BRCA1-locus variant then weighed ~460); verified 2026-10-14: BRCA1
+#     pathogenic stop_gained gives filtered=652 and stop_gained=652, and
+#     rs421016 (24 transcripts) counts 1 under each of its 4 terms.
+#   - `significance` counts a variant once per classification label found in
+#     ANY of its records (all conditions, all submitters). Before the reload it
+#     counted per variant-CONDITION record; verified 2026-10-14: rs421016 has 15
+#     records but counts 1 each under P, LP, RF and US. Unclassified variants
+#     count under NA.
+# So every consequence/significance value is <= `filtered`, but the SUMS exceed
+# it, and adding labels (P + LP) double-counts variants that carry both. We ship
+# these caveats alongside the raw numbers as `statistics_caveats`.
 _STATISTICS_CAVEATS = {
     "type": (
         "Per-variant count, scoped to the filtered set (values sum to `filtered`)."
@@ -219,18 +226,23 @@ _STATISTICS_CAVEATS = {
         "value is <= it."
     ),
     "consequence": (
-        "Scoped to the filtered set but counted PER VARIANT-TRANSCRIPT (VEP "
-        "consequence fan-out), so the sum = `filtered` x mean transcripts per "
-        "variant — a locus-dependent multiple (~5-6 for a typical gene, 400+ in "
-        "transcript-dense regions like BRCA1). Read each value as 'annotation "
-        "records with this consequence', NOT 'variants'; do NOT compare the sum "
-        "to `filtered`."
+        "Per-variant count scoped to the filtered set: each value is the number "
+        "of variants with that consequence on at least one transcript, so each "
+        "value is <= `filtered`. A variant with different consequences on "
+        "different transcripts counts under each, so the sum exceeds `filtered`. "
+        "Do NOT compare the sum to `filtered`, and do NOT add values together to "
+        "count variants."
     ),
     "significance": (
-        "Scoped to the filtered set but counted PER VARIANT-CONDITION "
-        "classification record (a variant classified under several conditions "
-        "counts once each), so the sum can exceed `filtered`. Do NOT compare the "
-        "sum to `filtered`."
+        "Per-variant count scoped to the filtered set: each value is the number "
+        "of variants carrying that classification in at least one record (any "
+        "condition, any submitter), so each value is <= `filtered`. A variant "
+        "classified differently for different conditions counts under each "
+        "label, so the sum exceeds `filtered` and labels you did not filter on "
+        "(e.g. Uncertain significance under a pathogenic filter) can appear. Do "
+        "NOT compare the sum to `filtered`, and do NOT add labels (e.g. P + LP) "
+        "to count variants: that double-counts variants carrying both. "
+        "Unclassified variants are counted under NA."
     ),
 }
 
@@ -810,14 +822,14 @@ async def search_variant(
     beyond it, so a result set larger than 10,000 cannot be fully paged. Narrow the
     filters until `filtered` <= 10,000 to enumerate one exhaustively.
 
-    STATISTICS SCOPE (stat=True): all facets are scoped to the filtered set, but
-    they count at different granularities. `type` counts per variant (sums to
-    `filtered`); `dataset` per variant-cohort; `consequence` per
-    variant-TRANSCRIPT (VEP fan-out, so its sum is `filtered` x transcripts per
-    variant — ~5-6 for a typical gene, 400+ in transcript-dense loci like
-    BRCA1); `significance` per variant-condition record. So consequence/
-    significance sums exceed `filtered` and must NOT be summed against it (they
-    are not per-variant counts). See `statistics_caveats` for the per-facet rule.
+    STATISTICS SCOPE (stat=True): all facets are scoped to the filtered set and
+    count VARIANTS, but a variant can fall under several values. `type` counts
+    each variant once (sums to `filtered`); `dataset` once per cohort;
+    `consequence` once per consequence term on any of its transcripts;
+    `significance` once per classification label in any of its records (any
+    condition or submitter). So each value is <= `filtered`, but consequence/
+    significance SUMS exceed it, and adding labels (P + LP) double-counts
+    variants that carry both. See `statistics_caveats` for the per-facet rule.
 
     ROUND-TRIP TO SPARQL: use `variant_iri` — it is the subject IRI in the
     `togovar` SPARQL graph and is present on every row except one with a very
