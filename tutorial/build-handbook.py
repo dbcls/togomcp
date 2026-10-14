@@ -121,14 +121,14 @@ PUBLIC_JA_CHAPTERS = [
 #   variant: "workshop" = 講習会向けブロックを残す / "public" = 外す
 DOCS = [
     (ROOT / "handbook" / "togomcp-handbook-ja.html",
-     "TogoMCP チュートリアル", "手順書 ／ 2026-08 版", CHAPTERS, "workshop", "", "ja"),
+     "TogoMCP チュートリアル", "手順書 ／ 2026-10 版", CHAPTERS, "workshop", "", "ja"),
     (ROOT / "instructor" / "fallback" / "fallback-ja.html",
-     "フォールバック素材", "講師用 ／ 採取 2026-08-21", FALLBACK_CHAPTERS, "workshop", "", "ja"),
+     "フォールバック素材", "講師用 ／ 採取 2026-08-21（一部 2026-10-14 再測定）", FALLBACK_CHAPTERS, "workshop", "", "ja"),
     (SERVE_DIR / "tutorial-ja.html",
-     "TogoMCP チュートリアル", "自習用 ／ 2026-08 版", PUBLIC_JA_CHAPTERS, "public",
+     "TogoMCP チュートリアル", "自習用 ／ 2026-10 版", PUBLIC_JA_CHAPTERS, "public",
      '<a class="lang" href="/tutorial">English</a>', "ja"),
     (SERVE_DIR / "tutorial-en.html",
-     "TogoMCP Tutorial", "Self-study edition / 2026-08", CHAPTERS_EN, "public",
+     "TogoMCP Tutorial", "Self-study edition / 2026-10", CHAPTERS_EN, "public",
      '<a class="lang" href="/tutorial/ja">日本語</a>', "en"),
 ]
 
