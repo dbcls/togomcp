@@ -31,7 +31,7 @@ The middle part — "organism", "length" — is called a **predicate**. **Which 
 
 **SPARQL** is the query language for these three-part statements. It is to RDF what SQL is to tables.
 
-"Insulin" and "human" are not written as English words. They are written as **names shaped like URLs**, such as `http://purl.uniprot.org/uniprot/P01308`. Such a name is called an **IRI**. **An IRI is a name, not a link.** It is not there to be clicked open; it is there so that **the same thing has the same name everywhere in the world.** If UniProt's "human" and PDB's "human" are the same IRI, the two connect mechanically.
+"Insulin" and "human" are not written as English words. They are written as **names shaped like URLs**, such as `http://purl.uniprot.org/uniprot/P01308`. Such a name is called an **IRI**. **An IRI looks like a link, but its job is to be a name.** Some do open in a browser, but that is not the point; it is there so that **the same thing has the same name everywhere in the world.** If UniProt's "human" and PDB's "human" are the same IRI, the two connect mechanically.
 
 Last, a **graph**: a *compartment* that holds triples inside one database. A single store often houses several datasets side by side, and **forgetting to name the compartment picks up rows from the dataset next door.** Chapter 3 makes this happen on purpose.
 
@@ -60,16 +60,17 @@ What matters is the shift: **from what the AI "knows" to what it can "go and fet
 
 In one line:
 
-> **An MCP server that makes 45 life-science databases, centred on RDF Portal, queryable in natural language**
+> **An MCP server that makes 47 life-science databases, centred on RDF Portal, queryable in natural language**
 
 | Field | Databases |
 |---|---|
 | Proteins & proteomics | UniProt, PDB, jPOST |
-| Genes & genomes | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase |
+| Genes & genomes | NCBI Gene, Ensembl, HGNC, OMA, Bgee, HCO, MCO, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase, JoGo |
 | Chemistry | ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM |
 | Lipids | LIPID MAPS, SwissLipids |
 | Pathways | Reactome, WikiPathways |
 | Disease & clinical | ClinVar, MedGen, MONDO, NANDO, PubCaseFinder |
+| Expression | TiSMeD (tissue-specific genes and proteins) |
 | Literature | PubMed, PubTator |
 | Microbiology | BacDive, MediaDive, AMR Portal, NBRC |
 | Glycans | GlyCosmos |
@@ -77,7 +78,7 @@ In one line:
 | Taxonomy | NCBI Taxonomy |
 | Materials science | SuperCon |
 
-(As of 2026-10-01, plus one experimental database. In 2026-08 the count was 37, and it keeps growing. The surest way to see the current list is to connect and ask "what databases can you use?")
+(As of 2026-10-14, plus one experimental database. In 2026-08 the count was 37 and on 10-01 it was 45, and it keeps growing. The surest way to see the current list is to connect and ask "what databases can you use?")
 
 Having the Japan-originated databases (TogoVar, jPOST, GlyCosmos, NBRC, MoG+, NANDO, MediaDive, PubCaseFinder) all in one place is a feature nothing else substitutes for. Chapter 4 makes that value concrete.
 

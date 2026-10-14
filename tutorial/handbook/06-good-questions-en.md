@@ -2,7 +2,7 @@
 
 For researchers outside informatics, this is the chapter **most worth taking away**.
 
-The five elements below are not general advice. They are the **causes we actually observed** when we ran two versions of the same question against live databases in [Chapter 4](04-advanced-queries-en.md).
+The five elements below are not general advice. They are the **changes we actually observed** when we ran two versions of the same question against live databases in [Chapter 4](04-advanced-queries-en.md). But it was a single comparison that changed all five at once: **how much each element contributed was not measured separately.**
 
 ---
 
@@ -11,7 +11,7 @@ The five elements below are not general advice. They are the **causes we actuall
 | | Vague question | Specified question |
 |---|---|---|
 | Wording | "Tell me about genes involved in cancer" | "First identify the MeSH descriptor for 'Pancreatic Neoplasms', then…" |
-| Time | **12 s** | 182 s (**~15× longer**) |
+| Time | **12 s** | 182 s (**~15× longer**); 369 s (~30×) in the run that cross-checked all 20 genes |
 | Tool calls | **1** | 8 |
 | SPARQL executions | **0** | 4 |
 | MIE consulted | no | yes |
@@ -160,7 +160,7 @@ Satisfying all five elements takes roughly **15× longer**. You do not need to d
 | For discussion, or a slide | Elements 1, 3, 4 |
 | **For a paper or a formal report** | **All five. No exceptions.** |
 
-For any number that goes into a paper, **satisfy all five**. If you put a number that came back in twelve seconds into a manuscript, you will not be able to answer for it at review.
+For any number that goes into a paper, **satisfy all five**. If you put an unverified number into a manuscript — like the one that came back in twelve seconds — you will not be able to answer for it at review.
 
 ---
 

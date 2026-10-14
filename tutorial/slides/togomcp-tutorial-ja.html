@@ -94,6 +94,12 @@ tr.bad td{background:var(--warnbg)}
           font-family:ui-monospace,Menlo,monospace}
 .flow div.on{border-left-color:var(--accent);background:var(--goodbg)}
 .strike{text-decoration:line-through;opacity:.5}
+.prompt{position:relative}
+.prompt .copy{position:absolute;top:0;right:.8em;transform:translateY(-50%);font:inherit;font-family:system-ui,sans-serif;
+      font-size:.72em;line-height:1;padding:.4em .7em;border-radius:6px;cursor:pointer;
+      background:var(--bg);color:var(--muted);border:1px solid var(--line)}
+.prompt .copy:hover,.prompt .copy:focus-visible{color:var(--accent);border-color:var(--accent)}
+.prompt .copy.done{color:var(--good);border-color:var(--good)}
 
 /* chrome */
 #bar{position:fixed;bottom:0;left:0;height:3px;background:var(--accent);transition:width .25s;z-index:10}
@@ -109,7 +115,7 @@ tr.bad td{background:var(--warnbg)}
   body{overflow:visible;height:auto}
   #deck{height:auto}
   .slide{display:flex!important;position:relative;page-break-after:always;height:100vh;animation:none}
-  #bar,#num,#tag{display:none}
+  #bar,#num,#tag,.prompt .copy{display:none}
 }
 </style>
 </head>
@@ -122,7 +128,7 @@ tr.bad td{background:var(--warnbg)}
   <p class="kicker">生命科学データベース × AI アシスタント</p>
   <h1>TogoMCP<br>チュートリアル</h1>
   <p class="lead" style="margin-top:1.2em">SPARQL を書かずに、生命科学の主要データベースへ問い合わせる ── そして、返ってきた答えを疑う方法</p>
-  <p class="sub" style="margin-top:2em">本資料の実行結果はすべて実測（2026-08-20 / 08-21 測定、2026-10-01 再確認）<br>モデル: claude-opus-5 設定 および claude-sonnet-5 ／ サーバ: togomcp.rdfportal.org</p>
+  <p class="sub" style="margin-top:2em">本資料の実行結果はすべて実測（2026-08-20 / 08-21 測定、2026-10-01・10-14 再確認）<br>モデル: claude-opus-5 設定 および claude-sonnet-5 ／ サーバ: togomcp.rdfportal.org</p>
 </section>
 
 <section class="slide">
@@ -182,11 +188,11 @@ tr.bad td{background:var(--warnbg)}
 
 <section class="slide">
   <p class="kicker">M0 — TogoMCP とは</p>
-  <h2>45のデータベースに<br>自然言語で問い合わせる</h2>
+  <h2>47のデータベースに<br>自然言語で問い合わせる</h2>
   <table>
     <tr><th>分野</th><th>データベース</th></tr>
     <tr><td>タンパク質</td><td>UniProt, PDB, jPOST</td></tr>
-    <tr><td>遺伝子・ゲノム</td><td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase</td></tr>
+    <tr><td>遺伝子・ゲノム</td><td>NCBI Gene, Ensembl, HGNC, OMA, Bgee, DDBJ, MoG+, TogoVar, GWAS Catalog, Fanta.bio, MarpolBase, JoGo, TiSMeD</td></tr>
     <tr><td>化学 / 脂質</td><td>ChEMBL, PubChem, ChEBI, Rhea, BRENDA, MassBank, IDSM / LIPID MAPS, SwissLipids</td></tr>
     <tr><td>パスウェイ / 疾患</td><td>Reactome, WikiPathways / ClinVar, MedGen, MONDO, NANDO, PubCaseFinder</td></tr>
     <tr><td>文献 / 微生物</td><td>PubMed, PubTator / BacDive, MediaDive, AMR Portal, NBRC</td></tr>
@@ -245,7 +251,7 @@ tr.bad td{background:var(--warnbg)}
   <div class="prompt">TogoMCP からどんなデータベースが使えるの？</div>
   <div class="stats" style="margin-top:1.2em">
     <div class="stat g"><div class="v">10<span style="font-size:.4em">秒</span></div><div class="l">実測</div></div>
-    <div class="stat g"><div class="v">45</div><div class="l">データベース（10-01 時点）</div></div>
+    <div class="stat g"><div class="v">47</div><div class="l">データベース（10-14 時点）</div></div>
   </div>
   <p>分野ごとに整理された一覧が返ってきたら成功です。</p>
 </section>
@@ -279,7 +285,7 @@ tr.bad td{background:var(--warnbg)}
     <div>
       <p class="big warn">110</p>
       <p class="sub">プレプロインスリン前駆体</p>
-      <p style="margin-top:.8em">シグナルペプチド 24 + B鎖 30 + Cペプチド 31 + A鎖 21 + 切断部位</p>
+      <p style="margin-top:.8em">シグナルペプチド 24 + B鎖 30 + Cペプチド 31 + A鎖 21 + 切断で除かれる 4 残基</p>
     </div>
     <div>
       <p class="big">51</p>
@@ -324,7 +330,7 @@ tr.bad td{background:var(--warnbg)}
 
 <section class="slide">
   <p class="kicker">M2 — 補足</p>
-  <h2>ガイドは<br>「発言するたび」読み直される</h2>
+  <h2>ガイドは<br>「発言するたび」読み直す設計</h2>
   <pre>[1往復目] あなた:「ヒトのインスリンの…」
    └→ <strong>Usage_Guide</strong>, search_uniprot, get_MIE, run_sparql, 回答
 
@@ -332,9 +338,9 @@ tr.bad td{background:var(--warnbg)}
    └→ <strong>Usage_Guide</strong>, togoid_getRelation, togoid_convertId, 回答</pre>
   <p style="margin-top:.7em"><strong>ツールを何回呼んでも、1往復につき1回。</strong>セッション初回の1回ではありません。</p>
   <div class="stats" style="margin-top:.5em">
-    <div class="stat a"><div class="v">58,118</div><div class="l">文字 ／ 1回あたり（≒1.4〜1.7万トークン、概算）</div></div>
+    <div class="stat a"><div class="v">34,123</div><div class="l">文字 ／ 1回あたり（≒0.8〜1万トークン、概算。詳細は必要なときだけ取り寄せ）</div></div>
   </div>
-  <p class="sub">ツールの説明に「<strong>発言のたびに</strong>、他のどのツールより先に呼べ」と明記。<strong>前の往復の作業内容は引き継がれない</strong>という前提の設計です。</p>
+  <p class="sub">ツールの説明に「<strong>発言のたびに</strong>、他のどのツールより先に呼べ」と明記。<strong>前の往復の作業内容は引き継がれない</strong>という前提の設計です。<strong>ただし、モデルが毎回守るとは限りません</strong> ── 失敗デモで、一度も呼ばれない例を見ます。</p>
 </section>
 
 <!-- ============ M3 ============ -->
@@ -351,7 +357,7 @@ tr.bad td{background:var(--warnbg)}
   <p style="margin-top:.7em">この3つ組を <strong>トリプル</strong>、真ん中を <strong>述語</strong>と呼びます。<strong>どの述語が使えるかはデータベースごとに違う</strong> ── これがこの章の主題です。</p>
   <p><strong>SPARQL</strong> は、このトリプルへの問い合わせ言語。表に対する SQL にあたります。</p>
   <div class="box warn" style="margin-top:.8em">
-    <p><strong>「件数」とは、条件に合うトリプルが何本あるかということです。</strong>この章の後半で効いてきます。</p>
+    <p><strong>「件数」とは、条件に合うトリプルの組み合わせが何通り見つかったかです。</strong>この章の後半で効いてきます。</p>
   </div>
 </section>
 
@@ -361,7 +367,7 @@ tr.bad td{background:var(--warnbg)}
   <pre>&lt;http://purl.uniprot.org/uniprot/P01308&gt;          ← 主語（インスリン）
     &lt;http://purl.uniprot.org/core/organism&gt;       ← 述語（生物種）
         &lt;http://purl.uniprot.org/taxonomy/9606&gt; . ← 目的語（ヒト）</pre>
-  <p style="margin-top:.7em">この URL の形をした名前が <strong>IRI</strong>。<strong>名前であって、リンク先ではありません。</strong>クリックして開くためではなく、<strong>同じものを世界中で同じ名前で呼ぶため</strong>にあります。</p>
+  <p style="margin-top:.7em">この URL の形をした名前が <strong>IRI</strong>。<strong>リンクに見えますが、役目は名前です。</strong>開けるものもありますが、それが目的ではなく、<strong>同じものを世界中で同じ名前で呼ぶため</strong>にあります。</p>
   <pre style="margin-top:.6em">エンドポイント (sparql.uniprot.org)
  ├─ グラフ &lt;.../uniprot&gt;        ← UniProt 本体のトリプル
  ├─ グラフ &lt;.../taxonomy&gt;       ← 生物種のトリプル
@@ -444,9 +450,10 @@ tr.bad td{background:var(--warnbg)}
     </div>
     <div class="card">
       <h3>2. 速さは<br>正しさの証拠にならない</h3>
-      <pre style="font-size:.8em;margin-top:.5em">特定の IRI 指定   ≫  FILTER(CONTAINS(...))
+      <p class="sub" style="margin-top:.5em">ガイドが示す速さの目安：</p>
+      <pre style="font-size:.8em;margin-top:.2em">特定の IRI 指定   ≫  FILTER(CONTAINS(...))
      速い                    遅い</pre>
-      <p style="margin-top:.5em"><strong>実測：</strong>8月に60秒で落ちた形が、10月は<strong>10秒</strong>で返った。ただし<strong>219,437行</strong>。FROM で固定すると919行・1.4秒。</p>
+      <p style="margin-top:.5em"><strong>実測：</strong>グラフ固定なし＋<code>FILTER(CONTAINS)</code> のクエリは、8月は60秒でタイムアウト、10月は<strong>10秒</strong>で返った ── ただし<strong>219,437行</strong>。FROM でグラフを固定すると919行・1.4秒。</p>
       <p class="sub">実行時間はキャッシュの状態でも変わります。</p>
     </div>
   </div>
@@ -486,7 +493,7 @@ FROM 句でグラフを固定した版と、固定しない版の両方で実行
     <p style="margin-top:.5em">危ないのは <code>COUNT(*)</code> のほうで、<strong>196 という誤った数字が、エラーも警告もなく返ります。</strong></p>
   </div>
   <p style="margin-top:1em">さらに悪いことに、<strong>膨張率は固定ではありません。</strong>対象によって2倍になったりならなかったりします。</p>
-  <p><code>AVG</code>／<code>SUM</code> を使う場合、あるいは再宣言された述語で結合を重ねる場合（k本で2<sup>k</sup>倍）には、<strong><code>DISTINCT</code> では吸収しきれず答えそのものが狂います。</strong></p>
+  <p><code>AVG</code>／<code>SUM</code> を使う場合、あるいは両方のグラフにある述語を k 本つないで結合する場合（2<sup>k</sup> 倍）には、<strong><code>DISTINCT</code> では吸収しきれず答えそのものが狂います。</strong></p>
 </section>
 
 <section class="slide">
@@ -501,7 +508,7 @@ FROM 句でグラフを固定した版と、固定しない版の両方で実行
 
 <section class="slide">
   <p class="kicker">M3 — 実測</p>
-  <h2>こちらは実際に起きます</h2>
+  <h2><code>COUNT(*)</code> が実際に狂った例</h2>
   <div class="stats">
     <div class="stat w"><div class="v">62</div><div class="l">COUNT(*)</div></div>
     <div class="stat a"><div class="v">52</div><div class="l">COUNT(DISTINCT ?protein)</div></div>
@@ -534,7 +541,7 @@ FROM 句でグラフを固定した版と、固定しない版の両方で実行
 
 <section class="slide">
   <p class="kicker">M4 — デモ4 の結果</p>
-  <h2>分解能順の上位10件</h2>
+  <h2>分解能順の上位10件（うち5件）</h2>
   <div class="cols">
     <table>
       <tr><th>#</th><th>PDB</th><th>Å</th></tr>
@@ -586,11 +593,11 @@ FROM 句でグラフを固定した版と、固定しない版の両方で実行
     <tr><th>遺伝子</th><th>承認薬</th><th>作用</th><th>何を意味するか</th></tr>
     <tr class="hl"><td><strong>GLA</strong></td><td>ミガーラスタット</td><td><strong>STABILISER</strong></td><td>ファブリー病の薬理学的シャペロン。<strong>この52種の中では</strong>、原因酵素を狙った唯一の低分子</td></tr>
     <tr class="hl"><td><strong>GAA</strong></td><td>ミグリトール、ボグリボース</td><td>INHIBITOR</td><td>狙いはポンペ病ではなく<strong>2型糖尿病</strong></td></tr>
-    <tr class="bad"><td><strong>PDGFRB</strong></td><td>イマチニブほか11剤</td><td>INHIBITOR</td><td>受容体型チロシンキナーゼ。<strong>ライソゾーム酵素ではない</strong></td></tr>
+    <tr class="bad"><td><strong>PDGFRB</strong></td><td>イマチニブなど11剤</td><td>INHIBITOR<br><span class="sub">（ベカプレルミンのみ AGONIST）</span></td><td>受容体型チロシンキナーゼ。<strong>ライソゾーム酵素ではない</strong></td></tr>
   </table>
   <div class="box good" style="margin-top:1em">
     <p>PDGFRB を除くと ── <strong>この52種の範囲では、ライソゾーム酵素を直接狙う承認低分子はミガーラスタット1系統だけ。</strong></p>
-    <p style="margin-top:.4em">意外ではありません。<strong>ライソゾーム病は酵素を「阻害」するのではなく「補充」して治療するから</strong>です。</p>
+    <p style="margin-top:.4em">意外ではありません。<strong>ライソゾーム病の治療は酵素の補充・基質の合成抑制・シャペロンが中心で、原因酵素を「阻害」することはないから</strong>です。</p>
   </div>
 </section>
 
@@ -599,7 +606,7 @@ FROM 句でグラフを固定した版と、固定しない版の両方で実行
   <h2>最初の質問文が、実は悪かった</h2>
   <p class="lead">「ライソゾーム酵素」をどう定義するかで、答えがまったく別物になります。</p>
   <table style="margin-top:.6em">
-    <tr><th>定義</th><th>候補</th><th>承認薬側の結果</th></tr>
+    <tr><th>定義</th><th>候補（EC番号あり）</th><th>承認薬側の結果</th></tr>
     <tr class="bad"><td>UniProt キーワード<br><strong>KW-0458「Lysosome」</strong></td><td class="num">161</td><td><strong>インスリン製剤22種<br>PDGFR阻害剤12種</strong></td></tr>
     <tr class="hl"><td>GO<br><strong>GO:0043202（内腔）</strong></td><td class="num">52</td><td>GLA、GAA<br><span class="sub">＋PDGFRB（局在のみ）</span></td></tr>
   </table>
@@ -609,9 +616,9 @@ FROM 句でグラフを固定した版と、固定しない版の両方で実行
   <p class="kicker">M4 — なぜそうなるのか</p>
   <h2>KW-0458 は<br>局在であって機能ではない</h2>
   <p>「ライソゾームに局在する（ことがある）タンパク質」という意味なので ──</p>
-  <p style="font-size:1.15em"><strong>INSR ／ PDGFRB ／ mTOR ／ PCSK9 ／ LRRK2 ／ PSEN2</strong>、それに20個ほどの <strong>RAB GTPase</strong> が入ってきます。</p>
+  <p style="font-size:1.15em"><strong>INSR ／ PDGFRB ／ mTOR ／ PCSK9 ／ LRRK2 ／ PSEN2</strong>、それに10個あまりの <strong>RAB GTPase</strong> が入ってきます。</p>
   <div class="box warn">
-    <p><strong>EC番号で加水分解酵素に絞っても直りません。</strong>161のうち113が生き残る ── RAB GTPase は EC 3.6.5.2 で、立派な加水分解酵素だからです。</p>
+    <p><strong>EC番号で加水分解酵素に絞っても直りません。</strong>161のうち114が生き残る ── RAB GTPase は EC 3.6.5.2 で、立派な加水分解酵素だからです。</p>
   </div>
 </section>
 
@@ -632,8 +639,8 @@ FROM 句でグラフを固定した版と、固定しない版の両方で実行
   <h2>悪い問い</h2>
   <div class="prompt">がんに関係する遺伝子を教えて</div>
   <div class="stats" style="margin-top:1.4em">
-    <div class="stat w"><div class="v">12<span style="font-size:.4em">秒</span></div><div class="l">実測</div></div>
-    <div class="stat w"><div class="v">1</div><div class="l">ツール呼び出し</div></div>
+    <div class="stat w"><div class="v">12〜22<span style="font-size:.4em">秒</span></div><div class="l">実測</div></div>
+    <div class="stat w"><div class="v">0〜1</div><div class="l">ツール呼び出し（モデルによる）</div></div>
     <div class="stat w"><div class="v">0</div><div class="l">SPARQL 実行</div></div>
   </div>
   <p style="margin-top:1em">返ってきた答え：<strong>TP53、RB1、PTEN、APC、BRCA1/2、KRAS、MYC、EGFR……</strong></p>
@@ -710,7 +717,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
 件数はCOUNTでも裏取りして。</div>
   <div class="stats" style="margin-top:1.2em">
     <div class="stat w"><div class="v">12<span style="font-size:.4em">秒</span></div><div class="l">曖昧版</div></div>
-    <div class="stat a"><div class="v">182<span style="font-size:.4em">秒</span></div><div class="l">仕様化版 ── 約15倍</div></div>
+    <div class="stat a"><div class="v">182<span style="font-size:.4em">秒</span></div><div class="l">仕様化版 ── 約15倍<br>（全件の裏取りまでなら369秒・約30倍）</div></div>
   </div>
 </section>
 
@@ -738,7 +745,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
     <tr class="bad"><td>サンプル上で見えていた値</td><td class="num"><strong>1,581</strong></td></tr>
   </table>
   <p style="margin-top:1em">タイムアウト回避のため内側で2万件に制限していたが、<strong>その2万件は一様なランダム標本ではなかった</strong>。</p>
-  <p><strong>絶対数だけでなく、順位も入れ替わった。</strong></p>
+  <p><strong>絶対数だけでなく、順位も入れ替わった。</strong><span class="sub">（20遺伝子すべてを全件で数え直した別の実行。369秒）</span></p>
   <table style="max-width:640px">
     <tr><th>遺伝子</th><th>標本での順位</th><th>全件での順位</th></tr>
     <tr class="bad"><td><strong>MTOR</strong></td><td class="num">20 位</td><td class="num"><strong>9 位</strong></td></tr>
@@ -753,10 +760,10 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
   <p class="kicker">失敗デモ (e) — ★ ここで終わらせない</p>
   <h2>良い問いにしても<br>限界は残る</h2>
   <table>
-    <tr><th>順位</th><th>遺伝子</th><th>問題</th></tr>
-    <tr class="bad"><td>6</td><td><strong>INS</strong></td><td>膵臓という臓器の共起。因果関係ではない</td></tr>
-    <tr class="bad"><td>14</td><td><strong>POTEF</strong></td><td>アクチン融合キメラ遺伝子。ACTB と配列が高度に類似 ── <strong>ただし順位の原因かは未確認</strong></td></tr>
-    <tr class="bad"><td>16</td><td><strong>GAPDH</strong></td><td>ハウスキーピング。実験の内部対照として言及されているだけ</td></tr>
+    <tr><th style="white-space:nowrap">順位（標本 → 全件）</th><th>遺伝子</th><th>問題</th></tr>
+    <tr class="bad"><td>6 → 16</td><td><strong>INS</strong></td><td>膵臓という臓器の共起。因果関係ではない</td></tr>
+    <tr class="bad"><td>14 → 18</td><td><strong>POTEF</strong></td><td>アクチン融合キメラ遺伝子。ACTB と配列が高度に類似 ── <strong>ただし順位の原因かは未確認</strong></td></tr>
+    <tr class="bad"><td>16 → 13</td><td><strong>GAPDH</strong></td><td>ハウスキーピング。実験の内部対照として言及されているだけ</td></tr>
     <tr class="bad"><td>圏外</td><td><strong>SMAD4 / CDKN2A</strong></td><td>膵がんの<strong>主要ドライバーなのに上位20に入らない</strong></td></tr>
   </table>
   <p style="margin-top:.8em">共起論文数は「<strong>どれだけ有名で、どれだけ論文が書かれているか</strong>」を測っており、<strong>疾患特異性を測っていない</strong>。</p>
@@ -818,7 +825,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
     <tr><td>4</td><td><strong>件数と順序基準を数値で固定</strong></td><td>「強さ」を<strong>測定可能な量に還元</strong>させる</td></tr>
     <tr class="hl"><td>5</td><td><strong>COUNT で裏取りを要求</strong></td><td><strong>最も効いた。</strong>サンプリング偏りの検出器</td></tr>
   </table>
-  <p class="sub" style="margin-top:.6em">一般論ではなく、失敗デモで<strong>実際に観察された因果</strong>です。</p>
+  <p class="sub" style="margin-top:.6em">一般論ではなく、失敗デモで<strong>実際に観察された変化</strong>です。ただし比較は1回で、<strong>要素ごとの効果を個別に測ったものではありません</strong>。</p>
 </section>
 
 <section class="slide">
@@ -831,7 +838,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
     <tr class="hl"><td><strong>論文・報告書に書く</strong></td><td><strong>5つ全部。例外なし</strong></td></tr>
   </table>
   <div class="box warn" style="margin-top:1.2em">
-    <p><strong>12秒で返ってきた数字を論文に書かないでください。</strong>査読で聞かれたときに答えられません。</p>
+    <p><strong>裏取りしていない数字を論文に書かないでください。</strong>12秒の答えがそれでした。査読で聞かれたときに答えられません。</p>
   </div>
 </section>
 
@@ -882,17 +889,18 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
 
 <section class="slide">
   <p class="kicker">M9 — 仕込み (1)(2)</p>
-  <h2>182件 → 1件</h2>
+  <h2>227件 → 1件</h2>
   <p><strong>(1)</strong> 「GBA」は完全一致しません。HGNC が <strong>GBA → GBA1</strong> に改名済み。ID の解決は自明ではない。</p>
-  <p><strong>(2)</strong> 病原性バリアント182件に、日本人集団での頻度条件を掛けると ──</p>
+  <p><strong>(2)</strong> 病原性＋おそらく病原性の227件に、日本人集団での頻度条件を掛けると ──</p>
   <table style="max-width:620px">
     <tr><th>コホート</th><th>アレル頻度</th></tr>
-    <tr class="hl"><td>ToMMo（日本人 n≈54,000）</td><td class="num"><strong>0.000801</strong></td></tr>
+    <tr class="hl"><td>ToMMo（日本人 n≈61,000）</td><td class="num"><strong>0.000785</strong></td></tr>
     <tr><td>NCBN（日本人）</td><td class="num">0.000807</td></tr>
     <tr><td>gnomAD exomes</td><td class="num">0.0000842</td></tr>
+    <tr><td>gnomAD genomes</td><td class="num">0.000237</td></tr>
   </table>
   <div class="box good">
-    <p><strong>国際データベースの約10倍に濃縮。</strong>国際DBだけを見ていたら見落とす情報です。</p>
+    <p><strong>gnomAD exomes の約9倍、gnomAD genomes の約3倍。</strong>国際DBだけを見ていたら見落とす情報です。</p>
   </div>
 </section>
 
@@ -900,14 +908,14 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
   <p class="kicker">M9 — 仕込み (3)</p>
   <h2>集計単位の罠</h2>
   <table style="max-width:860px">
-    <tr><th>集計</th><th>数えている単位</th><th>合計</th><th>182 と一致？</th></tr>
-    <tr class="hl"><td>type（SNV 157 / 欠失 23 / 挿入 2）</td><td><strong>バリアント</strong></td><td class="num"><strong>182</strong></td><td>✅ 一致</td></tr>
-    <tr class="bad"><td>significance</td><td>バリアント × <strong>条件</strong></td><td class="num"><strong>457</strong></td><td>❌ 2.5倍</td></tr>
-    <tr class="bad"><td>consequence</td><td>バリアント × <strong>転写産物</strong></td><td class="num"><strong>2,613</strong></td><td>❌ 約14倍</td></tr>
+    <tr><th>集計</th><th>数えている単位</th><th>合計</th><th>227 と一致？</th></tr>
+    <tr class="hl"><td>type（SNV 191 / 欠失 31 / 挿入 5）</td><td><strong>バリアント</strong></td><td class="num"><strong>227</strong></td><td>✅ 一致</td></tr>
+    <tr class="bad"><td>significance（Likely pathogenic 147 / Pathogenic 122 / ほか）</td><td>その<strong>分類</strong>を持つバリアント</td><td class="num"><strong>316</strong></td><td>❌ 約1.4倍</td></tr>
+    <tr class="bad"><td>consequence</td><td>その<strong>結果</strong>を持つバリアント</td><td class="num"><strong>827</strong></td><td>❌ 約3.6倍</td></tr>
   </table>
   <div class="box warn" style="margin-top:1em">
-    <p>「病原性バリアント277個」と言えば<strong>誤り</strong>です。</p>
-    <p style="margin-top:.4em">しかも「病原性」で絞ったのに <em>Uncertain significance</em> が35件、<em>Likely benign</em> が1件出てきます ── <strong>フィルタはバリアント単位、内訳はバリアント×条件レコード単位</strong>だから。<strong>ツール自身が警告を返してきます。</strong></p>
+    <p>「Pathogenic 122 ＋ Likely pathogenic 147 ＝ 病原性バリアント269個」と言えば<strong>誤り</strong>です。42個は両方に入っています。</p>
+    <p style="margin-top:.4em">しかも「病原性」で絞ったのに <em>Uncertain significance</em> が32件出てきます ── <strong>1つのバリアントが、条件ごとに別の分類を持つ</strong>から。<strong>ツール自身が「合計をバリアント数と比べるな」と警告を返してきます。</strong></p>
   </div>
   <p class="sub" style="margin-top:.8em">⚠️ ClinVar の疾患名は<strong>分類として</strong>述べること。リスクの助言ではありません。</p>
 </section>
@@ -919,7 +927,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
   <ol style="font-size:clamp(1.05rem,1.7vw,1.45rem)">
     <li><strong>TogoMCP は SPARQL を投げる道具ではなく、どう投げるべきかの知識を配る仕組み。</strong>MIE ファイルが核心</li>
     <li><strong>失敗はエラーではなく、正しく見える数字として現れる。</strong>今日見たものは全部エラーが出ませんでした</li>
-    <li><strong>12秒で返ってきた数字を論文に書かない。</strong>査読で聞かれたときに答えられません</li>
+    <li><strong>裏取りしていない数字を論文に書かない。</strong>12秒の答えのように、査読で聞かれたときに答えられません</li>
   </ol>
 </section>
 
@@ -969,6 +977,32 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
   var bar=document.getElementById('bar'), num=document.getElementById('num'),
       tag=document.getElementById('tag'), help=document.getElementById('help');
 
+  // copy button on each prompt, for the audience to paste into their own chat
+  var ja=document.documentElement.lang==='ja';
+  var T={copy:ja?'コピー':'Copy', done:ja?'コピーしました':'Copied', fail:ja?'コピー不可':'Copy failed'};
+  [].forEach.call(document.querySelectorAll('.prompt'),function(p){
+    var text=p.textContent.trim();
+    var b=document.createElement('button');
+    b.className='copy'; b.type='button'; b.textContent=T.copy;
+    b.setAttribute('aria-label',T.copy);
+    b.addEventListener('click',function(e){
+      e.stopPropagation();
+      function ok(){ b.textContent=T.done; b.classList.add('done');
+                     setTimeout(function(){b.textContent=T.copy;b.classList.remove('done');},1600); }
+      function fallback(){
+        var ta=document.createElement('textarea');
+        ta.value=text; ta.style.position='fixed'; ta.style.opacity=0;
+        document.body.appendChild(ta); ta.select();
+        try{ document.execCommand('copy')?ok():(b.textContent=T.fail); }catch(err){ b.textContent=T.fail; }
+        document.body.removeChild(ta);
+      }
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(ok,fallback);
+      } else { fallback(); }
+    });
+    p.appendChild(b);
+  });
+
   // derive section tag from the kicker text
   function kickerOf(s){
     var k=s.querySelector('.kicker');
@@ -988,6 +1022,8 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
   }
 
   document.addEventListener('keydown',function(e){
+    // let a focused copy button take Space/Enter instead of turning the slide
+    if(e.target.closest&&e.target.closest('button')&&(e.key===' '||e.key==='Enter')) return;
     if(help.classList.contains('on')){
       if(e.key==='Escape'||e.key==='?'){help.classList.remove('on');}
       return;
@@ -1011,7 +1047,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)</pre>
   // click / tap navigation
   document.getElementById('deck').addEventListener('click',function(e){
     if(window.getSelection().toString()) return;
-    if(e.target.closest('a')) return;
+    if(e.target.closest('a,button')) return;
     show(e.clientX < window.innerWidth*0.25 ? i-1 : i+1);
   });
 

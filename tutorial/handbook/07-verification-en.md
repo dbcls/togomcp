@@ -46,19 +46,21 @@ UniProt's keyword **KW-0458 "Lysosome" is a subcellular localization**, not "lys
 
 When we looked into variants in TogoVar:
 
-| Breakdown | Total | Matches the variant count of 182? |
+| Breakdown | Total | Matches the variant count of 227? |
 |---|---:|---|
-| **type** (SNV 157 / deletion 23 / insertion 2) | **182** | ✅ matches |
-| **significance** (Pathogenic 277 / Likely pathogenic 134 / others) | **457** | ❌ **2.5×** |
-| **consequence** | **2,613** | ❌ **about 14×** |
+| **type** (SNV 191 / deletion 31 / insertion 5) | **227** | ✅ matches |
+| **significance** (Likely pathogenic 147 / Pathogenic 122 / others) | **316** | ❌ **about 1.4×** |
+| **consequence** | **827** | ❌ **about 3.6×** |
 
-**457 is not a number of variants.** It is a number of "variant × condition" pairs — because one variant can be tied to several diseases. consequence is "variant × transcript" on top of that, so it swells to 14×.
+(2026-10-14, GBA1 pathogenic + likely pathogenic)
 
-**And something counterintuitive happens.** We filtered on "pathogenic," yet the breakdown contains 35 *Uncertain significance* and 1 *Likely benign*. This is not a contradiction — **the filter is per variant, the breakdown is per variant-condition record**. In fact, a single variant (rs421016) alone accounts for 13 records.
+**316 is not a number of variants.** Each breakdown counts "variants that carry this classification at least once," and one variant can carry several (different conditions and submitters judge it differently). consequence works the same way — one variant has different consequences on different transcripts — so it swells to 3.6×. **Writing "Pathogenic 122 + Likely pathogenic 147 = 269 pathogenic variants" is wrong**: 42 variants are in both.
 
-**The tool itself returns a warning in `statistics_caveats`. Read it.**
+**And something counterintuitive happens.** We filtered on "pathogenic," yet the breakdown contains 32 *Uncertain significance* and one each of *Benign* and *Likely benign*. This is not a contradiction — some variants are pathogenic for one condition and of uncertain significance for another. The filter asks "does it carry a pathogenic classification at all?"; the breakdown asks "does it carry this one?". In fact, a single variant (rs421016) has 15 classification records and is counted once in each of 4 classifications.
 
-> `"significance": "... counted PER VARIANT-CONDITION classification record ... Do NOT compare the sum to \`filtered\`."`
+**The tool itself returns a warning in `statistics_caveats` — "do not compare the sum to `filtered`". Read it.**
+
+> ⚠️ The unit of these breakdowns changed when TogoVar reloaded its data on 2026-10-09 (before, they counted variant × condition records and variant × transcript). **What a count means can change silently, on the database's side.** If a number is going into a paper, check the unit on the day.
 
 ### (e) Misunderstanding what the metric measures
 

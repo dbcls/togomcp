@@ -22,7 +22,7 @@ An RDF database is a pile of **three-part statements — "the B of A is C."** Ea
                 disease
 ```
 
-Such a statement is called a **triple**. **A "count" is the number of triples matching your conditions** — that fact does the work later in this chapter.
+Such a statement is called a **triple**. **A "count" is how many combinations of triples match your conditions** — that fact does the work later in this chapter.
 
 ### Names are shaped like URLs
 
@@ -281,7 +281,7 @@ That last sentence matters. **Without it, this trap stays invisible.**
 
 So this is not the simple story of "leave the graph unpinned and the answer changes." **As long as you are using `COUNT(DISTINCT)`, the answer in this example comes out right anyway.** The dangerous one is `COUNT(*)`: use that and **the wrong number, 196, comes back with no error and no warning.**
 
-Worse still, the inflation factor is not fixed. Depending on the target it may double or it may not. If you are using `AVG` or `SUM`, or stacking joins on re-declared predicates (2^k for k of them), **`DISTINCT` cannot absorb it and the answer itself goes wrong.**
+Worse still, the inflation factor is not fixed. Depending on the target it may double or it may not. If you are using `AVG` or `SUM`, or joining across k predicates that both graphs declare (2^k), **`DISTINCT` cannot absorb it and the answer itself goes wrong.**
 
 ### Track down where it came from
 

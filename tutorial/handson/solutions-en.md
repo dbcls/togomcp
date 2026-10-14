@@ -73,7 +73,7 @@ Convert these IDs to XXX. Also state explicitly which ones could not be converte
 
 ## Exercise 3 — TogoVar
 
-**(a) Measured** (2026-08-21): pathogenic + likely pathogenic = **182 variants**.
+**(a) Measured** (2026-10-14): pathogenic + likely pathogenic = **227 variants**. (182 in August; it changed when TogoVar reloaded its data on 10-09.)
 
 **(b) Resolving the gene name — "GBA1" is an exact match, "GBA" is not.**
 
@@ -82,7 +82,7 @@ Convert these IDs to XXX. Also state explicitly which ones could not be converte
 | **GBA1** | GBA1 (HGNC:4177) | **exact** ✅ |
 | **GBA** | GBA1 (HGNC:4177) | **prefix** ⚠️ |
 
-HGNC renamed **GBA → GBA1** in 2022, so the old symbol "GBA" is not in the current set of approved symbols. Search for "GBA" and there is **not a single exact match** — GBA1, GBA2, GBA3, GBAT2 and GBA1LP all line up as prefix matches, five of them.
+HGNC renamed **GBA → GBA1** in 2022, so the old symbol "GBA" is not in the current set of approved symbols. Search for "GBA" and there is **not a single exact match** — GBA1, GBA2, GBA3, GBAT2, GBA1LP and GBA3-AS1 all line up as prefix matches, six of them.
 
 **★ If you did not get caught by this.** GBA1 comes up on the first row, so you can sail straight past. **That is the result of re-ranking, and it is luck.**
 
@@ -95,17 +95,17 @@ If there are other candidates, explain why it is not one of those.
 
 **(c) They do not match. ★This is the single biggest point**
 
-| Aggregation | Unit being counted | Total | Matches 182? |
+| Aggregation | Unit being counted | Total | Matches 227? |
 |---|---|---:|---|
-| `type` (SNV 157 / deletion 23 / insertion 2) | **variants** | **182** | ✅ matches |
-| `significance` | **variant × condition** | **457** | ❌ 2.5× |
-| `consequence` | **variant × transcript** | **2,613** | ❌ about 14× |
+| `type` (SNV 191 / deletion 31 / insertion 5) | **variants** (one type each) | **227** | ✅ matches |
+| `significance` (LP 147 / P 122 / US 32 / others) | **variants carrying that classification** (one can carry several) | **316** | ❌ about 1.4× |
+| `consequence` | **variants with that consequence** (it differs by transcript) | **827** | ❌ about 3.6× |
 
-**Saying "277 pathogenic variants" is wrong** (277 is the number of Pathogenic records, and the total is larger still, 457).
+**Saying "Pathogenic 122 + Likely pathogenic 147 = 269 pathogenic variants" is wrong.** 42 variants carry both classifications and are counted twice.
 
-**One more thing that runs against intuition.** You filtered on "pathogenic," yet the breakdown contains 35 *Uncertain significance* and 1 *Likely benign*. That is not a contradiction: **the filter works on variants, the breakdown works on variant × condition records.** rs421016 alone has 13 records.
+**One more thing that runs against intuition.** You filtered on "pathogenic," yet the breakdown contains 32 *Uncertain significance* and one each of *Benign* and *Likely benign*. That is not a contradiction: some variants are pathogenic for one condition and of uncertain significance for another. rs421016 has 15 classification records, yet it is counted once each under P, LP, RF and US.
 
-The tool itself returns `statistics_caveats`. Read them.
+The tool itself returns `statistics_caveats` ("do not compare the sum to `filtered`"). Read them — though their description of the unit still reflects the counting before the 10-09 reload (variant × condition record, variant × transcript). **What a count means can change silently on the database's side** — another Chapter 7 lesson.
 
 **(b2) HGVS does not come out — the place everyone gets stuck live**
 
@@ -119,7 +119,7 @@ What you get: `NM_000157.4:c.1448T>C` / `NP_000148.2:p.Leu483Pro`
 
 > 💡 **The old conventional name is L444P** (the old numbering, with the 39-residue signal peptide excluded). The literature mostly writes L444P, so keep it in mind as a bridge.
 
-⚠️ But the `include_transcripts` output is large — for GBA1 it comes back for 12 transcripts. Do the same thing on something BRCA1-sized (over 400) and your screen falls apart.
+⚠️ But the `include_transcripts` output is large — for rs421016 it comes back for 24 transcripts. Do the same thing on something BRCA1-sized (over 400) and your screen falls apart.
 
 **(d) Enrichment in the Japanese population — the highlight of this exercise**
 
@@ -127,13 +127,13 @@ Take pathogenic + likely pathogenic and apply a ToMMo frequency ≥0.0005, and *
 
 | Cohort | Allele frequency |
 |---|---|
-| ToMMo (Japanese, n≈54,000) | **0.000801** |
+| ToMMo (Japanese, n≈61,000) | **0.000785** |
 | NCBN (Japanese) | 0.000807 |
 | GEM-J WGA (Japanese) | 0.001326 |
 | gnomAD exomes | 0.0000842 |
 | gnomAD genomes | 0.000237 |
 
-**Roughly a 10-fold enrichment in the Japanese population** (ToMMo / gnomAD exomes ≈ 9.5×, and ≈ 15.7× for GEM-J WGA). All three Japanese cohorts are high together, so it reads as a population difference rather than an artifact of a single cohort. This is information you would miss if you only looked at the international databases. That is TogoVar's reason for existing, and it is the value of TogoMCP carrying Japanese databases.
+**Enriched in the Japanese population** (ToMMo / gnomAD exomes ≈ 9.3×, ToMMo / gnomAD genomes ≈ 3.3×, GEM-J WGA / gnomAD exomes ≈ 15.7×; 2026-10-14). **Summarize it as "about 10×" and you have quietly picked the comparison.** All three Japanese cohorts are high together, so it reads as a population difference rather than an artifact of a single cohort. This is information you would miss if you only looked at the international databases. That is TogoVar's reason for existing, and it is the value of TogoMCP carrying Japanese databases.
 
 > ⚠️ **But do not assert it.** ToMMo and NCBN carry the quality flag `VQSRTrancheSNP99.95to100.00`, and GEM-J WGA carries `NotHighConfidenceRegion`. **GBA1 is highly homologous to the pseudogene GBAP1**, which makes short-read mapping hard, and the possibility that part of the frequency difference is a technical false positive cannot be excluded.
 >
@@ -153,7 +153,7 @@ Take pathogenic + likely pathogenic and apply a ToMMo frequency ≥0.0005, and *
 
 **(a) Using KW-0458 (the UniProt keyword "Lysosome")**
 
-**161 proteins** as candidates. On the approved-drug side, **48 rows**.
+**161 proteins** as candidates (those with an EC number). On the approved-drug side, **48 rows**.
 
 | UniProt | Gene | Approved drugs |
 |---|---|---|
@@ -175,13 +175,13 @@ Take pathogenic + likely pathogenic and apply a ToMMo frequency ≥0.0005, and *
 
 > Of the 52 human lysosomal luminal enzymes, **3** are targets of approved drugs — **GLA** (migalastat, a pharmacological chaperone), **GAA** (miglitol / voglibose, though the indication is type 2 diabetes), and **PDGFRB** (11 drugs; a receptor tyrosine kinase, not a lysosomal enzyme).
 >
-> Take PDGFRB out and **there is effectively one approved small-molecule line that targets a lysosomal enzyme directly: migalastat. Because lysosomal diseases are treated by replacing the enzyme, not by inhibiting it.**
+> Take PDGFRB out and **there is effectively one approved small-molecule line that targets a lysosomal enzyme directly: migalastat. Because lysosomal diseases are treated by enzyme replacement, substrate reduction or chaperones — never by inhibiting the causative enzyme.**
 
 **(c) Why they are this different**
 
-**KW-0458 is a subcellular-localization keyword, not a classification of function.** It means "a protein that localizes (at least sometimes) to the lysosome," so INSR, PDGFRB, MTOR, PCSK9, LRRK2, PSEN2, and around 20 RAB GTPases come in with it.
+**KW-0458 is a subcellular-localization keyword, not a classification of function.** It means "a protein that localizes (at least sometimes) to the lysosome," so INSR, PDGFRB, MTOR, PCSK9, LRRK2, PSEN2, and a dozen or so RAB GTPases come in with it.
 
-**Narrowing by EC number to `3.*` (hydrolases) does not fix it either.** 113 of the 161 survive. **Because RAB GTPases are EC 3.6.5.2 — perfectly respectable hydrolases.**
+**Narrowing by EC number to `3.*` (hydrolases) does not fix it either.** 114 of the 161 survive. **Because RAB GTPases are EC 3.6.5.2 — perfectly respectable hydrolases.**
 
 **And PDGFRB still survives into the GO:0043202 version.** Because that annotation genuinely is on it. **A localization annotation ≠ a functional classification.** It is not an error; it is a question of the resolution of your question.
 
@@ -235,7 +235,7 @@ The second one is decisive. In the worked example in Chapter 4, TP53, KRAS and M
 
 | | Vague version | Specified version |
 |---|---|---|
-| Time | 12 s | 182 s (**~15×**) |
+| Time | 12 s | 182 s (**~15×**); 369 s (~30×) in the run that cross-checked all 20 genes |
 | Tool calls | 1 | 8 |
 | SPARQL | 0 | 4 |
 | IDs verified | none | yes |
