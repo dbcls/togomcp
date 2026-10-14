@@ -667,10 +667,12 @@ async def test_search_variant_statistics_caveats():
     )
     out = json.loads(await search_variant(gene_hgnc_id=404, stat=True))
     caveats = out["statistics_caveats"]
-    # consequence is scoped but per variant-transcript — the caveat warns against
-    # summing it against `filtered`, not that it is "unscoped".
+    # consequence counts variants per term (since the 2026-10-09 reload, not per
+    # transcript) — the caveat warns against summing it against `filtered`, not
+    # that it is "unscoped", and no longer claims a per-transcript fan-out.
     assert "consequence" in caveats
-    assert "PER VARIANT-TRANSCRIPT" in caveats["consequence"]
+    assert caveats["consequence"].startswith("Per-variant count")
+    assert "transcripts per" not in caveats["consequence"]
     assert "do NOT compare the sum" in caveats["consequence"].lower() or \
         "not compare the sum" in caveats["consequence"].lower()
     assert "type" in caveats

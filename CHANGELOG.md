@@ -13,6 +13,33 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.25.1] - 2026-10-14
+
+`togovar_search_variant` now explains its `stat=True` breakdowns correctly. When
+TogoVar reloaded its data on 2026-10-09, the `significance` and `consequence`
+facets changed what they count, and our `statistics_caveats` text (and the tool
+description) kept describing the old units. An agent reading them was told the
+numbers meant something they no longer do. PATCH: no parameter or return shape
+changed; only the explanatory text did.
+
+- **`consequence` now counts variants, once per consequence term** found on any
+  of the variant's transcripts. It used to count per variant-transcript, and the
+  caveat warned of a "~5-6x, 400+ at BRCA1" fan-out. Measured 2026-10-14: BRCA1
+  pathogenic stop_gained gives `filtered` = 652 and `stop_gained` = 652.
+- **`significance` now counts variants, once per classification label** found in
+  any of the variant's records. It used to count per variant-condition record.
+  Measured 2026-10-14: rs421016 has 15 classification records and counts 1 each
+  under Pathogenic, Likely pathogenic, Risk factor and Uncertain significance.
+- The caveats now say what still bites: each value is <= `filtered`, but the
+  sums exceed it, adding labels (Pathogenic + Likely pathogenic) double-counts
+  variants that carry both, and labels you did not filter on can appear.
+- The tutorial's TogoVar exercise was rebuilt on the new units in #262.
+- **PubCaseFinder MIE:** the `absent_phenotypes_as_present` gotcha now says the
+  converter was fixed upstream (PubCaseFinder/pubcasefinder-rdf#8, 2026-10-09) but
+  RDF Portal still serves the old conversion, so the workaround still applies. Its
+  live check will fail when the corrected data is loaded, which is the cue to
+  retire the gotcha.
+
 ## [2.25.0] - 2026-10-09
 
 <!-- whatsnew: 2026-10-09 | Variant search can now filter on four more allele-frequency panels — BioBank Japan <code>bbj1k</code> and <code>bbj2k</code>, <code>jogo</code> and <code>tommo_jsv1</code> — and returns gene and dbSNP/ClinVar cross-links again after a TogoVar data reload. -->
@@ -3303,7 +3330,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.1...HEAD
+[2.25.1]: https://github.com/dbcls/togomcp/compare/v2.25.0...v2.25.1
 [2.25.0]: https://github.com/dbcls/togomcp/compare/v2.24.0...v2.25.0
 [2.24.0]: https://github.com/dbcls/togomcp/compare/v2.23.3...v2.24.0
 [2.23.3]: https://github.com/dbcls/togomcp/compare/v2.23.2...v2.23.3
