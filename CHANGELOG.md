@@ -13,6 +13,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Security
+
+- **`run_sparql` / `get_graph_list` no longer reach internal hosts through `endpoint_url`.**
+  The server POSTs the query to that URL and returns the body, and the URL was used as given, so
+  any anonymous client of the public endpoint could read services on the host's own network (vs94
+  sits inside DBCLS) and port-scan it from the error messages. `endpoint_url` must now be a
+  registered endpoint (exact host and port from `endpoints.csv`), or an http(s) host that resolves
+  only to public addresses. Federating to an outside public endpoint (e.g. Wikidata) still works.
+  New env var `TOGOMCP_EXTRA_SPARQL_HOSTS` (comma-separated hostnames) allows more, e.g. `localhost`
+  for a local dev endpoint; it is wired through `deploy.sh`, `compose.yaml` and `.env.example`.
+  Known gap: the name is resolved once for the check and again by httpx, so a DNS-rebinding host
+  could still slip through.
+- **`get_MIE_file` no longer reads files outside the MIE directory.** `database` was joined into the
+  path unchecked, so `database="../../../compose"` or `"/etc/x"` served any `*.yaml` file the
+  process could read. Only bare names (`[A-Za-z0-9_-]+`) are now looked up; anything else gets the
+  usual "No MIE file" error.
+
 ## [2.26.1] - 2026-10-16
 
 TogoVar MIE text only. PATCH: no tool, parameter or return shape changed; `get_MIE_file(database="togovar")`

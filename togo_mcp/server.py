@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import csv
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -317,7 +318,7 @@ def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -
             same inputs, since the result is deterministic.
     """
     if endpoint_url:
-        return endpoint_url
+        return endpoint_url.strip()
     if endpoint_name:
         if endpoint_name not in ENDPOINT_NAME_TO_URL:
             raise ValueError(
@@ -348,6 +349,62 @@ def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -
         "'uniprot'), endpoint_name (e.g. 'ebi', 'sib'), or endpoint_url. "
         f"Valid databases: {', '.join(SPARQL_ENDPOINT_KEYS)}."
     )
+
+
+# --- endpoint_url guard (SSRF) -------------------------------------------------
+# `endpoint_url` is caller-supplied and the server POSTs to it and returns the
+# body, so unchecked it lets any anonymous client read hosts on the server's
+# own network (vs94 sits inside DBCLS). Registered endpoints' host:port pairs are
+# always allowed — they may legitimately resolve to internal addresses from vs94.
+# Any other host must be http(s) and resolve ONLY to globally routable
+# addresses; TOGOMCP_EXTRA_SPARQL_HOSTS (comma-separated hostnames) exempts
+# more, e.g. `localhost` for a local dev endpoint.
+#
+# Residual gap: the check resolves the name, then httpx resolves it again to
+# connect, so a DNS-rebinding host could answer differently the second time.
+# Closing that needs a pinned-IP transport; this guard stops the direct case.
+def _host_port(u: httpx.URL) -> tuple[str, int]:
+    return (u.host or "").lower(), u.port or (443 if u.scheme == "https" else 80)
+
+
+_REGISTERED_SPARQL_HOSTS = frozenset(
+    _host_port(httpx.URL(info["url"])) for info in SPARQL_ENDPOINT.values()
+)
+
+
+def _extra_sparql_hosts() -> frozenset[str]:
+    raw = os.getenv("TOGOMCP_EXTRA_SPARQL_HOSTS", "")
+    return frozenset(h.strip().lower() for h in raw.split(",") if h.strip())
+
+
+async def check_endpoint_url(url: str) -> None:
+    """Raise ValueError unless `url` is a SPARQL endpoint this server may contact."""
+    reject = (
+        f"endpoint_url {url!r} is not allowed: {{}}. Use a registered `database` or "
+        "`endpoint_name` (see get_sparql_endpoints()), or a public http(s) SPARQL "
+        "endpoint. Do not retry with the same value."
+    )
+    try:
+        parsed = httpx.URL(url)
+    except Exception:
+        raise ValueError(reject.format("not a valid URL")) from None
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(reject.format("only http and https are supported"))
+    host, port = _host_port(parsed)
+    if not host:
+        raise ValueError(reject.format("no host"))
+    if (host, port) in _REGISTERED_SPARQL_HOSTS or host in _extra_sparql_hosts():
+        return
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port)
+    except OSError:
+        raise ValueError(reject.format(f"host {host!r} does not resolve")) from None
+    for info in infos:
+        addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        if not addr.is_global:
+            raise ValueError(
+                reject.format(f"host {host!r} resolves to a non-public address")
+            )
 
 
 def raise_for_status_with_body(
@@ -421,6 +478,8 @@ async def execute_sparql(
         For cross-database queries on shared endpoints, use endpoint_name or endpoint_url.
     """
     url = resolve_endpoint_url(database, endpoint_name, endpoint_url)
+    if endpoint_url:
+        await check_endpoint_url(url)
 
     extra: dict[str, Any] = {
         "endpoint_url": url,

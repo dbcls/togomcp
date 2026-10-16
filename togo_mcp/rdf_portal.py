@@ -246,7 +246,8 @@ async def run_sparql(
         Field(
             description="Direct SPARQL endpoint URL, for an endpoint not in the registry or for "
             "explicit control. Highest priority — overrides both `endpoint_name` and `database` "
-            "(which is still required, and is then used only as a label).",
+            "(which is still required, and is then used only as a label). Must be a "
+            "registered endpoint or a public http(s) one; internal addresses are refused.",
             default="",
         ),
     ] = "",
@@ -488,7 +489,8 @@ async def get_graph_list(
         Field(
             description=(
                 "Direct SPARQL endpoint URL. Use when neither the database nor its "
-                "parent endpoint name is in the registry."
+                "parent endpoint name is in the registry. Must be a registered endpoint "
+                "or a public http(s) one; internal addresses are refused."
             ),
             default="",
         ),
@@ -606,8 +608,10 @@ async def get_MIE_file(
     database = database or dbname or db
     if not database:
         return "Error: Missing required argument `database` (aliases: `dbname`, `db`)."
+    # `database` becomes a path component: anything but a bare name (`../x`, `/etc/x`)
+    # would read an arbitrary *.yaml off the host.
     mie_file = Path(MIE_DIR).joinpath(f"{database}.yaml")
-    if not mie_file.exists():
+    if not _re.fullmatch(r"[A-Za-z0-9_-]+", database) or not mie_file.exists():
         # Return a structured error string rather than raising, so the
         # downstream LLM can read the diagnostic and recover (e.g. retry
         # with a real database name) instead of seeing an opaque tool
