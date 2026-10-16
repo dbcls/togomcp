@@ -220,3 +220,30 @@ class TestEndpointResolution:
         overrides = [ex for _, ex in ALL_EXAMPLES
                      if isinstance(ex, dict) and ex.get("endpoint_name")]
         assert len(overrides) > 50
+
+
+class TestHttpErrorClassification:
+    """`run` must call an endpoint failure "net", or a flaky endpoint reads as a broken
+    example. 406/408/429 answer the request, not the query: TogoVar returned 406
+    intermittently in 2026-10 and the example checker reported it as an ERROR."""
+
+    @staticmethod
+    def _raise(code):
+        import io
+        import urllib.error
+
+        def fake_urlopen(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, code, "x", {}, io.BytesIO(b"<html>error page</html>"))
+        return fake_urlopen
+
+    @pytest.mark.parametrize("code", [406, 408, 429, 500, 502, 503, 504])
+    def test_infrastructure_status_is_net(self, monkeypatch, code: int) -> None:
+        monkeypatch.setattr(checker.urllib.request, "urlopen", self._raise(code))
+        rows, err = checker.run("https://example.invalid/sparql", "ASK {}", 5)
+        assert rows is None and err.startswith("net")
+
+    def test_bad_request_is_a_query_error(self, monkeypatch) -> None:
+        monkeypatch.setattr(checker.urllib.request, "urlopen", self._raise(400))
+        rows, err = checker.run("https://example.invalid/sparql", "ASK {}", 5)
+        assert rows is None and err.startswith("HTTP 400")

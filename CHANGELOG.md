@@ -13,6 +13,46 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.26.0] - 2026-10-16
+
+<!-- whatsnew: 2026-10-16 | Variant search can now <strong>page through more than 10,000 results</strong> — each full page returns a <code>next_offset</code> to continue from — and its <code>variant_type</code> filter, which failed on every value, now works in any case. -->
+
+TogoVar variant search: one capability added, one long-standing failure fixed, plus MIE refreshes
+after upstream data reloads. MINOR: `togovar_search_variant`'s existing `offset` parameter accepts
+a second form and its result gains a `next_offset` field; no tool was added or renamed, and every
+call that worked on 2.25.2 behaves the same.
+
+### Added
+
+- **`togovar_search_variant` pages past 10,000 rows.** An integer `offset` is still capped at
+  `offset + limit <= 10,000`, but `offset` now also takes a `[chromosome, position, reference,
+  alternate]` key, and every full page returns that key as `next_offset`. Passing it back resumes
+  strictly after the previous page (the API's search-after cursor), so a large result set can be
+  enumerated exhaustively instead of only by narrowing filters. The key is taken from the raw row,
+  not the length-bounded allele the row displays, and is re-taken when an oversized page is trimmed,
+  so trimmed rows are not skipped. Verified live: 12,000 ALDH2 rows walked in order, and a trimmed
+  walk matched the raw API sequence row for row. Integer offsets behave as before.
+
+### Fixed
+
+- **`togovar_search_variant(variant_type=…)` failed on every value.** The API's `type` filter is a
+  case-sensitive enum (`SNV`/`INS`/`DEL`/`INDEL`/`MNV` or their SO accessions), but the wrapper
+  accepted only lowercase `snv`/`ins`/`del`/`indel`/`sub` and sent them verbatim, so the API
+  answered HTTP 400 every time. The unit test asserted the lowercase payload, so the suite stayed
+  green. Input is now case-insensitive and translated to the API's term; `insertion`/`deletion`,
+  `delins` (→ `INDEL`), `mnv` and `substitution` (→ `MNV`; TogoVar's name for SO_1000002) and the SO
+  accessions are also accepted. Old calls keep working. Reported in #265 (@mitsuhashi).
+
+### Changed
+
+- **MIE: a three-graph TiSMeD → HGNC → JoGo recipe** (`tismed` `xdb_hgnc_jogo_high_impact`, `jogo`
+  `xdb_tismed_hgnc`). The obvious one-query join timed out at 90–120 s and the reverse direction
+  silently returned 0 rows; `DEFINE sql:select-option "order"` plus IRI joins finishes in 4–16 s.
+- **MIE refresh after upstream reloads.** TiSMeD genes now carry `rdfs:label`, but it is a snapshot
+  symbol (129 of 3,333 are outdated, e.g. ACPP for ACP3), and 10 tissue terms gained a second parent.
+  WikiPathways counts were re-measured for its new release. MassBank checks no longer assert a
+  `SAMPLE()`-picked compound name, which is not deterministic. Clears #261.
+
 ## [2.25.2] - 2026-10-14
 
 The landing page's trial chat switches to a larger model. PATCH: no tool,
@@ -3345,7 +3385,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.0...HEAD
+[2.26.0]: https://github.com/dbcls/togomcp/compare/v2.25.2...v2.26.0
 [2.25.2]: https://github.com/dbcls/togomcp/compare/v2.25.1...v2.25.2
 [2.25.1]: https://github.com/dbcls/togomcp/compare/v2.25.0...v2.25.1
 [2.25.0]: https://github.com/dbcls/togomcp/compare/v2.24.0...v2.25.0

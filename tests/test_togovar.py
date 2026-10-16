@@ -17,6 +17,7 @@ from togo_mcp.togovar import (
     _compact_allele,
     _match_type,
     _label_facets,
+    _normalize_offset,
     _project_variant,
     _range_from_bounds,
     _summarize_allele,
@@ -47,7 +48,7 @@ def test_multiple_filters_wrapped_in_and():
     q = _build_variant_query(gene_hgnc_id=404, variant_type="snv")
     assert set(q) == {"and"}
     assert {"gene": {"relation": "eq", "terms": [404]}} in q["and"]
-    assert {"type": {"relation": "eq", "terms": ["snv"]}} in q["and"]
+    assert {"type": {"relation": "eq", "terms": ["SNV"]}} in q["and"]
     assert len(q["and"]) == 2
 
 
@@ -119,7 +120,36 @@ def test_chromosome_without_coordinate_raises():
 
 def test_invalid_variant_type_raises():
     with pytest.raises(ValueError, match="Invalid variant_type"):
-        _build_variant_query(variant_type="deletion")
+        _build_variant_query(variant_type="inversion")
+
+
+# The API's `type` enum (grch38.togovar.org/api/v1.yml). It is case-sensitive:
+# "snv" is HTTP 400. Before the 2026-10-16 fix the wrapper sent the lowercase input verbatim,
+# and the test above asserted exactly that, so every type filter failed live
+# while the suite stayed green.
+_API_TYPE_ENUM = {
+    "SNV", "INS", "DEL", "INDEL", "MNV",
+    "SO_0001483", "SO_0000667", "SO_0000159", "SO_1000032", "SO_1000002",
+}
+
+
+@pytest.mark.parametrize("given, sent", [
+    ("snv", "SNV"), ("SNV", "SNV"), ("Snv", "SNV"),
+    ("ins", "INS"), ("insertion", "INS"),
+    ("del", "DEL"), ("deletion", "DEL"),
+    ("indel", "INDEL"), ("delins", "INDEL"), ("DELINS", "INDEL"),
+    ("mnv", "MNV"), ("sub", "MNV"), ("substitution", "MNV"),
+    ("so_0001483", "SO_0001483"), ("SO_1000002", "SO_1000002"),
+])
+def test_variant_type_translated_to_api_enum(given, sent):
+    q = _build_variant_query(variant_type=given)
+    assert q == {"type": {"relation": "eq", "terms": [sent]}}
+    assert sent in _API_TYPE_ENUM
+
+
+def test_variant_type_list_deduplicated():
+    q = _build_variant_query(variant_type=["del", "deletion", "INS"])
+    assert q == {"type": {"relation": "eq", "terms": ["DEL", "INS"]}}
 
 
 def test_unknown_dataset_raises():
@@ -539,7 +569,7 @@ async def test_search_variant_builds_body_and_projects():
     assert sent["query"] == {
         "and": [
             {"gene": {"relation": "eq", "terms": [404]}},
-            {"type": {"relation": "eq", "terms": ["snv"]}},
+            {"type": {"relation": "eq", "terms": ["SNV"]}},
         ]
     }
     assert route.calls.last.request.url.params["stat"] == "0"
@@ -704,3 +734,78 @@ async def test_search_variant_size_valve_trims():
     assert "truncated" in out
     assert len(out["data"]) < 50
     assert out["truncated"]["returned_rows"] == len(out["data"])
+
+
+# --------------------------------------------------------------------------- #
+# Key-based paging (search-after). An integer offset is capped at
+# offset + limit <= 10,000; the [chromosome, position, reference, alternate] key of
+# the previous page's last row pages past that (verified live 2026-10-16: 12,000
+# ALDH2 rows walked in strictly increasing order).
+# --------------------------------------------------------------------------- #
+
+def test_normalize_offset_int_and_key():
+    assert _normalize_offset(0) == 0
+    assert _normalize_offset(250) == 250
+    assert _normalize_offset(["12", 111766887, "A", "T"]) == ["12", 111766887, "A", "T"]
+    # tolerant of a JSON client sending the position as a string / ints for chr
+    assert _normalize_offset([12, "111766887", "A", "T"]) == ["12", 111766887, "A", "T"]
+    # an insertion's empty reference survives
+    assert _normalize_offset(["1", 5, "", "T"]) == ["1", 5, "", "T"]
+
+
+@pytest.mark.parametrize("bad", [
+    -1, True, ["12", 1, "A"], ["99", 1, "A", "T"], ["12", "x", "A", "T"], "12:1:A>T",
+])
+def test_normalize_offset_rejects_malformed(bad):
+    with pytest.raises(ValueError):
+        _normalize_offset(bad)
+
+
+def _rows(n, start=100, alt="T"):
+    return [{"chromosome": "12", "position": start + i, "reference": "A",
+             "alternate": alt, "type": "SO_0001483"} for i in range(n)]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_full_page_returns_next_offset_from_raw_row():
+    long_alt = "T" * 400          # projected (summarized) allele != the API's sort key
+    respx.post(f"{BASE}/search/variant").mock(return_value=httpx.Response(
+        200, json={"data": _rows(2) + _rows(1, start=102, alt=long_alt)}))
+    out = json.loads(await search_variant(gene_hgnc_id=404, limit=3))
+    assert out["next_offset"] == ["12", 102, "A", long_alt]
+    assert out["data"][-1]["alternate"] != long_alt   # the row itself was summarized
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_short_page_has_no_next_offset():
+    respx.post(f"{BASE}/search/variant").mock(
+        return_value=httpx.Response(200, json={"data": _rows(2)}))
+    out = json.loads(await search_variant(gene_hgnc_id=404, limit=3))
+    assert "next_offset" not in out
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_key_offset_sent_to_api():
+    route = respx.post(f"{BASE}/search/variant").mock(
+        return_value=httpx.Response(200, json={"data": []}))
+    await search_variant(gene_hgnc_id=404, offset=["12", 111766887, "A", "T"])
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["offset"] == ["12", 111766887, "A", "T"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_trimmed_page_rekeys_next_offset(monkeypatch):
+    import togo_mcp.togovar as tv
+    monkeypatch.setattr(tv, "_MAX_RESPONSE_CHARS", 1500)
+    respx.post(f"{BASE}/search/variant").mock(
+        return_value=httpx.Response(200, json={"data": _rows(20)}))
+    out = json.loads(await search_variant(gene_hgnc_id=404, limit=20))
+    kept = out["truncated"]["returned_rows"]
+    assert 0 < kept < 20
+    # resume at the first TRIMMED row, not after the API's last row
+    assert out["next_offset"] == ["12", 100 + kept - 1, "A", "T"]
+    assert out["data"][-1]["position"] == 100 + kept - 1

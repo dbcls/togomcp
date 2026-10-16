@@ -114,6 +114,12 @@ class TestQueryErrorClassification:
     def test_gateway_failure_is_not_a_query_error(self, code: int) -> None:
         assert checker._is_query_error(code, "<html>502 Bad Gateway</html>") is False
 
+    @pytest.mark.parametrize("code", [406, 408, 429])
+    def test_request_level_4xx_is_not_a_query_error(self, code: int) -> None:
+        """406/408/429 answer the request, not the query (TogoVar 406'd intermittently, 2026-10)."""
+        body = "<html><head><title>406 Not Acceptable</title></head></html>"
+        assert checker._is_query_error(code, body) is False
+
     def test_bare_500_without_an_engine_message_is_not_a_query_error(self) -> None:
         """An HTML error page from a proxy is infrastructure, not a rejection."""
         assert checker._is_query_error(500, "<html><body>Internal Server Error</body></html>") is False

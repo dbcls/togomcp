@@ -258,8 +258,10 @@ def run(endpoint, query, timeout):
             detail = ""
         # 5xx is a server/infra failure (gateway down, transaction timeout), NOT a
         # query defect — classify as net so a flaky endpoint isn't read as a broken
-        # template. A genuine query error is a 400 (SPARQL compile) or 4xx.
-        prefix = "net" if e.code in (500, 502, 503, 504) else f"HTTP {e.code}"
+        # template. A genuine query error is a 400 (SPARQL compile) or 4xx — except
+        # 406/408/429, which answer the request (Accept is constant here), not the
+        # query: TogoVar 406'd intermittently in 2026-10 and it read as an ERROR.
+        prefix = "net" if e.code in (406, 408, 429, 500, 502, 503, 504) else f"HTTP {e.code}"
         return None, f"{prefix}: {detail}"
     except (urllib.error.URLError, TimeoutError) as e:
         return None, f"net: {getattr(e, 'reason', e)}"

@@ -124,7 +124,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: variant, variation, mutation, snv, snp, indel, genome, human, japanese, dbsnp, clinvar, vep, consequence, sequence ontology, sift, polyphen, pathogenic, clinical significance
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTMs, isoforms, natural variants, disease links, GO terms, EC/enzyme activity, catalysed Rhea… _(categories: annotation, protein)_  
   keywords: protein, sequence, swiss-prot, trembl, reviewed, function, domain, isoform, enzyme, ec number, natural variant, disease, gene ontology, cross-reference
-- **wikipathways** — WikiPathways. Community-curated biological pathway diagrams for 39 organisms, exposing pathways, their gene-product/protein/metabolite nodes, typed and signed interactions, Pathway/Disease/Cell-type Ontology tags,… _(categories: compound, gene, pathway)_  
+- **wikipathways** — WikiPathways. Community-curated biological pathway diagrams for 41 organisms, exposing pathways, their gene-product/protein/metabolite nodes, typed and signed interactions, Pathway/Disease/Cell-type Ontology tags,… _(categories: compound, gene, pathway)_  
   keywords: pathway, pathway diagram, gene product, metabolite, interaction, signaling, metabolism, regulation, inhibition, stimulation, catalysis, conversion, gpml, bridgedb, curation, pathway ontology, disease ontology, cross-reference
 
 **Not an RDF Portal database — KEGG:**
