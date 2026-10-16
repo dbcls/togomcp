@@ -13,8 +13,21 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.26.2] - 2026-10-16
+
+Security fixes only. PATCH: no tool, parameter or return shape changed; what changes is which
+`endpoint_url`/`database` values are accepted, and that credentials no longer appear in errors or logs.
+
 ### Security
 
+- **The NCBI API key no longer leaks into tool errors or the tool-call log** (Yasunori Yamamoto).
+  The NCBI tools send the key as `api_key=` in the query string, and both httpx's exception text and
+  `raise_for_status_with_body` embed the full request URL, so a failed NCBI call put the key into the
+  error returned to the client and into the JSONL log (readable via `/stats/log` by anyone holding the
+  dashboard credentials). Credentials are now masked by parameter name (`api_key`, `token`, `secret`,
+  `password`, ...) and by the registered key's literal value, in error messages, in every tool result
+  (a new last-line `_RedactSecrets` middleware), and in each log line before it is written. Older log
+  files may still hold the key — check them and rotate it if so.
 - **`run_sparql` / `get_graph_list` no longer reach internal hosts through `endpoint_url`.**
   The server POSTs the query to that URL and returns the body, and the URL was used as given, so
   any anonymous client of the public endpoint could read services on the host's own network (vs94
@@ -3417,7 +3430,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.2...HEAD
+[2.26.2]: https://github.com/dbcls/togomcp/compare/v2.26.1...v2.26.2
 [2.26.1]: https://github.com/dbcls/togomcp/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/dbcls/togomcp/compare/v2.25.2...v2.26.0
 [2.25.2]: https://github.com/dbcls/togomcp/compare/v2.25.1...v2.25.2
