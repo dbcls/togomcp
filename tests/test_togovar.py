@@ -17,6 +17,7 @@ from togo_mcp.togovar import (
     _compact_allele,
     _match_type,
     _label_facets,
+    _normalize_offset,
     _project_variant,
     _range_from_bounds,
     _summarize_allele,
@@ -733,3 +734,78 @@ async def test_search_variant_size_valve_trims():
     assert "truncated" in out
     assert len(out["data"]) < 50
     assert out["truncated"]["returned_rows"] == len(out["data"])
+
+
+# --------------------------------------------------------------------------- #
+# Key-based paging (search-after). An integer offset is capped at
+# offset + limit <= 10,000; the [chromosome, position, reference, alternate] key of
+# the previous page's last row pages past that (verified live 2026-10-16: 12,000
+# ALDH2 rows walked in strictly increasing order).
+# --------------------------------------------------------------------------- #
+
+def test_normalize_offset_int_and_key():
+    assert _normalize_offset(0) == 0
+    assert _normalize_offset(250) == 250
+    assert _normalize_offset(["12", 111766887, "A", "T"]) == ["12", 111766887, "A", "T"]
+    # tolerant of a JSON client sending the position as a string / ints for chr
+    assert _normalize_offset([12, "111766887", "A", "T"]) == ["12", 111766887, "A", "T"]
+    # an insertion's empty reference survives
+    assert _normalize_offset(["1", 5, "", "T"]) == ["1", 5, "", "T"]
+
+
+@pytest.mark.parametrize("bad", [
+    -1, True, ["12", 1, "A"], ["99", 1, "A", "T"], ["12", "x", "A", "T"], "12:1:A>T",
+])
+def test_normalize_offset_rejects_malformed(bad):
+    with pytest.raises(ValueError):
+        _normalize_offset(bad)
+
+
+def _rows(n, start=100, alt="T"):
+    return [{"chromosome": "12", "position": start + i, "reference": "A",
+             "alternate": alt, "type": "SO_0001483"} for i in range(n)]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_full_page_returns_next_offset_from_raw_row():
+    long_alt = "T" * 400          # projected (summarized) allele != the API's sort key
+    respx.post(f"{BASE}/search/variant").mock(return_value=httpx.Response(
+        200, json={"data": _rows(2) + _rows(1, start=102, alt=long_alt)}))
+    out = json.loads(await search_variant(gene_hgnc_id=404, limit=3))
+    assert out["next_offset"] == ["12", 102, "A", long_alt]
+    assert out["data"][-1]["alternate"] != long_alt   # the row itself was summarized
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_short_page_has_no_next_offset():
+    respx.post(f"{BASE}/search/variant").mock(
+        return_value=httpx.Response(200, json={"data": _rows(2)}))
+    out = json.loads(await search_variant(gene_hgnc_id=404, limit=3))
+    assert "next_offset" not in out
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_key_offset_sent_to_api():
+    route = respx.post(f"{BASE}/search/variant").mock(
+        return_value=httpx.Response(200, json={"data": []}))
+    await search_variant(gene_hgnc_id=404, offset=["12", 111766887, "A", "T"])
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["offset"] == ["12", 111766887, "A", "T"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_trimmed_page_rekeys_next_offset(monkeypatch):
+    import togo_mcp.togovar as tv
+    monkeypatch.setattr(tv, "_MAX_RESPONSE_CHARS", 1500)
+    respx.post(f"{BASE}/search/variant").mock(
+        return_value=httpx.Response(200, json={"data": _rows(20)}))
+    out = json.loads(await search_variant(gene_hgnc_id=404, limit=20))
+    kept = out["truncated"]["returned_rows"]
+    assert 0 < kept < 20
+    # resume at the first TRIMMED row, not after the API's last row
+    assert out["next_offset"] == ["12", 100 + kept - 1, "A", "T"]
+    assert out["data"][-1]["position"] == 100 + kept - 1

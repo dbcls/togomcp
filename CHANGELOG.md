@@ -13,6 +13,17 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **`togovar_search_variant` pages past 10,000 rows.** An integer `offset` is still capped at
+  `offset + limit <= 10,000`, but `offset` now also takes a `[chromosome, position, reference,
+  alternate]` key, and every full page returns that key as `next_offset`. Passing it back resumes
+  strictly after the previous page (the API's search-after cursor), so a large result set can be
+  enumerated exhaustively instead of only by narrowing filters. The key is taken from the raw row,
+  not the length-bounded allele the row displays, and is re-taken when an oversized page is trimmed,
+  so trimmed rows are not skipped. Verified live: 12,000 ALDH2 rows walked in order, and a trimmed
+  walk matched the raw API sequence row for row. Integer offsets behave as before.
+
 ### Fixed
 
 - **`togovar_search_variant(variant_type=…)` failed on every value.** The API's `type` filter is a

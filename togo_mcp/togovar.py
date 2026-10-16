@@ -303,6 +303,42 @@ def _variant_iri(
     )
 
 
+def _row_key(row: dict[str, Any]) -> list[Any]:
+    """The API's sort / search-after key for a RAW (unprojected) variant row."""
+    return [row.get("chromosome"), row.get("position"),
+            row.get("reference"), row.get("alternate")]
+
+
+def _normalize_offset(offset: int | list[str | int]) -> int | list[str | int]:
+    """Validate `offset`: a non-negative int, or a [chromosome, position, reference,
+    alternate] key (the previous page's `next_offset`) that the API pages after.
+
+    The key form is the API's search-after cursor (api/v1.yml): it returns the rows
+    strictly after that key and is not subject to the 10,000-row cap that an integer
+    offset is. Raises ValueError on a malformed value (do not retry unchanged).
+    """
+    if isinstance(offset, bool):
+        raise ValueError("`offset` must be an int or a 4-item key array.")
+    if isinstance(offset, int):
+        if offset < 0:
+            raise ValueError("`offset` must be >= 0.")
+        return offset
+    if not isinstance(offset, (list, tuple)) or len(offset) != 4:
+        raise ValueError(
+            "`offset` key must be [chromosome, position, reference, alternate] — "
+            "pass the previous page's `next_offset` unchanged. Do not retry unchanged."
+        )
+    chrom, pos, ref, alt = offset
+    chrom = str(chrom)
+    if chrom not in _VALID_CHROMOSOMES:
+        raise ValueError(f"`offset` key: invalid chromosome {chrom!r}.")
+    try:
+        pos = int(pos)
+    except (TypeError, ValueError):
+        raise ValueError(f"`offset` key: position must be an integer, got {pos!r}.") from None
+    return [chrom, pos, "" if ref is None else str(ref), "" if alt is None else str(alt)]
+
+
 def _match_type(candidate: str | None, query: str) -> tuple[str, int]:
     """Classify how `candidate` matches `query` and give a sort rank.
 
@@ -815,7 +851,10 @@ async def search_variant(
         Field(ge=0, le=1, description="Maximum allele frequency in [0, 1], applied to the cohort named by `dataset`. E.g. dataset='tommo', max_frequency=0.01 for rare-in-Japan."),
     ] = None,
     limit: Annotated[int, Field(ge=0, le=1000)] = 100,
-    offset: Annotated[int, Field(ge=0)] = 0,
+    offset: Annotated[
+        int | list[str | int],
+        Field(description="Rows to skip (int, offset + limit <= 10,000), OR the `next_offset` array [chromosome, position, reference, alternate] from the previous page, which pages past 10,000."),
+    ] = 0,
     stat: bool = False,
     include_full_alleles: bool = False,
     include_transcripts: bool = False,
@@ -836,9 +875,12 @@ async def search_variant(
     (1,227,614,941), but the two are not the same set, so do not expect a REST
     count and a SPARQL `COUNT` to agree to the last variant.
 
-    PAGING CAP: the API allows `offset + limit <= 10,000` and returns HTTP 400
-    beyond it, so a result set larger than 10,000 cannot be fully paged. Narrow the
-    filters until `filtered` <= 10,000 to enumerate one exhaustively.
+    PAGING: an INTEGER `offset` is capped at `offset + limit <= 10,000` (HTTP 400
+    beyond). To page further, use keys: every full page (as many rows as `limit`)
+    returns `next_offset`, the [chromosome, position, reference, alternate] key of
+    its last row. Pass it back unchanged as `offset` with the same filters to get the
+    rows strictly after it, sorted by position — no 10,000 cap. A page shorter than
+    `limit` is the last one and carries no `next_offset`.
 
     STATISTICS SCOPE (stat=True): all facets are scoped to the filtered set and
     count VARIANTS, but a variant can fall under several values. `type` counts
@@ -886,7 +928,8 @@ async def search_variant(
         min_frequency, max_frequency: Allele-frequency bounds in [0, 1] on
             `dataset` (e.g. dataset="tommo", max_frequency=0.01 for rare-in-Japan).
         limit: Max variant rows to return, in [0, 1000]. Default 100.
-        offset: Rows to skip (pagination). Default 0.
+        offset: Rows to skip (int, default 0), or a `next_offset` key array
+            from the previous page (see PAGING).
         stat: If True, also return match counts (`total`, `filtered`) and the
             aggregate breakdown (counts by dataset, type, consequence,
             significance). REQUIRED to get a count — e.g. "how many variants
@@ -961,7 +1004,7 @@ async def search_variant(
         max_frequency=max_frequency,
     )
 
-    body: dict[str, Any] = {"limit": limit, "offset": offset}
+    body: dict[str, Any] = {"limit": limit, "offset": _normalize_offset(offset)}
     if query:
         body["query"] = query
     # stat=1 (default upstream) collects the aggregate statistics block; stat=0
@@ -972,12 +1015,17 @@ async def search_variant(
     raise_for_status_with_body(response, context="TogoVar variant search")
     payload = response.json()
 
+    rows = payload.get("data", [])
     result: dict[str, Any] = {
         "data": [
             _project_variant(row, include_full_alleles, include_transcripts)
-            for row in payload.get("data", [])
+            for row in rows
         ],
     }
+    # Key for the next page, taken from the RAW last row: the projected row may
+    # carry a length-bounded allele, which would not match the API's sort key.
+    if limit and len(rows) == limit:
+        result["next_offset"] = _row_key(rows[-1])
     # Surface the API's hard paging cap (offset + limit <= max_rows; HTTP 400
     # beyond it) so a caller paging a large result set sees the ceiling instead of
     # discovering it as an error.
@@ -1013,7 +1061,11 @@ async def search_variant(
             result["truncated"] = {
                 "reason": "response exceeded size cap; data rows trimmed",
                 "returned_rows": len(result["data"]),
-                "hint": "narrow filters or lower `limit` to see all rows.",
+                "hint": "narrow filters or lower `limit` to see all rows, or page on with `next_offset`.",
             }
+            # Re-key on the last row actually returned, so paging on resumes at
+            # the first trimmed row instead of skipping the trimmed ones.
+            if result["data"]:
+                result["next_offset"] = _row_key(rows[len(result["data"]) - 1])
             out = json.dumps(result)
     return out
