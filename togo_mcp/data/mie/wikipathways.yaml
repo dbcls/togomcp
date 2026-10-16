@@ -4,7 +4,7 @@ database: wikipathways
 discovery:
   title: WikiPathways
   description: >
-    Community-curated biological pathway diagrams for 39 organisms, exposing pathways, their
+    Community-curated biological pathway diagrams for 41 organisms, exposing pathways, their
     gene-product/protein/metabolite nodes, typed and signed interactions, Pathway/Disease/Cell-type
     Ontology tags, and BridgeDb cross-references to UniProt, Ensembl, NCBI Gene, HGNC, ChEBI,
     PubChem, HMDB, KEGG, Rhea, Reactome and Wikidata.
@@ -33,17 +33,17 @@ graphs:
       Graph-pinning is therefore optional for correctness here, unlike on RDF Portal's shared
       endpoints; the examples pin anyway so they stay correct if a graph is ever added.
 
-entity_counts:                 # all COUNT(DISTINCT) + graph-pinned, measured 2026-09-14
-  pathway_records: 2087        # wp:Pathway nodes that carry dc:title — the real answer to "how many pathways"
-  wp_pathway_nodes_raw: 2852   # bare `?s a wp:Pathway` — INFLATED by pathway-as-DataNode stubs; never report (gotcha revision_pinned_pathway_iri)
-  organisms: 39                # distinct wp:organismName values; Homo sapiens 1016, Bos taurus 241, Mus musculus 214
-  data_nodes: 55618            # wp:DataNode (semantic layer)
-  gene_products: 38624         # wp:GeneProduct
-  proteins: 7334               # wp:Protein
-  metabolites: 6879            # wp:Metabolite
-  complexes: 3870              # wp:Complex
-  interactions: 62418          # wp:Interaction (40128 of them wp:DirectedInteraction)
-  triples_total: 12261000      # whole graph
+entity_counts:                 # all COUNT(DISTINCT) + graph-pinned, measured 2026-10-16
+  pathway_records: 2215        # wp:Pathway nodes that carry dc:title — the real answer to "how many pathways"
+  wp_pathway_nodes_raw: 3035   # bare `?s a wp:Pathway` — INFLATED by pathway-as-DataNode stubs; never report (gotcha revision_pinned_pathway_iri)
+  organisms: 41                # distinct wp:organismName values; Homo sapiens 1131, Bos taurus 241, Mus musculus 214
+  data_nodes: 56386            # wp:DataNode (semantic layer)
+  gene_products: 38703         # wp:GeneProduct
+  proteins: 7344               # wp:Protein
+  metabolites: 7107            # wp:Metabolite
+  complexes: 3873              # wp:Complex
+  interactions: 65201          # wp:Interaction (41886 of them wp:DirectedInteraction)
+  triples_total: 12524693      # whole graph
 
 global_gotchas:
   - id: revision_pinned_pathway_iri
@@ -79,12 +79,12 @@ global_gotchas:
     say: >
       The exact-match literal form is INCONSISTENT ACROSS PREDICATES on the same subject, and
       `DATATYPE()` cannot tell you which to use — Virtuoso matches terms, not values. Measured
-      2026-09-14: `dc:title` is `@en` on 2,087 of 2,089 values, so `dc:title "Actin cytoskeleton
+      2026-10-16: `dc:title` is `@en` on all 2,215 values, so `dc:title "Actin cytoskeleton
       regulation"` and the `^^xsd:string` form BOTH return 0 rows — you must write
       `"Actin cytoskeleton regulation"@en`. But `dcterms:identifier`, `wp:organismName` and data-layer
       `rdfs:label` are the OPPOSITE: they are PLAIN literals, so `"WP1062"^^xsd:string` and
       `"Bos taurus"^^xsd:string` return 0 rows even though `DATATYPE()` reports `xsd:string` for all
-      three. (`rdfs:label` is mixed graph-wide — 90,232 plain vs 15,172 `@en` — but every `@en` one
+      three. (`rdfs:label` is mixed graph-wide — 91,284 plain vs 15,264 `@en` — but every `@en` one
       belongs to the embedded OWL vocabulary, never to a pathway/gene/metabolite node.) FIX: use the
       plain form for identifiers/organism/label, `@en` for `dc:title`, or `FILTER(STR(?x) = "...")`,
       which matches every form.
@@ -285,7 +285,7 @@ examples:
       SELECT DISTINCT ?acc ?title ?organism
       FROM <http://rdf.wikipathways.org/>
       WHERE {
-        # this graph EMBEDS the Disease Ontology (12,246 DOID subClassOf edges), so the
+        # this graph EMBEDS the Disease Ontology (17,479 DOID→DOID subClassOf edges), so the
         # subtree walk is local — no federation, no external term expansion
         ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/DOID_1826> .   # epilepsy + subtypes
         ?pathway a wp:Pathway ;
@@ -296,23 +296,23 @@ examples:
       }
       ORDER BY ?acc
     verified:
-      row_count: 17
+      row_count: 20
       has_values: ["WP5360", "WP5598", "WP5200"]
-      date: "2026-09-14"
+      date: "2026-10-16"
     teaches: "Enumerate a disease subtree with `rdfs:subClassOf*` against the EMBEDDED ontology, then match `wp:diseaseOntologyTag` — the hierarchy ships inside this graph, so no OLS4 round-trip is needed."
     traps_avoided:
-      - say: "`wp:ontologyTag` is the SUPERPROPERTY and is polymorphic: its 9,647 values are 5,714 OBO terms (PW 3,442 + DOID 1,253 + CL 1,019) PLUS 3,933 `wp:Curation:*` collection flags (AnalysisCollection, Homology_Converted, COVID19, Lipids...). Querying `wp:ontologyTag` when you meant a disease mixes curation workflow tags into the answer; use the specific `wp:diseaseOntologyTag` / `wp:pathwayOntologyTag` / `wp:cellTypeOntologyTag` subproperty."
+      - say: "`wp:ontologyTag` is the SUPERPROPERTY and is polymorphic: its 10,172 values are 6,009 OBO terms (PW 3,591 + DOID 1,285 + CL 1,133) PLUS 4,163 `wp:Curation:*` collection flags (AnalysisCollection, Homology_Converted, COVID19, Lipids...). Querying `wp:ontologyTag` when you meant a disease mixes curation workflow tags into the answer; use the specific `wp:diseaseOntologyTag` / `wp:pathwayOntologyTag` / `wp:cellTypeOntologyTag` subproperty."
         check:
           kind: count
-          date: "2026-09-14"
+          date: "2026-10-16"
           query: |
             SELECT (COUNT(*) AS ?n) WHERE {
               GRAPH <http://rdf.wikipathways.org/> {
                 ?s <http://vocabularies.wikipathways.org/wp#ontologyTag> ?o
               }
             }
-          expect: {value: 9647, tolerance: 0.02}
-      - say: "Tags are asserted only at the level the curator chose, so the DIRECT form `wp:diseaseOntologyTag obo:DOID_1826` returns 14 pathways where the subtree walk above returns 17 — it silently misses the ones tagged 'Dravet syndrome' instead of plain 'epilepsy'. Conversely the walk fans out: WP4228 carries three terms inside this subtree and appears three times, which is why the SELECT needs DISTINCT (19 raw rows, 17 pathways)."
+          expect: {value: 10172, tolerance: 0.02}
+      - say: "Tags are asserted only at the level the curator chose, so the DIRECT form `wp:diseaseOntologyTag obo:DOID_1826` returns 16 pathways where the subtree walk above returns 20 — it silently misses the ones tagged 'Dravet syndrome' instead of plain 'epilepsy'. Conversely the walk fans out: WP4228 carries three terms inside this subtree and appears three times, which is why the SELECT needs DISTINCT (22 raw rows, 20 pathways)."
         check:
           kind: ratio
           date: "2026-09-14"
@@ -428,18 +428,18 @@ examples:
       date: "2026-09-14"
     teaches: "Direction comes from `wp:source`/`wp:target`; the SIGN comes from the interaction's subtype class (`wp:Inhibition`, `wp:Stimulation`, `wp:Catalysis`, `wp:Conversion`, `wp:Binding`, `wp:TranscriptionTranslation`)."
     traps_avoided:
-      - say: "`wp:source`/`wp:target` are polymorphic: across the 82,260 endpoint slots (40,870 source + 41,390 target), 76,391 are typed wp:DataNode but 5,869 point at ANOTHER Interaction (an arrow aimed at an arrow), 1,857 at a Pathway and 833 at a Complex. The `?s a wp:GeneProduct` guards above are what keep this to protein-protein regulation; drop them and interaction-on-interaction edges join in."
+      - say: "`wp:source`/`wp:target` are polymorphic: across the 85,845 endpoint slots (42,646 source + 43,199 target), 79,906 are typed wp:DataNode but 5,939 point at ANOTHER Interaction (an arrow aimed at an arrow), 1,911 at a Pathway and 833 at a Complex. The `?s a wp:GeneProduct` guards above are what keep this to protein-protein regulation; drop them and interaction-on-interaction edges join in."
         check:
           kind: count
-          date: "2026-09-14"
+          date: "2026-10-16"
           query: |
             SELECT (COUNT(*) AS ?n) WHERE {
               GRAPH <http://rdf.wikipathways.org/> {
                 ?i <http://vocabularies.wikipathways.org/wp#source>|<http://vocabularies.wikipathways.org/wp#target> ?o
               }
             }
-          expect: {value: 82260, tolerance: 0.02}
-      - say: "Only 76,065 of the 82,260 endpoint slots (92.5%) resolve to a node carrying any `rdfs:label`, so an unguarded `?s rdfs:label ?l` silently drops ~7.5% of edges — use OPTIONAL when you want every edge rather than only the labelled ones. Measure that coverage with EXISTS, never by joining the label in: `rdfs:label` is multi-valued, so a plain join counts (edge, label) pairs and reports 154,522 'endpoints' — nearly double the real 82,260."
+          expect: {value: 85845, tolerance: 0.02}
+      - say: "Only 79,580 of the 85,845 endpoint slots (92.7%) resolve to a node carrying any `rdfs:label`, so an unguarded `?s rdfs:label ?l` silently drops ~7.3% of edges — use OPTIONAL when you want every edge rather than only the labelled ones. Measure that coverage with EXISTS, never by joining the label in: `rdfs:label` is multi-valued, so a plain join counts (edge, label) pairs and reports 155,951 'endpoints' — nearly double the real 85,845."
         check:
           kind: ratio
           date: "2026-09-14"
@@ -549,10 +549,10 @@ examples:
       LIMIT 10
     verified:
       min_rows: 10
-      has_values: ["Homo sapiens", 1016]
-      first_row: "Homo sapiens 1016; then Bos taurus 241, Mus musculus 214, Rattus norvegicus 129"
-      date: "2026-09-14"
-    teaches: "COUNT(DISTINCT ?pathway) + the `dc:title` guard + a graph pin is the census recipe; totals 2,087 records across 39 organisms."
+      has_values: ["Homo sapiens", 1131]
+      first_row: "Homo sapiens 1131; then Bos taurus 241, Mus musculus 214, Rattus norvegicus 129"
+      date: "2026-10-16"
+    teaches: "COUNT(DISTINCT ?pathway) + the `dc:title` guard + a graph pin is the census recipe; totals 2,215 records across 41 organisms."
     traps_avoided:
       - say: "Class counts here OVERLAP — a single node is typed with several `wp:` classes at once, because different pathways annotate the same identifier differently. `https://identifiers.org/ncbigene/7157` is simultaneously a wp:DataNode, wp:GeneProduct, wp:Protein AND wp:Rna. So GeneProduct (38,624) + Protein (7,334) + Metabolite (6,879) + Complex (3,870) + Rna (1,224) = 57,931 exceeds wp:DataNode's 55,618; never add class counts expecting a partition."
         check:
