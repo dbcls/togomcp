@@ -76,7 +76,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **tismed** — TiSMeD. Human genes and proteins judged tissue-specific by agreement across multiple independent transcriptome and pr… _[tissue specificity, tissue-specific gene, tissue-specific protein, tissue-enriched, gene expression, protein expression]_
 - **togovar** — TogoVar. GRCh38 human genome variants (SNV/Deletion/Insertion/MNV/Indel) with normalized+VCF coordinates, Ensembl-VEP… _[variant, variation, mutation, snv, snp, indel]_
 - **uniprot** — UniProt RDF. Curated (Swiss-Prot) and automatic (TrEMBL) protein sequence + functional annotation: sequences, domains, PTM… _[protein, sequence, swiss-prot, trembl, reviewed, function]_
-- **wikipathways** — WikiPathways. Community-curated biological pathway diagrams for 39 organisms, exposing pathways, their gene-product/protein… _[pathway, pathway diagram, gene product, metabolite, interaction, signaling]_
+- **wikipathways** — WikiPathways. Community-curated biological pathway diagrams for 41 organisms, exposing pathways, their gene-product/protein… _[pathway, pathway diagram, gene product, metabolite, interaction, signaling]_
 
 **Not an RDF Portal database — KEGG.** `database="kegg"` is invalid on `run_sparql` and `get_MIE_file`: KEGG has no SPARQL endpoint and no MIE. The `kegg_*` tools exist only on a local stdio server whose operator enabled them. **If you see no `kegg_*` tool, KEGG is unavailable in this session** — answer pathway questions from `reactome` or `rhea`, and do NOT report the absence as an error or suggest enabling it. When the tools ARE present, this guide carries a KEGG section with the details.
 
