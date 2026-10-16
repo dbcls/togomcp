@@ -13,6 +13,26 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **`togovar_search_variant(variant_type=…)` failed on every value.** The API's `type` filter is a
+  case-sensitive enum (`SNV`/`INS`/`DEL`/`INDEL`/`MNV` or their SO accessions), but the wrapper
+  accepted only lowercase `snv`/`ins`/`del`/`indel`/`sub` and sent them verbatim, so the API
+  answered HTTP 400 every time. The unit test asserted the lowercase payload, so the suite stayed
+  green. Input is now case-insensitive and translated to the API's term; `insertion`/`deletion`,
+  `delins` (→ `INDEL`), `mnv` and `substitution` (→ `MNV`; TogoVar's name for SO_1000002) and the SO
+  accessions are also accepted. Old calls keep working. Reported in #265 (@mitsuhashi).
+
+### Changed
+
+- **MIE: a three-graph TiSMeD → HGNC → JoGo recipe** (`tismed` `xdb_hgnc_jogo_high_impact`, `jogo`
+  `xdb_tismed_hgnc`). The obvious one-query join timed out at 90–120 s and the reverse direction
+  silently returned 0 rows; `DEFINE sql:select-option "order"` plus IRI joins finishes in 4–16 s.
+- **MIE refresh after upstream reloads.** TiSMeD genes now carry `rdfs:label`, but it is a snapshot
+  symbol (129 of 3,333 are outdated, e.g. ACPP for ACP3), and 10 tissue terms gained a second parent.
+  WikiPathways counts were re-measured for its new release. MassBank checks no longer assert a
+  `SAMPLE()`-picked compound name, which is not deterministic. Clears #261.
+
 ## [2.25.2] - 2026-10-14
 
 The landing page's trial chat switches to a larger model. PATCH: no tool,

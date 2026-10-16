@@ -47,7 +47,7 @@ def test_multiple_filters_wrapped_in_and():
     q = _build_variant_query(gene_hgnc_id=404, variant_type="snv")
     assert set(q) == {"and"}
     assert {"gene": {"relation": "eq", "terms": [404]}} in q["and"]
-    assert {"type": {"relation": "eq", "terms": ["snv"]}} in q["and"]
+    assert {"type": {"relation": "eq", "terms": ["SNV"]}} in q["and"]
     assert len(q["and"]) == 2
 
 
@@ -119,7 +119,36 @@ def test_chromosome_without_coordinate_raises():
 
 def test_invalid_variant_type_raises():
     with pytest.raises(ValueError, match="Invalid variant_type"):
-        _build_variant_query(variant_type="deletion")
+        _build_variant_query(variant_type="inversion")
+
+
+# The API's `type` enum (grch38.togovar.org/api/v1.yml). It is case-sensitive:
+# "snv" is HTTP 400. Before the 2026-10-16 fix the wrapper sent the lowercase input verbatim,
+# and the test above asserted exactly that, so every type filter failed live
+# while the suite stayed green.
+_API_TYPE_ENUM = {
+    "SNV", "INS", "DEL", "INDEL", "MNV",
+    "SO_0001483", "SO_0000667", "SO_0000159", "SO_1000032", "SO_1000002",
+}
+
+
+@pytest.mark.parametrize("given, sent", [
+    ("snv", "SNV"), ("SNV", "SNV"), ("Snv", "SNV"),
+    ("ins", "INS"), ("insertion", "INS"),
+    ("del", "DEL"), ("deletion", "DEL"),
+    ("indel", "INDEL"), ("delins", "INDEL"), ("DELINS", "INDEL"),
+    ("mnv", "MNV"), ("sub", "MNV"), ("substitution", "MNV"),
+    ("so_0001483", "SO_0001483"), ("SO_1000002", "SO_1000002"),
+])
+def test_variant_type_translated_to_api_enum(given, sent):
+    q = _build_variant_query(variant_type=given)
+    assert q == {"type": {"relation": "eq", "terms": [sent]}}
+    assert sent in _API_TYPE_ENUM
+
+
+def test_variant_type_list_deduplicated():
+    q = _build_variant_query(variant_type=["del", "deletion", "INS"])
+    assert q == {"type": {"relation": "eq", "terms": ["DEL", "INS"]}}
 
 
 def test_unknown_dataset_raises():
@@ -539,7 +568,7 @@ async def test_search_variant_builds_body_and_projects():
     assert sent["query"] == {
         "and": [
             {"gene": {"relation": "eq", "terms": [404]}},
-            {"type": {"relation": "eq", "terms": ["snv"]}},
+            {"type": {"relation": "eq", "terms": ["SNV"]}},
         ]
     }
     assert route.calls.last.request.url.params["stat"] == "0"
