@@ -1,6 +1,7 @@
 # MIE v3 — JoGo (gene-region haplotype catalogue from long-read phased human genomes).
 # Format: togo_mcp/data/docs/MIE_v3_spec.md. Authored 2026-10-09; every example, count and check
-# below was run live on the RDF Portal primary endpoint on that date.
+# below was run live on the RDF Portal primary endpoint on that date (example xdb_tismed_hgnc added
+# 2026-10-15).
 mie_spec: 3
 database: jogo
 
@@ -539,6 +540,44 @@ examples:
       - "Pin BOTH graphs. With the HGNC leg unpinned, rdfs:label on the HGNC IRI doubles (ontology/mondo re-declares it)."
       - "Keep jogo:maneStatus \"MANE Select\" or the 35 two-region genes appear twice; 49 regions have no HGNC xref and drop out of the join."
 
+  - id: xdb_tismed_hgnc
+    intent: "cross-DB, three graphs: a gene SET from another database (TiSMeD tissue-specific genes) → HGNC → JoGo variants by impact"
+    question: "How many HIGH-impact variants does JoGo record in each brain-specific gene, and what is the highest allele frequency among them?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      DEFINE sql:select-option "order"
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      SELECT ?symbol (COUNT(DISTINCT ?variant) AS ?highVariants) (MAX(?af) AS ?maxAF)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/tismed> {
+          ?gene t:hasGeneExpressionSpecificity ?rec . ?rec t:isPositivelySpecificTo t:TISMEDT_000051 .
+          BIND(IRI(CONCAT("http://identifiers.org/ensembl/", STRAFTER(STR(?gene), "/ensembl/"))) AS ?ens)
+        }
+        GRAPH <http://rdfportal.org/dataset/hgnc> { ?hgnc rdfs:seeAlso ?ens ; rdfs:label ?symbol }
+        GRAPH <http://rdfportal.org/dataset/jogo> {
+          ?region rdfs:seeAlso ?hgnc ; jogo:maneStatus "MANE Select" ; jogo:aHaplotype ?h .
+          ?h jogo:hasVariant ?variant .
+          ?variant jogo:annotationImpact "HIGH" ; jogo:alleleFrequency ?af .
+        }
+      }
+      GROUP BY ?symbol ORDER BY DESC(?highVariants) ?symbol
+    verified: {row_count: 32, has_values: ["SLAIN1", "FEZF2", "UNC13C"], date: "2026-10-15"}
+    teaches: >
+      When the gene set comes from another graph, read the graphs SMALL → LARGE and force that order
+      with DEFINE sql:select-option "order" as the first line: the outside set (here 272 brain genes,
+      t:TISMEDT_000051 in TiSMeD) first, HGNC second, JoGo last. Each hop is an IRI join — the outside
+      gene is rewritten once into <http://identifiers.org/ensembl/ENSG…> (HGNC's Ensembl xref node), and
+      the HGNC gene IRI is the region's rdfs:seeAlso (as in xdb_hgnc). Region → jogo:aHaplotype →
+      jogo:hasVariant walks one haplotype level only. 16 s.
+    traps_avoided:
+      - "Keep the DEFINE line: without it Virtuoso picks its own order, starts from JoGo, and the query stalls although each two-graph leg alone is quick (measured and checked in the tismed MIE, example xdb_hgnc_jogo_high_impact)."
+      - "Rewrite the outside IRI in the FIRST graph read, never inside the last GRAPH — the reverse chain (JoGo HIGH variants first, TiSMeD IRI built at the end) comes back empty without an error (checked in the same tismed example)."
+      - "Go through HGNC even though the region also has rdfs:seeAlso <http://identifiers.org/ensembl/ENSG…>: the direct Ensembl join gives the same rows but is fast only once cached (measured in the same tismed example); the HGNC hop is fast cold."
+      - "Fallback for an outside set too large for one query: fetch its gene IDs first, then pass them as VALUES ?ens to a JoGo-only query that starts from jogo:annotationImpact (example enum_variants_by_consequence)."
+
 schema_delta:
   - "skos:altLabel on every haplotype = the zero-padded form used by the JoGo website (\"ALDH2:a0002c0002\"); dct:identifier is the short form (\"ALDH2:a2c2\")."
   - "foaf:page on regions and haplotypes → the jogo.csml.org web page (gene?genename=<regionName>, haplotype_detail?hapid=…&regionname=…)."
@@ -557,6 +596,7 @@ id_join_map:
     Population …/rdf/population/<code>.
   same_endpoint_joins:
     hgnc: "GeneRegion rdfs:seeAlso <http://identifiers.org/hgnc/N> == the gene IRI in GRAPH <http://rdfportal.org/dataset/hgnc> (19,145 of 19,194 regions; example xdb_hgnc). From HGNC, typed xref nodes reach UniProt, NCBI Gene, OMIM, Orphanet."
+    tismed: "via HGNC only: TiSMeD gene IRI rewritten to <http://identifiers.org/ensembl/ENSG…> == HGNC's Ensembl xref node → HGNC gene IRI == region rdfs:seeAlso (example xdb_tismed_hgnc — needs DEFINE sql:select-option \"order\")"
   xrefs:
     ensembl: "GeneRegion rdfs:seeAlso <http://identifiers.org/ensembl/ENSG…> — all 19,194 regions; version-less gene ID"
     hco: "faldo:reference <http://identifiers.org/hco/<chr>\\/GRCh38> (backslash — string-compare only) and genomic-variant rdfs:seeAlso <…/hco/<chr>/GRCh38#<pos>-<ref>-<alt>>"

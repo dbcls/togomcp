@@ -1,6 +1,7 @@
 # MIE v3 — TiSMeD (tissue-specific genes and proteins, human). Format: togo_mcp/data/docs/MIE_v3_spec.md.
 # Authored 2026-10-09; every example, count and check below was run live on the RDF Portal primary
-# endpoint on that date.
+# endpoint on that date. Re-verified 2026-10-15 after an upstream reload that added gene/protein
+# rdfs:label and second parents to 10 tissue terms; example xdb_hgnc_jogo_high_impact added then.
 mie_spec: 3
 database: tismed
 
@@ -19,7 +20,7 @@ discovery:
 endpoint: https://rdfportal.org/primary/sparql
 base_uri: http://med2rdf.org/tismed/ontology#
 graphs:
-  primary: http://rdfportal.org/dataset/tismed   # one small graph (~59,000 triples): records, tissue vocabulary and the t: ontology
+  primary: http://rdfportal.org/dataset/tismed   # one small graph (~61,000 triples): records, tissue vocabulary and the t: ontology
   co_hosted:
     probe: >
       2g reverse probe run 2026-10-09 on a gene IRI, a tissue term, a record class and the UBERON hub.
@@ -31,16 +32,18 @@ graphs:
       label join returns up to ×5 rows (liver ×5, "muscle organ" ×3). Pin
       <http://rdfportal.org/ontology/uberon> (example xdb_uberon).
     hgnc: >
-      JOIN TARGET, by string — TiSMeD has no gene symbols or names. HGNC's typed xref nodes carry the
-      bare Ensembl gene ID and UniProt accession as dct:identifier, which equal the local part of
-      TiSMeD's gene and protein IRIs (example xdb_hgnc_symbols). HGNC's IRIs are
-      http://identifiers.org/ensembl/… — a different namespace, so there is no IRI join.
+      JOIN TARGET — the source of CURRENT symbols (TiSMeD's own gene labels are a snapshot; gotcha
+      labels_are_snapshot_symbols). HGNC's typed xref nodes carry the bare Ensembl gene ID and UniProt
+      accession as dct:identifier, which equal the local part of TiSMeD's gene and protein IRIs
+      (example xdb_hgnc_symbols). The xref node's own IRI is http://identifiers.org/ensembl/ENSG… — a
+      different namespace from TiSMeD's, so rewrite the IRI once to join on it (example
+      xdb_hgnc_jogo_high_impact); that is also the bridge on to JoGo.
     other: >
       refexo, glycosmos glycomeatlas, open-tggates and refex fantom5 also point at UBERON IRIs with
       their own predicates; they never touch a t: predicate. ensembl and uniprot data are NOT on this
       endpoint (ebi and sib).
 
-entity_counts:                       # graph-pinned, 2026-10-09
+entity_counts:                       # graph-pinned, 2026-10-09; all re-measured unchanged 2026-10-15
   genes: 3347                        # t:ts_evaluated_gene, IRI http://rdf.ebi.ac.uk/resource/ensembl/ENSG…
   proteins: 1930                     # t:ts_evaluated_protein, IRI http://purl.uniprot.org/uniprot/<acc>
   gene_specificity_records: 4609     # one per (gene, tissue term); 1,179 genes have more than one
@@ -49,22 +52,28 @@ entity_counts:                       # graph-pinned, 2026-10-09
   tissue_terms_with_uberon: 256      # skos:closeMatch, at most one each; 34 have none
   gene_records_flagged_protein_confirmed: 1102   # t:hasTissueSpecificProtein true (23.9%)
   genes_resolvable_to_hgnc_symbol: 3333          # 99.6%
+  gene_labels_differing_from_hgnc: 129           # 2026-10-15: of the 3,333, label ≠ current HGNC symbol
 
 global_gotchas:
-  - id: no_names_in_graph
+  - id: labels_are_snapshot_symbols
     say: >
-      Genes and proteins are bare IRIs with exactly two predicates: rdf:type and the link to their
-      specificity records. There is no symbol, name, description, taxon or gene↔protein edge, and the
-      IRI namespaces are Ensembl-EBI and UniProt, so start from an Ensembl gene ID or UniProt accession,
-      or resolve symbols through HGNC on this endpoint (example xdb_hgnc_symbols).
+      Genes and proteins have exactly three predicates: rdf:type, the link to their specificity
+      records, and rdfs:label. A gene's label is a gene symbol as of TiSMeD's build, NOT the current
+      one: 129 of the 3,333 genes HGNC resolves carry an outdated symbol (ACPP, now ACP3; BVES, now
+      POPDC1; HRASLS, now PLAAT1), so a lookup by today's symbol misses them. Two labels name two genes
+      each (IGF2, PRSS50). A protein's label is its UniProt protein name, full text with alternative
+      names in parentheses — not a symbol. There is no description, taxon or gene↔protein edge. Anchor
+      on the Ensembl gene ID or UniProt accession, and take current symbols from HGNC (example
+      xdb_hgnc_symbols). Labels are plain literals: "CFTR" matches, "CFTR"^^xsd:string does not.
     check:
       kind: absent
-      date: "2026-10-09"
+      date: "2026-10-15"
       query: |
         PREFIX t: <http://med2rdf.org/tismed/ontology#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         SELECT ?p WHERE { GRAPH <http://rdfportal.org/dataset/tismed> {
           ?s a t:ts_evaluated_gene ; ?p ?o .
-          FILTER(?p NOT IN (rdf:type, t:hasGeneExpressionSpecificity)) } } LIMIT 1
+          FILTER(?p NOT IN (rdf:type, t:hasGeneExpressionSpecificity, rdfs:label)) } } LIMIT 1
   - id: positives_only
     say: >
       Only positive calls are stored. Every record already satisfies TiSMeD's own cut-offs (T-score ≥
@@ -83,9 +92,10 @@ global_gotchas:
     say: >
       Do NOT roll records up with rdfs:subClassOf. Specificity is recorded separately at each level
       (organ-system term, organ term, sub-region term) and the stored tree does not follow the
-      system-level records: "brain" (and "testis") is filed under "Endocrine System" and "muscle" under
-      "Digestive System", yet 271 of the 272 brain-specific genes carry their system-level record on
-      "Nervous System" and none on "Endocrine System". To ask about a system, query the system term's
+      system-level records. 10 terms have two or three parents, some anatomically surprising: "brain"
+      is filed under "Endocrine System" as well as "Nervous System", "testis" under Endocrine and
+      Urogenital, "stomach" under Digestive and Nervous — yet 271 of the 272 brain-specific genes
+      carry their system-level record on "Nervous System" and none on "Endocrine System". To ask about a system, query the system term's
       own records (example enum_by_tissue); a subClassOf* walk from "Digestive System" doubles the
       answer (638 genes vs 313) by sweeping in every term filed beneath it.
     check:
@@ -181,10 +191,11 @@ examples:
         OPTIONAL { ?rec t:isPositivelySpecificTo ?tissue }
       }
       GROUP BY ?tissue ?label ?parentLabel ?uberon ORDER BY ?tissue
-    verified: {row_count: 2, has_values: ["pancreas_islets of langerhans", "UBERON_0001264"], date: "2026-10-09"}
+    verified: {row_count: 3, has_values: ["pancreas_islets of langerhans", "UBERON_0001264", "Endocrine System"], date: "2026-10-15"}
     teaches: >
-      Tissue terms are t:TISMEDT_NNNNNN (owl:Class) with a plain rdfs:label, one rdfs:subClassOf parent
-      and at most one skos:closeMatch to UBERON. Sub-regions are named "<organ>_<part>", so a label
+      Tissue terms are t:TISMEDT_NNNNNN (owl:Class) with a plain rdfs:label, usually one rdfs:subClassOf
+      parent (10 terms have two or three — pancreas sits under Digestive AND Endocrine System, so it
+      returns one row per parent) and at most one skos:closeMatch to UBERON. Sub-regions are named "<organ>_<part>", so a label
       prefix lists an organ with its parts. Check the record count before using a term.
     traps_avoided:
       - "Only 56 of the 290 terms are ever the target of a record. Most sub-regions (163 brain areas, islets of Langerhans …) are vocabulary only: zero rows for them is not a biological negative."
@@ -283,7 +294,7 @@ examples:
       - "To get the protein's own scores you must leave the graph — TiSMeD stores no gene↔protein edge; map through HGNC (example xdb_hgnc_symbols) and look up the UniProt IRI."
 
   - id: xdb_hgnc_symbols
-    intent: "cross-DB: attach HGNC gene symbols to TiSMeD genes and proteins by ID string"
+    intent: "cross-DB: attach CURRENT HGNC gene symbols to TiSMeD genes and proteins by ID string"
     question: "Where are ALB, TNNT2, INS and GFAP tissue-specific, at gene and at protein level?"
     complexity: cross_db
     endpoint_name: primary
@@ -312,7 +323,8 @@ examples:
     teaches: >
       The local part of a TiSMeD IRI (ENSG… or a UniProt accession) equals the dct:identifier of an HGNC
       xref node, and the HGNC gene that rdfs:seeAlso-points at that node carries the symbol as
-      rdfs:label. One join names genes and proteins alike; 3,333 of 3,347 genes resolve.
+      rdfs:label. One join names genes and proteins alike; 3,333 of 3,347 genes resolve. Use it
+      rather than TiSMeD's own gene label, which is a snapshot (gotcha labels_are_snapshot_symbols).
     traps_avoided:
       - say: >
           Write the join in THIS direction: bind the ID string inside the tismed GRAPH, then match it as
@@ -333,8 +345,100 @@ examples:
               GRAPH <http://rdfportal.org/dataset/tismed> {
                 BIND(IRI(CONCAT("http://rdf.ebi.ac.uk/resource/ensembl/", ?ensg)) AS ?entity)
                 ?entity t:hasGeneExpressionSpecificity ?rec . ?rec t:isPositivelySpecificTo ?tt } }
+      - say: >
+          Looking a gene up by its CURRENT symbol in TiSMeD's own rdfs:label misses renamed genes: "ACP3"
+          returns nothing, although TiSMeD has the gene (ENSG00000014257, labelled with the old symbol
+          "ACPP"). Filter on the HGNC symbol, as above.
+        check:
+          kind: zero_rows
+          date: "2026-10-15"
+          query: |
+            PREFIX t: <http://med2rdf.org/tismed/ontology#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?gene WHERE { GRAPH <http://rdfportal.org/dataset/tismed> {
+              ?gene a t:ts_evaluated_gene ; rdfs:label "ACP3" } }
       - "HGNC symbols are plain literals too, and a symbol with no row may be non-specific OR one of the 14 genes HGNC cannot resolve — check with the Ensembl ID before concluding."
       - "ALB and INS return gene rows only: their proteins have no TiSMeD record, which is absence of a call, not evidence of non-specificity."
+      - "This string join is fine for a handful of symbols, but over a whole tissue (liver, 259 genes) the TiSMeD→HGNC leg alone took 113 s. For set-level joins build the Ensembl IRI instead (example xdb_hgnc_jogo_high_impact)."
+
+  - id: xdb_hgnc_jogo_high_impact
+    intent: "cross-DB, three graphs: tissue-specific genes (TiSMeD) → HGNC → their HIGH-impact variants in JoGo"
+    question: "Which liver-specific genes carry a HIGH-impact (snpEff) variant in the JoGo long-read haplotype catalogue?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      DEFINE sql:select-option "order"
+      PREFIX t: <http://med2rdf.org/tismed/ontology#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX jogo: <http://jogo.csml.org/ontology#>
+      SELECT DISTINCT ?symbol ?variant ?annotation ?af
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/tismed> {
+          ?gene t:hasGeneExpressionSpecificity ?rec . ?rec t:isPositivelySpecificTo t:TISMEDT_000031 .
+          BIND(IRI(CONCAT("http://identifiers.org/ensembl/", STRAFTER(STR(?gene), "/ensembl/"))) AS ?ens)
+        }
+        GRAPH <http://rdfportal.org/dataset/hgnc> { ?hgnc rdfs:seeAlso ?ens ; rdfs:label ?symbol }
+        GRAPH <http://rdfportal.org/dataset/jogo> {
+          ?region rdfs:seeAlso ?hgnc ; jogo:maneStatus "MANE Select" ; jogo:aHaplotype ?h .
+          ?h jogo:hasVariant ?variant .
+          ?variant jogo:annotationImpact "HIGH" ; jogo:annotation ?annotation ; jogo:alleleFrequency ?af .
+        }
+      }
+      ORDER BY ?symbol ?variant
+    verified: {row_count: 127, has_values: ["ABCC2", "ADH1C", "stop_gained"], date: "2026-10-15"}
+    teaches: >
+      A three-graph chain on one endpoint, all joins on IRIs. TiSMeD's gene IRI is rewritten ONCE, in
+      the tismed GRAPH, into http://identifiers.org/ensembl/ENSG…, which is the IRI of HGNC's Ensembl
+      xref node; the HGNC gene IRI is then JoGo's region rdfs:seeAlso. The first line,
+      DEFINE sql:select-option "order", makes Virtuoso join in the order written — small TiSMeD set
+      first (259 liver genes), then HGNC, then JoGo — and is what makes it finish (16 s; 84 genes).
+      Swap t:TISMEDT_000031 for any tissue term (kidney t:TISMEDT_000282: 29 rows, 21 genes).
+    traps_avoided:
+      - say: >
+          Without the DEFINE line the same query does not finish in 120 s (measured twice, cold and
+          warm): the optimiser starts from JoGo's millions of haplotype→variant links. Keep the DEFINE
+          as the very first line, before PREFIX.
+        check:
+          kind: error
+          date: "2026-10-15"
+          query: |
+            PREFIX t: <http://med2rdf.org/tismed/ontology#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT DISTINCT ?symbol ?variant WHERE {
+              GRAPH <http://rdfportal.org/dataset/tismed> {
+                ?gene t:hasGeneExpressionSpecificity ?rec . ?rec t:isPositivelySpecificTo t:TISMEDT_000031 .
+                BIND(IRI(CONCAT("http://identifiers.org/ensembl/", STRAFTER(STR(?gene), "/ensembl/"))) AS ?ens) }
+              GRAPH <http://rdfportal.org/dataset/hgnc> { ?hgnc rdfs:seeAlso ?ens ; rdfs:label ?symbol }
+              GRAPH <http://rdfportal.org/dataset/jogo> {
+                ?region rdfs:seeAlso ?hgnc ; jogo:maneStatus "MANE Select" ; jogo:aHaplotype ?h .
+                ?h jogo:hasVariant ?variant . ?variant jogo:annotationImpact "HIGH" } }
+      - say: >
+          Direction matters even with the DEFINE: starting from JoGo's HIGH variants and building the
+          TiSMeD IRI from HGNC's Ensembl xref inside the LAST GRAPH returns 0 rows, without an error
+          (the same failure as in xdb_hgnc_symbols). Build the IRI in the FIRST graph you read.
+        check:
+          kind: zero_rows
+          date: "2026-10-15"
+          query: |
+            DEFINE sql:select-option "order"
+            PREFIX t: <http://med2rdf.org/tismed/ontology#>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX jogo: <http://jogo.csml.org/ontology#>
+            SELECT DISTINCT ?symbol ?variant WHERE {
+              GRAPH <http://rdfportal.org/dataset/jogo> {
+                ?variant jogo:annotationImpact "HIGH" .
+                ?h jogo:hasVariant ?variant ; a jogo:AHaplotype .
+                ?region jogo:aHaplotype ?h ; jogo:maneStatus "MANE Select" ; rdfs:seeAlso ?hgnc . }
+              GRAPH <http://rdfportal.org/dataset/hgnc> {
+                ?hgnc rdfs:label ?symbol ; rdfs:seeAlso ?ens .
+                FILTER(STRSTARTS(STR(?ens), "http://identifiers.org/ensembl/")) }
+              GRAPH <http://rdfportal.org/dataset/tismed> {
+                BIND(IRI(CONCAT("http://rdf.ebi.ac.uk/resource/ensembl/", STRAFTER(STR(?ens), "/ensembl/"))) AS ?gene)
+                ?gene t:hasGeneExpressionSpecificity ?rec . ?rec t:isPositivelySpecificTo t:TISMEDT_000031 } }
+      - "Prefer the HGNC hop even though JoGo regions also carry rdfs:seeAlso <http://identifiers.org/ensembl/ENSG…>. Joining TiSMeD's rewritten IRI straight to it gives the same rows but is cache-bound: 110 s (kidney) and over 120 s (skin, liver) on a cold run, 0.1 s only once cached; the HGNC route took 4–6 s cold on the same tissues."
+      - "For a tissue set too large for one query, split it: fetch the tissue's gene IRIs from TiSMeD, rewrite them to <http://identifiers.org/ensembl/ENSG…>, and pass them as VALUES ?ens to a JoGo-only query that starts from jogo:annotationImpact \"HIGH\" (example enum_variants_by_consequence in jogo). The liver case gives the same 127 rows that way."
+      - "JoGo's variant IRI is per (gene region, variant) and AF is JoGo's own 258-sample frequency, mostly Japanese — not a population frequency (see the jogo MIE)."
 
   - id: xdb_uberon
     intent: "cross-DB: start from an UBERON anatomy term and reach TiSMeD tissues and their gene counts"
@@ -384,10 +488,12 @@ id_join_map:
   stable_anchor: >
     Gene http://rdf.ebi.ac.uk/resource/ensembl/<ENSG, unversioned>; protein
     http://purl.uniprot.org/uniprot/<accession>; tissue http://med2rdf.org/tismed/ontology#TISMEDT_<6
-    digits> with a plain rdfs:label as the human key. Records are blank nodes.
+    digits> with a plain rdfs:label as the human key. Genes also carry a snapshot gene symbol and
+    proteins a UniProt protein name as rdfs:label — display only, not a key. Records are blank nodes.
   same_endpoint_joins:
     hgnc: "local part of the gene / protein IRI == dct:identifier of an HGNC xref node (a <http://identifiers.org/ensembl> or <http://identifiers.org/uniprot>); the HGNC gene rdfs:seeAlso that node (example xdb_hgnc_symbols). 3,333 of 3,347 genes resolve"
     ontology_uberon: "tissue skos:closeMatch obo:UBERON_NNNNNNN == the class IRI in GRAPH <http://rdfportal.org/ontology/uberon> (256 of 290 terms; example xdb_uberon)"
+    jogo: "via HGNC only: gene IRI rewritten to <http://identifiers.org/ensembl/ENSG…> == HGNC's Ensembl xref node; the HGNC gene IRI == a JoGo region's rdfs:seeAlso (example xdb_hgnc_jogo_high_impact — needs DEFINE sql:select-option \"order\")"
   xrefs:
     ensembl: "the gene IRI is the Ensembl RDF gene IRI used by database=ensembl on the ebi endpoint — same IRI, different endpoint, so carry the ENSG across in a second query"
     uniprot: "the protein IRI is the UniProt entry IRI used by database=uniprot on the sib endpoint — same IRI, different endpoint"
