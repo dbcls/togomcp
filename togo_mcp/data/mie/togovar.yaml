@@ -296,7 +296,7 @@ examples:
     verified: {n: 90567342, date: "2026-10-09"}
     teaches: "A type scan pinned to GRAPH <http://togovar.org/variant> gives the class size. Classes: SNV 1,046,958,793 · Insertion 90,567,342 · Deletion 90,067,908 · MNV 12,283 · Indel 8,615 → total 1,227,614,941."
     traps_avoided:
-      - "FALDO types describe locations, not variant classes. Pin the core graph and restrict rdf:type to the intended gvo variant class; count DISTINCT variants when joins multiply rows."
+      - "Count by the gvo variant class, as above, never by a FALDO type: faldo:InBetweenPosition / ExactPosition / Region type the variant's LOCATION node, not the variant (schema_delta)."
 
   - id: enum_consequence            # §4.4 enumeration example — the set-level SO-consequence route
     intent: enumerate ALL variants of a given functional class (SO consequence) in a gene — the controlled-vocabulary set route
@@ -387,29 +387,6 @@ examples:
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
-  - >
-    Send Accept: application/json on REST requests to avoid HTTP 501 for a missing or unsupported Accept
-    header. The TogoMCP REST client already supplies it.
-  - >
-    For REST frequency filters, use a supported dataset name in an object, e.g. {"name":"tommo"}, not a
-    bare string (HTTP 500). Example POST /api/search/variant JSON body:
-    {"query":{"frequency":{"dataset":{"name":"tommo"},"frequency":{"gte":0,"lte":1}}}}.
-    Send Content-Type: application/json. The TogoMCP wrapper already constructs this object form.
-  - "/suggest is UI-only; external integrations should use the documented REST API or HGNC/MONDO."
-  - >
-    REST /api/search/variant supports pagination beyond 10,000 records with offset
-    [chromosome, position, reference, alternate] from the last returned record; use all four values to
-    distinguish alleles at the same position. See https://grch38.togovar.org/api/v1.yml.
-    Pagination has no fixed request-count limit (maintainer guidance); the current TogoMCP wrapper still
-    accepts integer offsets only. /api/download/variant requires the query to match at most 100,000 variants;
-    otherwise nothing can be downloaded (maintainer guidance; not stated in the official API definition).
-    For regional retrieval, use bcftools for VCF frequencies or tabix for JSON annotations:
-    https://grch38.togovar.org/doc/ja/downloads.
-  - >
-    REST variant-type terms are case-sensitive. Use SNV / SO_0001483, INS / SO_0000667, DEL / SO_0000159,
-    INDEL / SO_1000032, or MNV / SO_1000002. Convert lowercase input to uppercase and delins to INDEL;
-    do not send SUB, SUBSTITUTION or DELINS. The current wrapper's lowercase snv/ins/del/indel/sub
-    validation and outgoing terms require a separate code change.
   - "NORMALIZED vs VCF alleles: gvo:ref/gvo:alt are normalized (trimmed) and are the EMPTY STRING \"\" for pure insertions (ref) / deletions (alt); gvo:ref_vcf/gvo:alt_vcf keep the VCF anchor base (never empty). gvo:pos = gvo:pos_vcf + 1 for insertions and deletions. Match gvo:pos with an INTEGER literal (111803962, not \"111803962\")."
   - "FALDO location shape depends on variant type: SNV → faldo:ExactPosition (faldo:position + faldo:reference → identifiers.org/hco/{chr}/GRCh38); Insertion → faldo:InBetweenPosition; Deletion → faldo:Region. faldo:position alone is NOT chromosome-scoped — also constrain faldo:reference."
   - "Scores on the consequence bnode beyond the *_prediction literals: tgvo:sift / tgvo:polyphen / tgvo:alphamissense (numeric, mixed decimal/integer), tgvo:cadd_phred and tgvo:cadd_raw (CADD), and tgvo:impact (controlled literal, e.g. \"MODERATE\"). SIFT/PolyPhen/AlphaMissense exist only on bnodes for coding changes."
@@ -434,7 +411,8 @@ id_join_map:
     ncbi_gene: "embedded-ClinVar med2rdf:gene → ncbi.nlm.nih.gov/gene/{n} (multi-valued)"
   bridged_via_togoid:             # TogoVar is a STANDALONE endpoint, NOT federated with RDF Portal — external DBs route via TogoID
     - "RDF Portal DBs (uniprot, chembl, ensembl, clinvar-standalone, etc.) reach TogoVar's entities only via togoid_convertId on the dbSNP rsID, ENSG gene, HGNC IRI, or NCBI gene — there is no federated SPARQL join."
-    - "REST companion tools (togovar sub-server): togovar_search_gene / _disease resolve name→ID for a SPARQL anchor; use togovar_search_variant for allele frequencies (bulk alternatives: schema_delta)."
+    - "REST companion tools (togovar sub-server): togovar_search_gene / _disease resolve name→ID for a SPARQL anchor; use togovar_search_variant for allele frequencies. It pages past 10,000 rows: pass each full page's `next_offset` back as `offset`."
+    - "Whole-region or genome-wide frequency data is better downloaded than paged: TogoVar distributes VCF (bcftools) and JSON (tabix) files at https://grch38.togovar.org/doc/ja/downloads. Its /api/download/variant only serves a query matching at most 100,000 variants (TogoVar maintainers, 2026-10; not in api/v1.yml)."
     - >
       Treat togovar_search_gene / togovar_search_disease results as candidates, not guaranteed exact,
       canonical or ancestor-term matches. Confirm gene names/aliases with HGNC and disease IDs with MONDO
