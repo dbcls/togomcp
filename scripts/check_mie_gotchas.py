@@ -161,14 +161,24 @@ def complete_query(query, file_prefixes):
     return ("\n".join(add) + "\n" + query) if add else query
 
 
+# 4xx statuses that are about the request, not the SPARQL (see _is_query_error).
+_INFRA_4XX = frozenset([406, 408, 429])
+
+
 def _is_query_error(code, body):
     """Did the ENDPOINT reject the query, or did the INFRASTRUCTURE fail?
 
     Only the first counts as a pass for `kind: error`. Virtuoso answers a genuine
     rejection with HTTP 500 and a body naming the engine and its SQLSTATE ("Virtuoso
     37000 Error TR...: transitive start not given"), so 500 alone cannot decide it —
-    a gateway that is simply down also answers 500. 4xx is always the query's fault.
+    a gateway that is simply down also answers 500. 4xx is the query's fault, except
+    406 / 408 / 429: those answer the REQUEST (content negotiation, a client timeout, a
+    rate limit), never the query text. Our Accept header is constant, so a 406 is the
+    endpoint misbehaving — TogoVar returned one intermittently in 2026-10 to a check
+    that passed on the next run, and it was reported as drift.
     """
+    if code in _INFRA_4XX:
+        return False
     if code is not None and 400 <= code < 500:
         return True
     if code in (502, 503, 504):
