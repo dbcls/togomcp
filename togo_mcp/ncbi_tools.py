@@ -25,10 +25,12 @@ from fastmcp import FastMCP
 import httpx
 from mcp.types import TextContent
 
-from .server import READ_ONLY_TOOL, raise_for_status_with_body
+from .server import READ_ONLY_TOOL, raise_for_status_with_body, redact_secrets, register_secret
 
 # Get API key from environment
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
+# Mask the key verbatim anywhere it could surface (errors, logs).
+register_secret(NCBI_API_KEY)
 NCBI_EMAIL = os.environ.get("NCBI_EMAIL")
 if not NCBI_EMAIL:
     NCBI_EMAIL = "togomcp@dbcls.jp"
@@ -262,9 +264,9 @@ async def _ncbi_esearch_api(
                 return data
 
             except httpx.HTTPError as e:
-                raise NCBISearchError(f"HTTP error occurred: {str(e)}")
+                raise NCBISearchError(f"HTTP error occurred: {redact_secrets(str(e))}")
             except Exception as e:
-                raise NCBISearchError(f"Error querying NCBI: {str(e)}")
+                raise NCBISearchError(f"Error querying NCBI: {redact_secrets(str(e))}")
 
 
 def _format_esearch_result(
@@ -487,10 +489,10 @@ async def esearch(
 
     except NCBISearchError as e:
         return [
-            TextContent(type="text", text=f"Error searching NCBI {database}: {str(e)}")
+            TextContent(type="text", text=f"Error searching NCBI {database}: {redact_secrets(str(e))}")
         ]
     except Exception as e:
-        return [TextContent(type="text", text=f"Unexpected error: {str(e)}")]
+        return [TextContent(type="text", text=f"Unexpected error: {redact_secrets(str(e))}")]
 
 
 @ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
@@ -603,7 +605,7 @@ async def esummary(
 
         except Exception as e:
             return [
-                TextContent(type="text", text=f"Error fetching summaries: {str(e)}")
+                TextContent(type="text", text=f"Error fetching summaries: {redact_secrets(str(e))}")
             ]
 
 
@@ -680,4 +682,4 @@ async def efetch(
                 return [TextContent(type="text", text=response.text)]
 
         except Exception as e:
-            return [TextContent(type="text", text=f"Error fetching records: {str(e)}")]
+            return [TextContent(type="text", text=f"Error fetching records: {redact_secrets(str(e))}")]

@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import csv
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -317,7 +318,7 @@ def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -
             same inputs, since the result is deterministic.
     """
     if endpoint_url:
-        return endpoint_url
+        return endpoint_url.strip()
     if endpoint_name:
         if endpoint_name not in ENDPOINT_NAME_TO_URL:
             raise ValueError(
@@ -348,6 +349,107 @@ def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -
         "'uniprot'), endpoint_name (e.g. 'ebi', 'sib'), or endpoint_url. "
         f"Valid databases: {', '.join(SPARQL_ENDPOINT_KEYS)}."
     )
+
+
+# --- endpoint_url guard (SSRF) -------------------------------------------------
+# `endpoint_url` is caller-supplied and the server POSTs to it and returns the
+# body, so unchecked it lets any anonymous client read hosts on the server's
+# own network (vs94 sits inside DBCLS). Registered endpoints' host:port pairs are
+# always allowed — they may legitimately resolve to internal addresses from vs94.
+# Any other host must be http(s) and resolve ONLY to globally routable
+# addresses; TOGOMCP_EXTRA_SPARQL_HOSTS (comma-separated hostnames) exempts
+# more, e.g. `localhost` for a local dev endpoint.
+#
+# Residual gap: the check resolves the name, then httpx resolves it again to
+# connect, so a DNS-rebinding host could answer differently the second time.
+# Closing that needs a pinned-IP transport; this guard stops the direct case.
+def _host_port(u: httpx.URL) -> tuple[str, int]:
+    return (u.host or "").lower(), u.port or (443 if u.scheme == "https" else 80)
+
+
+_REGISTERED_SPARQL_HOSTS = frozenset(
+    _host_port(httpx.URL(info["url"])) for info in SPARQL_ENDPOINT.values()
+)
+
+
+def _extra_sparql_hosts() -> frozenset[str]:
+    raw = os.getenv("TOGOMCP_EXTRA_SPARQL_HOSTS", "")
+    return frozenset(h.strip().lower() for h in raw.split(",") if h.strip())
+
+
+async def check_endpoint_url(url: str) -> None:
+    """Raise ValueError unless `url` is a SPARQL endpoint this server may contact."""
+    reject = (
+        f"endpoint_url {url!r} is not allowed: {{}}. Use a registered `database` or "
+        "`endpoint_name` (see get_sparql_endpoints()), or a public http(s) SPARQL "
+        "endpoint. Do not retry with the same value."
+    )
+    try:
+        parsed = httpx.URL(url)
+    except Exception:
+        raise ValueError(reject.format("not a valid URL")) from None
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(reject.format("only http and https are supported"))
+    host, port = _host_port(parsed)
+    if not host:
+        raise ValueError(reject.format("no host"))
+    if (host, port) in _REGISTERED_SPARQL_HOSTS or host in _extra_sparql_hosts():
+        return
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, port)
+    except OSError:
+        raise ValueError(reject.format(f"host {host!r} does not resolve")) from None
+    for info in infos:
+        addr = ipaddress.ip_address(info[4][0].split("%", 1)[0])
+        if not addr.is_global:
+            raise ValueError(
+                reject.format(f"host {host!r} resolves to a non-public address")
+            )
+
+
+# --- Secret redaction ---------------------------------------------------------
+# Upstream URLs carry credentials in the query string (NCBI E-utilities takes
+# `api_key=`), and both our own error messages and httpx's exception strings
+# embed the full request URL. Anything that reaches a client or the tool-call
+# log must pass through `redact_secrets` first.
+#
+# Two layers, because either alone has gaps:
+#   1. by parameter NAME — catches any `api_key=...` in any URL-shaped text,
+#      including keys we never registered (e.g. one added by a future module);
+#   2. by literal VALUE — catches the key wherever it appears, even outside a
+#      query string (a reflected request body, a repr, a percent-decoded echo).
+_REDACTED = "REDACTED"
+_SECRET_PARAM_RE = re.compile(
+    r"(?i)(?P<k>[?&;](?:api[_-]?key|apikey|access[_-]?token|token|secret|password)=)"
+    r"[^&#\s\"'<>]+"
+)
+_registered_secrets: set[str] = set()
+
+
+def register_secret(value: str | None) -> None:
+    """Register a credential value so `redact_secrets` masks it verbatim.
+
+    Values shorter than 8 characters are ignored: masking them would mangle
+    unrelated text, and no real API key is that short.
+    """
+    if value and len(value.strip()) >= 8:
+        _registered_secrets.add(value.strip())
+
+
+def redact_secrets(text: str) -> str:
+    """Mask credentials in free text (error messages, URLs, log lines)."""
+    if not text:
+        return text
+    text = _SECRET_PARAM_RE.sub(lambda m: m.group("k") + _REDACTED, text)
+    for value in _registered_secrets:
+        if value in text:
+            text = text.replace(value, _REDACTED)
+    return text
+
+
+def redact_url(url: httpx.URL | str) -> str:
+    """Render a request URL with credential query parameters masked."""
+    return redact_secrets(str(url))
 
 
 def raise_for_status_with_body(
@@ -393,8 +495,8 @@ def raise_for_status_with_body(
             "Consider narrowing scope or adding limits before retrying."
         )
     raise ValueError(
-        f"{label}HTTP {response.status_code} from {response.url}.\n"
-        f"Response body:\n{snippet}\n\n{hint}"
+        f"{label}HTTP {response.status_code} from {redact_url(response.url)}.\n"
+        f"Response body:\n{redact_secrets(snippet)}\n\n{hint}"
     )
 
 
@@ -421,6 +523,8 @@ async def execute_sparql(
         For cross-database queries on shared endpoints, use endpoint_name or endpoint_url.
     """
     url = resolve_endpoint_url(database, endpoint_name, endpoint_url)
+    if endpoint_url:
+        await check_endpoint_url(url)
 
     extra: dict[str, Any] = {
         "endpoint_url": url,
@@ -911,7 +1015,9 @@ class _ToolCallLogger(_Middleware):
         except BaseException as exc:
             status = "error"
             error_class = exc.__class__.__name__
-            error_message = str(exc)[:500]
+            # Redact BEFORE truncating, so a key cut at the 500-char boundary
+            # can't survive as a partial match the redactor no longer sees.
+            error_message = redact_secrets(str(exc))[:500]
             raise
         finally:
             elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
@@ -952,13 +1058,66 @@ class _ToolCallLogger(_Middleware):
             if extra:
                 record["extra"] = extra
             try:
-                self._log.info(json.dumps(record, default=str))  # type: ignore[union-attr]
+                # The whole line is redacted, not just error_message: `extra` and
+                # `args` are free-form and the log is served over /logs.
+                self._log.info(redact_secrets(json.dumps(record, default=str)))  # type: ignore[union-attr]
             except Exception:
                 # Logging must never break a tool call.
                 pass
 
 
 mcp.add_middleware(_ToolCallLogger())
+
+
+class _RedactSecrets(_Middleware):
+    """Last line of defence: scrub credentials from every tool result and error.
+
+    Individual tools already avoid echoing secrets (see `raise_for_status_with_body`),
+    but many handlers return `f"...: {e}"` for arbitrary exceptions, and httpx
+    puts the full request URL — query string included — into its exception
+    text. Rather than audit every such site forever, every tool response is
+    passed through `redact_secrets` on its way out.
+
+    Registered AFTER `_ToolCallLogger`, so it sits inside it: the logger
+    therefore records the already-redacted exception, too.
+    """
+
+    async def on_call_tool(self, context, call_next):
+        from fastmcp.exceptions import ToolError
+
+        try:
+            result = await call_next(context)
+        except ToolError as exc:
+            msg = str(exc)
+            clean = redact_secrets(msg)
+            if clean != msg:
+                raise ToolError(clean) from None
+            raise
+        except Exception as exc:
+            msg = str(exc)
+            clean = redact_secrets(msg)
+            if clean != msg:
+                # `from None` drops the original exception (and its URL-bearing
+                # message) from the chain FastMCP may render.
+                raise ToolError(clean) from None
+            raise
+
+        for block in getattr(result, "content", None) or []:
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                clean = redact_secrets(text)
+                if clean != text:
+                    block.text = clean
+        structured = getattr(result, "structured_content", None)
+        if structured is not None:
+            raw = json.dumps(structured, default=str)
+            clean = redact_secrets(raw)
+            if clean != raw:
+                result.structured_content = json.loads(clean)
+        return result
+
+
+mcp.add_middleware(_RedactSecrets())
 
 
 # --- Stale client tool lists: renamed and retired tool names -----------------
