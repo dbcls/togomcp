@@ -13,6 +13,15 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.26.0] - 2026-10-16
+
+<!-- whatsnew: 2026-10-16 | Variant search can now <strong>page through more than 10,000 results</strong> — each full page returns a <code>next_offset</code> to continue from — and its <code>variant_type</code> filter, which failed on every value, now works in any case. -->
+
+TogoVar variant search: one capability added, one long-standing failure fixed, plus MIE refreshes
+after upstream data reloads. MINOR: `togovar_search_variant`'s existing `offset` parameter accepts
+a second form and its result gains a `next_offset` field; no tool was added or renamed, and every
+call that worked on 2.25.2 behaves the same.
+
 ### Added
 
 - **`togovar_search_variant` pages past 10,000 rows.** An integer `offset` is still capped at
@@ -3376,7 +3385,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.25.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.0...HEAD
+[2.26.0]: https://github.com/dbcls/togomcp/compare/v2.25.2...v2.26.0
 [2.25.2]: https://github.com/dbcls/togomcp/compare/v2.25.1...v2.25.2
 [2.25.1]: https://github.com/dbcls/togomcp/compare/v2.25.0...v2.25.1
 [2.25.0]: https://github.com/dbcls/togomcp/compare/v2.24.0...v2.25.0
