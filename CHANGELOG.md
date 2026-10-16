@@ -13,6 +13,21 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.26.1] - 2026-10-16
+
+TogoVar MIE text only. PATCH: no tool, parameter or return shape changed; `get_MIE_file(database="togovar")`
+is the only served content that differs from 2.26.0.
+
+### Changed
+
+- **TogoVar MIE: the guidance from #265 (@mitsuhashi), fitted to 2.26.0.** It adds advice to confirm
+  `togovar_search_gene`/`_disease` results with HGNC and MONDO, and a route to TogoVar's VCF/JSON
+  downloads for whole-region data (`/api/download/variant` serves at most 100,000 variants). Two
+  sentences 2.26.0 had made wrong ("send uppercase variant types", "the wrapper accepts integer
+  offsets only") were removed. Raw-REST mechanics (headers, JSON bodies, `/suggest`) left
+  `schema_delta`, which is for RDF structure; the agent never sends raw HTTP, and the wrapper and
+  `togovar.py` already record those quirks.
+
 ## [2.26.0] - 2026-10-16
 
 <!-- whatsnew: 2026-10-16 | Variant search can now <strong>page through more than 10,000 results</strong> — each full page returns a <code>next_offset</code> to continue from — and its <code>variant_type</code> filter, which failed on every value, now works in any case. -->
@@ -3385,7 +3400,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.1...HEAD
+[2.26.1]: https://github.com/dbcls/togomcp/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/dbcls/togomcp/compare/v2.25.2...v2.26.0
 [2.25.2]: https://github.com/dbcls/togomcp/compare/v2.25.1...v2.25.2
 [2.25.1]: https://github.com/dbcls/togomcp/compare/v2.25.0...v2.25.1
