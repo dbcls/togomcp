@@ -299,6 +299,30 @@ ENDPOINT_NAMES = list(ENDPOINT_NAME_TO_URL.keys())
 SPARQL_ENDPOINT_KEYS = list(SPARQL_ENDPOINT.keys())
 
 
+# Where a query actually goes, for tool descriptions. Most databases live on RDF
+# Portal, but not all: GlyCosmos, TogoVar, WikiPathways, IDSM, LIPID MAPS,
+# SwissLipids and MarpolBase run their own endpoints. A description that said
+# "queries RDF Portal" would misstate the data flow for those, so this is built from
+# the registry — a new external endpoint is named the moment its CSV row lands.
+_RDF_PORTAL_HOST = "rdfportal.org"
+
+
+def _endpoint_hosting_summary() -> str:
+    external: dict[str, list[str]] = {}
+    for db_name, info in SPARQL_ENDPOINT.items():
+        if httpx.URL(info["url"]).host != _RDF_PORTAL_HOST:
+            external.setdefault(info["url"], []).append(db_name)
+    parts = "; ".join(f"{', '.join(dbs)} ({url})" for url, dbs in external.items())
+    return (
+        "Queries go to the SPARQL endpoint registered for `database`: RDF Portal "
+        "(https://rdfportal.org/, operated by DBCLS) for most databases, and the "
+        f"databases' own public endpoints for {parts}."
+    )
+
+
+ENDPOINT_HOSTING_SUMMARY = _endpoint_hosting_summary()
+
+
 def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -> str:
     """Resolve the SPARQL endpoint URL from various input options.
 
@@ -354,11 +378,17 @@ def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -
 # --- endpoint_url guard (SSRF) -------------------------------------------------
 # `endpoint_url` is caller-supplied and the server POSTs to it and returns the
 # body, so unchecked it lets any anonymous client read hosts on the server's
-# own network (vs94 sits inside DBCLS). Registered endpoints' host:port pairs are
-# always allowed — they may legitimately resolve to internal addresses from vs94.
-# Any other host must be http(s) and resolve ONLY to globally routable
-# addresses; TOGOMCP_EXTRA_SPARQL_HOSTS (comma-separated hostnames) exempts
-# more, e.g. `localhost` for a local dev endpoint.
+# own network (vs94 sits inside DBCLS). A registered endpoint URL is always
+# allowed — it may legitimately resolve to an internal address from vs94 — but
+# only that exact scheme/host/port/PATH: a different path on the same host (e.g.
+# Virtuoso's /conductor admin UI) gets no exemption and must pass the public-
+# address check like any other URL. httpx resolves dot segments first
+# (`/sib/../conductor` is `/conductor`); the result is compared verbatim, so a
+# percent-encoded spelling of a registered path falls through to that check too
+# rather than being decoded into a match. Any other URL must be
+# http(s) and resolve ONLY to globally routable addresses;
+# TOGOMCP_EXTRA_SPARQL_HOSTS (comma-separated hostnames) exempts more, e.g.
+# `localhost` for a local dev endpoint.
 #
 # Residual gap: the check resolves the name, then httpx resolves it again to
 # connect, so a DNS-rebinding host could answer differently the second time.
@@ -367,8 +397,12 @@ def _host_port(u: httpx.URL) -> tuple[str, int]:
     return (u.host or "").lower(), u.port or (443 if u.scheme == "https" else 80)
 
 
-_REGISTERED_SPARQL_HOSTS = frozenset(
-    _host_port(httpx.URL(info["url"])) for info in SPARQL_ENDPOINT.values()
+def _endpoint_key(u: httpx.URL) -> tuple[str, str, int, str]:
+    return (u.scheme, *_host_port(u), u.raw_path.split(b"?", 1)[0].decode().rstrip("/"))
+
+
+_REGISTERED_SPARQL_ENDPOINTS = frozenset(
+    _endpoint_key(httpx.URL(info["url"])) for info in SPARQL_ENDPOINT.values()
 )
 
 
@@ -393,7 +427,7 @@ async def check_endpoint_url(url: str) -> None:
     host, port = _host_port(parsed)
     if not host:
         raise ValueError(reject.format("no host"))
-    if (host, port) in _REGISTERED_SPARQL_HOSTS or host in _extra_sparql_hosts():
+    if _endpoint_key(parsed) in _REGISTERED_SPARQL_ENDPOINTS or host in _extra_sparql_hosts():
         return
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, port)
@@ -709,9 +743,22 @@ mcp = FastMCP("TogoMCP: RDF Portal MCP Server", version=_TOGOMCP_VERSION)
 # `destructiveHint`/`idempotentHint` are deliberately unset: the MCP spec defines
 # both as meaningful only when readOnlyHint is false.
 #
-# Apply this to EVERY new tool — a tool without it silently reverts to being
-# treated as a writer. `tests/test_tool_descriptions.py` enforces it.
+# Apply this to EVERY new tool, via `**read_only_tool("<title>")` below — a tool
+# without it silently reverts to being treated as a writer.
+# `tests/test_tool_descriptions.py` enforces it.
 READ_ONLY_TOOL = {"readOnlyHint": True, "openWorldHint": True}
+
+
+def read_only_tool(title: str) -> dict:
+    """`@mcp.tool(**read_only_tool("..."))` kwargs: READ_ONLY_TOOL plus a human title.
+
+    The title goes in BOTH places the MCP spec allows — `Tool.title` and
+    `annotations.title` — because directory review checks the annotation and
+    clients differ on which one they display. Without it, FastMCP derives a
+    title from the function name ("Get Mie File"), which is what every tool
+    shipped through 2.26. `tests/test_tool_descriptions.py` enforces it.
+    """
+    return {"title": title, "annotations": {**READ_ONLY_TOOL, "title": title}}
 
 
 from fastmcp.server.middleware import Middleware as _Middleware

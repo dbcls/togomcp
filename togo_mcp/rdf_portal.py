@@ -105,7 +105,7 @@ async def assemble_usage_guide_core() -> str:
 # is a break a stale client cannot recover from; returning structured content to a
 # client that expects none is harmless. The size problem is solved by the tiered core
 # (33.6 KB), which arrives inline either way. tests/test_output_schema_stability.py.
-@mcp.tool(name="TogoMCP_Usage_Guide", annotations=READ_ONLY_TOOL)
+@mcp.tool(name="TogoMCP_Usage_Guide", **read_only_tool("TogoMCP Usage Guide"))
 async def togomcp_usage_guide() -> str:
     """
     ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
@@ -149,9 +149,10 @@ async def togomcp_usage_guide() -> str:
 # --- Tools for RDF Portal --- #
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("List SPARQL endpoints"))
 async def get_sparql_endpoints() -> dict[str, Any]:
-    """Get the available SPARQL endpoints for RDF Portal.
+    """Get the registered SPARQL endpoints: most on RDF Portal (https://rdfportal.org/),
+    some run externally by the database's own provider (e.g. GlyCosmos, WikiPathways).
 
     RETURNS a dict with two keys: `databases` (maps each database ->
     {url, endpoint_name, keyword_search}) and `endpoints` (maps each
@@ -175,7 +176,7 @@ async def get_sparql_endpoints() -> dict[str, Any]:
 
 
 @mcp.tool(
-    annotations=READ_ONLY_TOOL,
+    **read_only_tool("Run SPARQL query"),
     name="run_sparql",
     # This `description=` is what clients actually receive — FastMCP serves it INSTEAD of
     # the docstring below, not in addition to it. It has to be a `description=` rather than
@@ -183,7 +184,8 @@ async def get_sparql_endpoints() -> dict[str, Any]:
     # docstring. Everything agent-facing therefore belongs HERE (and in the per-parameter
     # Field descriptions); the docstring deliberately holds no second copy to drift from.
     description=(
-        "Run a SPARQL query on an RDF database. "
+        "Run a read-only SPARQL query on an RDF database. "
+        f"{ENDPOINT_HOSTING_SUMMARY} "
         "CALL get_MIE_file(database) FIRST — for every database, before its first run_sparql "
         "each session. This is not background reading: it carries the mandatory graph pins, "
         "literal types and join paths for that endpoint, each live-verified. "
@@ -457,7 +459,7 @@ def _empty_result_note(csv_text: str, sparql_query: str) -> str | None:
 # must inject a runtime value (see run_sparql, which lists the live database registry)
 # — an f-string cannot be a docstring, it makes __doc__ None.
 @mcp.tool(
-    annotations=READ_ONLY_TOOL,
+    **read_only_tool("List graphs on a SPARQL endpoint"),
     name="get_graph_list",
 )
 async def get_graph_list(
@@ -508,6 +510,8 @@ async def get_graph_list(
 ) -> str:
     """
     Get a list of named graphs on a SPARQL endpoint. ALWAYS pass database (required).
+    Endpoints are the same registry run_sparql uses: RDF Portal (https://rdfportal.org/)
+    for most databases, plus the external endpoints run_sparql's description names.
 
     RETURNS a CSV-formatted list of named graphs (database-name matches first). On
     missing endpoint selection it returns a string beginning with 'Error:' — check for
@@ -569,7 +573,7 @@ SELECT DISTINCT ?graph WHERE {
 
 
 @mcp.tool(
-    annotations=READ_ONLY_TOOL,
+    **read_only_tool("Get database schema (MIE file)"),
     name="get_MIE_file",
     description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file for a specific RDF database: its graphs to pin, database-wide gotchas, live-verified SPARQL examples and ID join map. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names.",
 )
@@ -878,7 +882,7 @@ def _workflow_header(s: _skills.Skill) -> str:
 
 
 @mcp.tool(
-    annotations=READ_ONLY_TOOL,
+    **read_only_tool("Get workflow or guide section"),
     name="get_workflow",
     description=(
         "Retrieve a TogoMCP workflow: a multi-step analysis protocol that drives the "

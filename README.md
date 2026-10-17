@@ -3,7 +3,7 @@
 ![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that gives AI assistants (Claude, etc.) access to biological and biomedical RDF databases via SPARQL at the [RDF Portal](https://rdfportal.org/), as well as selected REST APIs (NCBI E-utilities, UniProt, ChEMBL, PDB, Reactome, Rhea, MeSH, and more).
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that gives AI assistants (Claude, etc.) access to biological and biomedical RDF databases via SPARQL — mostly at the [RDF Portal](https://rdfportal.org/), plus a few databases' own public endpoints (GlyCosmos, TogoVar, WikiPathways, IDSM, LIPID MAPS, SwissLipids, MarpolBase) — as well as selected REST APIs (NCBI E-utilities, UniProt, ChEMBL, PDB, Reactome, Rhea, MeSH, and more).
 
 ## Quick Start: Remote Server (No Installation)
 

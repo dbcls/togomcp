@@ -53,6 +53,25 @@ def test_registered_host_on_another_port_is_not_exempt(monkeypatch):
         _check("https://rdfportal.org:8890/sparql")
 
 
+@pytest.mark.parametrize(
+    "suffix", ["", "/", "?default-graph-uri=http%3A%2F%2Fexample.org%2Fg"],
+)
+def test_registered_endpoint_spellings_stay_exempt(monkeypatch, suffix):
+    _resolve_to(monkeypatch, "10.0.0.5")
+    _check(server.SPARQL_ENDPOINT["uniprot"]["url"] + suffix)
+
+
+@pytest.mark.parametrize(
+    "path", ["/conductor", "/sib/sparql/../../conductor", "/sib/sparq%6c", "/sib/sparql/x"],
+)
+def test_other_path_on_a_registered_host_is_not_exempt(monkeypatch, path):
+    """The exemption is for the registered endpoint, not its whole host: a Virtuoso
+    admin UI on the same internal-resolving host must hit the public-address check."""
+    _resolve_to(monkeypatch, "10.0.0.5")
+    with pytest.raises(ValueError, match="non-public address"):
+        _check("https://rdfportal.org" + path)
+
+
 @pytest.mark.parametrize("url", ["file:///etc/passwd", "gopher://x/", "ftp://x/"])
 def test_non_http_scheme_is_rejected(url):
     with pytest.raises(ValueError, match="only http and https"):

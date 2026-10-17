@@ -28,7 +28,7 @@ MODULE CONVENTIONS (same as togovar.py — keep uniform)
 * No "fall back to SPARQL" hint: KEGG has no RDF Portal endpoint.
 * List-style results return a JSON string of a BARE ARRAY, so empty and
   non-empty share one wire shape. `dict` returns are exempt.
-* Every tool carries `annotations=READ_ONLY_TOOL`.
+* Every tool carries `**read_only_tool("<title>")` (READ_ONLY_TOOL + a human title).
 
 IDENTIFIER FORMS — THE ONE PLACE THIS IS STATED
 ------------------------------------------------
@@ -507,7 +507,7 @@ def _parse_tsv_pairs(text: str) -> list[tuple[str, str]]:
 # --------------------------------------------------------------------------- #
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Search KEGG entries"))
 async def find(
     database: Annotated[
         str,
@@ -605,7 +605,7 @@ async def find(
     return _bounded(results, note="narrow the query or lower `limit`.")
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Get KEGG entry"))
 async def get_entry(
     entries: Annotated[
         str | list[str],
@@ -999,7 +999,7 @@ def _fit_sections_to_budget(
     return kept
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Get KEGG pathway graph"))
 async def pathway_graph(
     pathway: Annotated[
         str, Field(description="KEGG map id, e.g. 'hsa04151', 'eco00010', 'ko00010'.")
@@ -1277,7 +1277,7 @@ async def pathway_graph(
     )
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Get KEGG pathway neighborhood"))
 async def pathway_neighborhood(
     pathway: Annotated[
         str, Field(description="KEGG map id, e.g. 'hsa04151'.")
@@ -1402,7 +1402,7 @@ async def pathway_neighborhood(
     return _bounded(payload, note="lower `depth` or `limit`.")
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Find paths in a KEGG pathway"))
 async def pathway_paths(
     pathway: Annotated[
         str, Field(description="KEGG map id, e.g. 'hsa04151'.")
@@ -1594,7 +1594,7 @@ async def pathway_paths(
     return _bounded(payload, note="lower `max_length` or `max_paths`.")
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Find cycles in a KEGG pathway"))
 async def pathway_cycles(
     pathway: Annotated[
         str, Field(description="KEGG map id, e.g. 'hsa04010'.")
@@ -1717,7 +1717,7 @@ async def pathway_cycles(
     return _bounded(payload, note="lower `max_length` or `max_cycles`.")
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Get KEGG cross-links"))
 async def link(
     target: Annotated[
         str, Field(description="Target database, e.g. 'pathway', 'compound', 'pubmed'.")
@@ -1783,7 +1783,7 @@ async def link(
     return _bounded(pairs, note="link specific entries instead of a whole database.")
 
 
-@kegg_mcp.tool(annotations=READ_ONLY_TOOL)
+@kegg_mcp.tool(**read_only_tool("Convert IDs to/from KEGG"))
 async def conv(
     target: Annotated[
         str, Field(description="Target namespace, e.g. 'uniprot', 'chebi', 'hsa'.")

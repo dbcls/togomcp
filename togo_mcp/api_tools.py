@@ -178,7 +178,7 @@ def _rest_fail_msg(subject: str, detail: str, database: str) -> str:
 #####　Database-specific tools ########
 ######################################
 # DB: UniProt
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Search UniProt proteins"))
 async def search_uniprot_entity(
     query: str = "",
     limit: int = 20,
@@ -339,12 +339,16 @@ async def search_uniprot_entity(
 
 
 # DB: PubChem
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Look up PubChem compound ID"))
 async def get_pubchem_compound_id(compound_name: str) -> str:
     """
-    Get a PubChem compound ID (CID) for a compound name.
+    Get the PubChem compound ID(s) (CID) for a compound name, via the PubChem
+    PUG-REST name lookup (https://pubchem.ncbi.nlm.nih.gov/rest/pug/). The name is
+    matched against PubChem synonyms (common, IUPAC, trade names), so one name can
+    map to more than one CID.
 
-    RETURNS the PubChem Compound ID(s) as a JSON-formatted string. On
+    RETURNS PubChem's JSON verbatim as a string:
+    `{"IdentifierList": {"CID": [445154, ...]}}`. On
     upstream/HTTP failure this tool does NOT raise — it returns a plain string
     beginning with "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE
     parsing.
@@ -362,12 +366,19 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
     return resp.text
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Get PubChem compound attributes"))
 async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     """
-    Get compound attributes from PubChem RDF.
+    Get core attributes of one PubChem compound: IUPAC name, molecular formula,
+    molecular weight, SMILES, InChI, its identifiers.org IRI and a structure-image
+    URL. Served by a DBCLS SPARQList API over PubChem RDF
+    (https://togodx.dbcls.jp/human/sparqlist/api/metastanza_pubchem_compound).
 
-    RETURNS the compound attributes as a JSON-formatted string. On upstream/HTTP
+    RETURNS a JSON array string with one object for the CID (keys `ID`, `URL`,
+    `label`, `molecular_formula`, `molecular_weight`, `SMILES`, `InChI`,
+    `formula_img`). An unknown CID is NOT an error: it returns the same object with
+    `label`, `molecular_formula`, `SMILES` and `InChI` as empty strings — treat an
+    empty `label` as "not found". On upstream/HTTP
     failure this tool does NOT raise — it returns a plain string beginning with
     "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
 
@@ -491,7 +502,7 @@ _PDB_ROW_PROJECTORS = {
 }
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Search PDB structures"))
 async def search_pdb_entity(
     db: Literal["pdb", "cc", "prd"],
     query: str = "",
@@ -678,7 +689,7 @@ async def search_pdb_entity(
 
 
 # DB: MeSH
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Search MeSH descriptors"))
 async def search_mesh_descriptor(
     query: str = "",
     limit: int = 10,
@@ -690,9 +701,14 @@ async def search_mesh_descriptor(
     name: Annotated[str, Field(description="Alias for `query` — pass ONE of query/search/term/keyword/keywords/search_term/name. Supplying two with different values raises ValueError.")] = "",
 ) -> str:
     """
-    Search for MeSH ID by query.
+    Find MeSH descriptors whose label contains the query, via the NLM MeSH lookup
+    API (https://id.nlm.nih.gov/mesh/lookup/descriptor). Matching is a
+    case-insensitive substring match on the descriptor label, so "asthma" also
+    returns "Anti-Asthmatic Agents".
 
-    RETURNS a JSON-formatted string of the search results. On upstream/HTTP
+    RETURNS a JSON array string of `{"resource": <MeSH descriptor IRI>, "label":
+    <descriptor name>}` objects (at most `limit`); the descriptor ID (e.g. D001249)
+    is the IRI's last path segment. On upstream/HTTP
     failure this tool does NOT raise — it returns a plain string beginning with
     "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
 
@@ -842,7 +858,7 @@ def _reactome_is_no_match(body: str | None) -> bool:
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Search Reactome pathways and entities"))
 async def search_reactome_entity(
     query: str = "",
     species: str | list[str] | None = None,
@@ -1075,7 +1091,7 @@ _RHEA_MAX_LIMIT = 500
 _RHEA_CHEBI_DOUBLE_PREFIX_RE = re.compile(r"(?i)\bchebi:chebi:")
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Search Rhea reactions"))
 async def search_rhea_entity(
     query: str = "",
     limit: int | None = 25,

@@ -23,7 +23,7 @@ MODULE CONVENTIONS (same as togovar.py / kegg.py — keep uniform)
 ----------------------------------------------------------------
 * Raise `ValueError` on bad parameters AND on HTTP error
   (`raise_for_status_with_body`). Never return an `{"error": ...}` payload.
-* Every tool carries `annotations=READ_ONLY_TOOL`.
+* Every tool carries `**read_only_tool("<title>")` (READ_ONLY_TOOL + a human title).
 
 ENDPOINT PATHS — READ BEFORE "FIXING" THEM
 ------------------------------------------
@@ -423,7 +423,7 @@ async def _ranking(target: str, hpo_ids: list[str]) -> list[dict[str, Any]]:
 # --------------------------------------------------------------------------- #
 # Tools
 # --------------------------------------------------------------------------- #
-@pubcasefinder_mcp.tool(annotations=READ_ONLY_TOOL)
+@pubcasefinder_mcp.tool(**read_only_tool("Rank diseases by phenotypes (PubCaseFinder)"))
 async def rank_by_phenotypes(
     hpo_ids: Annotated[
         str | list[str],
@@ -514,7 +514,7 @@ async def rank_by_phenotypes(
     return json.dumps(result, ensure_ascii=False)
 
 
-@pubcasefinder_mcp.tool(annotations=READ_ONLY_TOOL)
+@pubcasefinder_mcp.tool(**read_only_tool("Get case reports (PubCaseFinder)"))
 async def get_case_reports(
     mondo_id: Annotated[
         str, Field(description="MONDO disease ID, e.g. 'MONDO:0007947' (Marfan syndrome).")

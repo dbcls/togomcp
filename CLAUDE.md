@@ -1,6 +1,6 @@
 # TogoMCP
 
-FastMCP server exposing the [RDF Portal](https://rdfportal.org/) (SPARQL) plus selected REST APIs (NCBI E-utilities, UniProt, ChEMBL, PDB, PubChem, Reactome, Rhea, MeSH, TogoID, TogoVar) to AI assistants.
+FastMCP server exposing the [RDF Portal](https://rdfportal.org/) (SPARQL — most databases; seven run their own endpoints, see `endpoints.csv`) plus selected REST APIs (NCBI E-utilities, UniProt, ChEMBL, PDB, PubChem, Reactome, Rhea, MeSH, TogoID, TogoVar) to AI assistants.
 
 ## Architecture
 
