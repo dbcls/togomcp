@@ -13,9 +13,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-First half of the Connectors Directory review fixes (the second half, rewording the tool
-descriptions and the Usage Guide, waits on a benchmark run). MINOR: tools gain a `title` field;
-no name, parameter or return shape changes.
+Connectors Directory review fixes. MINOR: tools gain a `title` field; no name, parameter or
+return shape changes.
 
 ### Added
 
@@ -36,6 +35,24 @@ no name, parameter or return shape changes.
   (79 → 633 characters), `ncbi_list_databases`, `ncbi_esummary`, `search_mesh_descriptor`, both
   PubChem tools, `togoid_getDescription`. `get_compound_attributes_from_pubchem` now states that an
   unknown CID is not an error but an object with empty fields.
+- **Tool descriptions state facts instead of giving orders.** Directory review rejects descriptions
+  that steer the model ("⚠️ CALL THIS TOOL FIRST every turn", "CALL get_MIE_file FIRST", "ALWAYS",
+  "MANDATORY", "must not be reported as one") as prompt injection. The same information is now
+  stated as what a tool returns and what its results depend on: `run_sparql` says correct results
+  depend on the MIE file and keeps the measured inflation figures; the guide tool says what the
+  guide covers and that it is meant to be read before the other tools. A test rejects the old
+  phrasings in any served description.
+- **Long descriptions trimmed** to at most 2,800 characters (`togoid_identifyId` 3,493 → 2,668,
+  `search_chembl_molecule` 3,153 → 2,732, `search_chembl_id_lookup` 2,760 → 2,555), by cutting
+  implementation detail and repetition, not usage facts. A test holds the ceiling.
+- **The Usage Guide no longer tells the agent how to write its answer.** The OUTPUT QUALITY
+  section (no meta-commentary, each fact once, prose or list) and the "Repetitive answer"
+  troubleshooting row are gone, and the stale-tool-list row states that the user must update
+  the client instead of instructing the agent what to say. The KEGG note in the database catalog
+  (core and reference, via the generator) likewise states that KEGG is unavailable without
+  `kegg_*` tools and why, instead of telling the agent what not to report. Answer format is the client's and the
+  user's business; the public Skills (PRISM, disease analysis, article analysis) keep their own
+  output templates. The query rules (graph pins, MIE before SPARQL, budgets) are unchanged.
 
 ### Security
 

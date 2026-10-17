@@ -108,38 +108,38 @@ async def assemble_usage_guide_core() -> str:
 @mcp.tool(name="TogoMCP_Usage_Guide", **read_only_tool("TogoMCP Usage Guide"))
 async def togomcp_usage_guide() -> str:
     """
-    ⚠️ CALL THIS TOOL FIRST every turn, before any other TogoMCP tool.
+    Returns the TogoMCP Usage Guide (v7 core): the workflow the other TogoMCP tools
+    are designed around, a catalog of every database with what it holds, and the
+    query rules that keep SPARQL results correct on shared endpoints. It is meant
+    to be read once, before the other tools are used.
 
-    Returns the v7 Usage Guide core, which enforces the empirically-validated workflow:
+    What the guide covers, in workflow order:
 
-        GATE 0: classify the question (bounded → STEP −1 | open-ended → EXPLORATION).
-        STEP −1: analyze entities, databases, endpoints (no tools).
-        STEP  0: pick database(s) from the DATABASE CATALOG in this guide — no tool call.
-        STEP  1: specialized search or ncbi_esearch — ground in real IRIs.
-        STEP  2: get_MIE_file(database) — required before any run_sparql.
-        STEP  3: run_sparql() — pin every graph; LIMIT 10 first; max 2 consecutive.
-        STEP  4: synthesize — each fact once, no meta-commentary.
+        GATE 0 / STEP −1: classifying a question (bounded vs open-ended) and
+                 identifying its entities, databases and endpoints.
+        STEP  0: the DATABASE CATALOG, for choosing databases without a tool call.
+        STEP  1: which search tool grounds each entity in a real IRI.
+        STEP  2: get_MIE_file(database), the per-database schema run_sparql relies on.
+        STEP  3: run_sparql budgets (LIMIT 10 first, at most 2 consecutive queries).
+        STEP  4: synthesis.
 
-    Why this matters (measured): questions with ≥3 consecutive run_sparql calls
-    score ~1.1 points lower than compliant ones; jumping to text search before
-    reading the MIE schema accounts for ~95% of silent SPARQL failures. The
-    guide's DATABASE CATALOG lists all databases with what each is for (scan it
-    to pick 1–3), plus the EXPLORATION habits (Seed Definition, concierge
-    check, prioritized Next Steps) for open-ended deep dives.
+    Why the other tools depend on it (measured on the TogoMCP benchmark): answers
+    with ≥3 consecutive run_sparql calls score ~1.1 points lower, and SPARQL
+    written before the MIE schema was read accounts for ~95% of silent SPARQL
+    failures. Most RDF Portal endpoints host MANY databases (primary: 20, ebi: 6,
+    ncbi: 5, sib: 4) and every endpoint hosts many GRAPHS; an unpinned query reads
+    all of them, so a co-hosted graph can supply a predicate that looks native and
+    return a plausible, correctly-shaped, wrong number with no error. The guide's
+    CO-TENANCY section describes the graph pins that prevent this.
 
-    Most RDF Portal endpoints host MANY databases (primary: 20, ebi: 6, ncbi: 5,
-    sib: 4) and every endpoint hosts many GRAPHS. An unpinned query silently
-    reads all of them, so a co-hosted graph can supply a predicate you believe is
-    native and return a plausible, correctly-shaped, WRONG number — with no error.
-    The guide's CO-TENANCY section is the one to read before writing SPARQL.
+    The workflow applies per question: a new question in the same conversation
+    starts again at GATE 0.
 
     The core is complete for ordinary questions and is sized to arrive inline.
     Deeper detail (full catalog, co-tenancy worked examples, federation, bulk
     mode, the full troubleshooting table) lives in reference files listed at the
-    end of the guide; fetch one only when its trigger applies, with
+    end of the guide, served by
     get_workflow(name="usage-guide", path="references/<file>").
-
-    Re-run GATE 0 every turn — prior workflow does not carry forward.
 
     RETURNS the guide as Markdown text.
     """
@@ -186,26 +186,24 @@ async def get_sparql_endpoints() -> dict[str, Any]:
     description=(
         "Run a read-only SPARQL query on an RDF database. "
         f"{ENDPOINT_HOSTING_SUMMARY} "
-        "CALL get_MIE_file(database) FIRST — for every database, before its first run_sparql "
-        "each session. This is not background reading: it carries the mandatory graph pins, "
-        "literal types and join paths for that endpoint, each live-verified. "
-        "SKIPPING IT DOES NOT MAKE YOUR QUERY FAIL — that is the danger. It makes it return a "
-        "WRONG ANSWER THAT LOOKS RIGHT: well-formed rows, plausible magnitude, no error, no "
-        "warning. Unpinned queries on these endpoints have been measured returning x2.84, x6.29 "
-        "and x45,848 the correct row count, all in under 4 seconds. Speed and a clean result "
-        "are NOT evidence of correctness here; the graph pin from the MIE file is. "
-        f"ALWAYS pass database (required; valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) "
-        "for single-database queries. For cross-database queries on a shared endpoint, "
-        "still pass a member database AND add endpoint_name (valid values: "
+        "Correct results depend on get_MIE_file(database), read once per database before "
+        "its first query: it carries the graph pins, literal types and join paths for that "
+        "database's endpoint, each live-verified. A query written without them does not fail; "
+        "it returns a wrong answer that looks right — well-formed rows, plausible magnitude, "
+        "no error, no warning. Unpinned queries on these endpoints have been measured "
+        "returning x2.84, x6.29 and x45,848 the correct row count, all in under 4 seconds, so "
+        "speed and a clean result are not evidence of correctness; the graph pin is. "
+        f"`database` is required (valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) and selects "
+        "the endpoint for a single-database query. For a cross-database query on a shared "
+        "endpoint, pass a member database plus endpoint_name (valid values: "
         f"{', '.join(ENDPOINT_NAMES)}) or endpoint_url, which take priority over database. "
         "Invalid database/endpoint_name values fail immediately with a deterministic "
-        "error — do not retry. "
+        "error; retrying the same value returns the same error. "
         "RETURNS the query results as a CSV-formatted string (first row is the "
         "header of SELECT variable names). An EMPTY result — no rows, or an "
         "aggregate that is 0 over an empty match — is prefixed with `#` comment "
-        "lines diagnosing it. READ THEM: an empty result is NOT an endpoint "
-        "failure and must not be reported as one, and it has two causes needing "
-        "opposite answers (the data is genuinely absent, or one triple pattern "
+        "lines diagnosing it. An empty result is not an endpoint failure, and "
+        "it has two causes with opposite answers (the data is genuinely absent, or one triple pattern "
         "is wrong and the real answer is non-zero). The block names the probe "
         "that tells them apart."
     ),
@@ -509,7 +507,7 @@ async def get_graph_list(
     ] = False,
 ) -> str:
     """
-    Get a list of named graphs on a SPARQL endpoint. ALWAYS pass database (required).
+    Get a list of named graphs on a SPARQL endpoint. `database` is required.
     Endpoints are the same registry run_sparql uses: RDF Portal (https://rdfportal.org/)
     for most databases, plus the external endpoints run_sparql's description names.
 

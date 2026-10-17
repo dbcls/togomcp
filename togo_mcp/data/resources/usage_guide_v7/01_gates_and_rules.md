@@ -103,5 +103,5 @@ STEP  0 → pick DB(s) from the DATABASE CATALOG (no tool call)   always first
 STEP  1 → search tool or ncbi_esearch
 STEP  2 → get_MIE_file(database)           always before run_sparql
 STEP  3 → run_sparql()  PIN EVERY GRAPH · LIMIT 10 first · max 2 consecutive
-STEP  4 → synthesize    no repetition · no meta-commentary
+STEP  4 → synthesize
 ```

@@ -72,6 +72,14 @@ def sha256_file(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def repo_rel(p) -> str:
+    """`p` relative to the repo when inside it, else absolute. A path outside the repo
+    (e.g. a one-question --canary-file in a scratch dir) used to crash here, after all the
+    answering and judging had been paid for, leaving the run without a manifest."""
+    p = Path(p).resolve()
+    return str(p.relative_to(REPO)) if p.is_relative_to(REPO) else str(p)
+
+
 def git(*a) -> str:
     return subprocess.check_output(["git", "-C", str(REPO), *a], text=True).strip()
 
@@ -304,8 +312,8 @@ def main() -> int:
         "replicates": reps,
         "question_set_hash": set_manifest["set_hash"],
         "n_questions": len(questions),
-        "question_list": str(Path(args.canary_file).relative_to(REPO)) if args.mode == "canary" else "all",
-        "target": "local " + str(Path(args.mie_dir).resolve().relative_to(REPO))
+        "question_list": repo_rel(args.canary_file) if args.mode == "canary" else "all",
+        "target": "local " + repo_rel(args.mie_dir)
                   if args.target == "local" else f"production {PRODUCTION_URL}",
         "server_version": meta.get("server_version") if meta else production_server_version(),
         "usage_guide_version": meta.get("usage_guide_version"),
@@ -313,7 +321,7 @@ def main() -> int:
         "git_commit": git("rev-parse", "HEAD"),
         "git_dirty": bool(git("status", "--porcelain", "--", "togo_mcp", "benchmark/scripts")),
         "baseline": "no-tool answer produced in the same batch, per question",
-        "base_config": str(Path(args.base_config).resolve().relative_to(REPO)),
+        "base_config": repo_rel(args.base_config),
         "base_config_sha256": sha256_file(Path(args.base_config)),
         "pricing_usd_per_mtok": list(price),
         "ollama_judge_options": ollama_options() if any(not is_claude(j) for j in judges) else None,

@@ -1,13 +1,3 @@
-## ✍️ OUTPUT QUALITY
-
-- Each fact exactly once.
-- No meta-commentary ("Based on my analysis", "In summary", "As established above").
-- No reasoning leakage in the final answer.
-- Prose **or** list — not both.
-- Partial data: state what was found and what wasn't. No padding.
-
----
-
 ## 🆘 TROUBLESHOOTING
 
 The most common cases. The full table (REGEX, TogoID relation-graph joins, HTTP 403, rotted
@@ -21,9 +11,8 @@ IRIs, known-hard query patterns) is reference file `troubleshooting.md`.
 | **Count inflated** (2×, 4×, 8×) — or right but unproven | Co-tenancy. `GRAPH ?g` the pattern with its subject bound: >1 graph → re-declared; none of yours → foreign predicate, i.e. a silent intersection. Pin **every** pattern. `DISTINCT` hides it, doesn't fix it. |
 | TogoID empty | Check ID format with `togoid_getDataset(src)`. |
 | ≥15 tool calls, no answer | Synthesize from partial data. Partial + honest > wrong + exhaustive. |
-| Repetitive answer | Remove any sentence restating an earlier point. |
 | OLS4 / PubMed unavailable | → `search_mesh_descriptor` / `ncbi_esearch`. |
-| **A tool named in this guide is absent from your tool list** (canaries: `get_workflow`, `pubcasefinder_rank_by_phenotypes`) — or a tool you call returns "unknown tool" (`find_databases`, `list_categories`), or a result ends with a `[TogoMCP notice]` that the name you called is outdated | Your MCP client cached the tool list when the connector was added and has not refetched it. **Tell the user in your answer** that the TogoMCP app must be updated in their client. In ChatGPT that is an admin task on Business (recreate and republish the app) and Enterprise/Edu (Action control → Refresh, then enable the new tools); on Pro, delete and recreate the TogoMCP plugin. Common with ChatGPT, which freezes the tool list — some clients are running lists months stale. Do not retry the missing name or invent a substitute. **Databases are unaffected**: the catalog in this guide is served live, so any database key listed there works even when your cached tool schema does not name it. |
+| **A tool named in this guide is absent from your tool list** (canaries: `get_workflow`, `pubcasefinder_rank_by_phenotypes`) — or a tool you call returns "unknown tool" (`find_databases`, `list_categories`), or a result ends with a `[TogoMCP notice]` that the name you called is outdated | Your MCP client cached the tool list when the connector was added and has not refetched it. The fix is on the user's side: the TogoMCP app must be updated in their client. In ChatGPT that is an admin task on Business (recreate and republish the app) and Enterprise/Edu (Action control → Refresh, then enable the new tools); on Pro, delete and recreate the TogoMCP plugin. Common with ChatGPT, which freezes the tool list — some clients are running lists months stale. Retrying the missing name returns the same error, and no other tool stands in for it. **Databases are unaffected**: the catalog in this guide is served live, so any database key listed there works even when your cached tool schema does not name it. |
 
 ---
 
