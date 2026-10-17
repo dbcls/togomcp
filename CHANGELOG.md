@@ -13,6 +13,10 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-10-17
+
+<!-- whatsnew: 2026-10-17 | Every tool now shows a <strong>readable name</strong> in your client (for example “Run SPARQL query” instead of “Run Sparql”), and <code>run_sparql</code> names the endpoint each database is queried at, including the seven hosted outside RDF Portal. -->
+
 Connectors Directory review fixes. MINOR: tools gain a `title` field; no name, parameter or
 return shape changes.
 
@@ -3480,7 +3484,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[2.27.0]: https://github.com/dbcls/togomcp/compare/v2.26.2...v2.27.0
 [2.26.2]: https://github.com/dbcls/togomcp/compare/v2.26.1...v2.26.2
 [2.26.1]: https://github.com/dbcls/togomcp/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/dbcls/togomcp/compare/v2.25.2...v2.26.0
