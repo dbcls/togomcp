@@ -702,7 +702,7 @@ def _label_facets(stats: dict[str, Any]) -> dict[str, Any]:
     return labeled
 
 
-@togovar_mcp.tool(annotations=READ_ONLY_TOOL)
+@togovar_mcp.tool(**read_only_tool("Search genes (TogoVar)"))
 async def search_gene(
     query: Annotated[str, Field(description="Gene symbol or alias, e.g. 'ALDH2'.")] = "",
     limit: Annotated[int, Field(ge=1, le=100)] = 10,
@@ -755,7 +755,7 @@ async def search_gene(
     return json.dumps(results)
 
 
-@togovar_mcp.tool(annotations=READ_ONLY_TOOL)
+@togovar_mcp.tool(**read_only_tool("Search diseases (TogoVar)"))
 async def search_disease(
     query: Annotated[
         str, Field(description="Disease term, e.g. 'breast cancer'.")
@@ -817,7 +817,7 @@ async def search_disease(
     return json.dumps(results)
 
 
-@togovar_mcp.tool(annotations=READ_ONLY_TOOL)
+@togovar_mcp.tool(**read_only_tool("Search human variants (TogoVar)"))
 async def search_variant(
     tgv_id: str | list[str] = "",
     gene_hgnc_id: int | None = None,

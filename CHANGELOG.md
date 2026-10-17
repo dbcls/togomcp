@@ -13,6 +13,60 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.0] - 2026-10-17
+
+<!-- whatsnew: 2026-10-17 | Every tool now shows a <strong>readable name</strong> in your client (for example “Run SPARQL query” instead of “Run Sparql”), and <code>run_sparql</code> names the endpoint each database is queried at, including the seven hosted outside RDF Portal. -->
+
+Connectors Directory review fixes. MINOR: tools gain a `title` field; no name, parameter or
+return shape changes.
+
+### Added
+
+- **Every tool has a human-readable title**, in both `Tool.title` and `annotations.title`
+  (e.g. "Get database schema (MIE file)" instead of the name-derived "Get Mie File"). Directory
+  review checks for this, and clients differ on which field they display. New tools get it through
+  `**read_only_tool("<title>")`, which also carries the read-only hints; a test enforces it.
+
+### Changed
+
+- **`run_sparql` names where queries go**, built from `endpoints.csv`: RDF Portal
+  (https://rdfportal.org/) for most databases, and by URL the seven databases that run their own
+  endpoints (glycosmos, togovar, wikipathways, idsm, lipidmaps, swisslipids, marpolbase). A
+  description saying only "RDF Portal" would have misstated where the data comes from for those.
+  README, the intro page and `get_sparql_endpoints`/`get_graph_list` no longer imply every
+  endpoint is on RDF Portal.
+- **Short tool descriptions now say what they return and which API they call**: `ncbi_efetch`
+  (79 → 633 characters), `ncbi_list_databases`, `ncbi_esummary`, `search_mesh_descriptor`, both
+  PubChem tools, `togoid_getDescription`. `get_compound_attributes_from_pubchem` now states that an
+  unknown CID is not an error but an object with empty fields.
+- **Tool descriptions state facts instead of giving orders.** Directory review rejects descriptions
+  that steer the model ("⚠️ CALL THIS TOOL FIRST every turn", "CALL get_MIE_file FIRST", "ALWAYS",
+  "MANDATORY", "must not be reported as one") as prompt injection. The same information is now
+  stated as what a tool returns and what its results depend on: `run_sparql` says correct results
+  depend on the MIE file and keeps the measured inflation figures; the guide tool says what the
+  guide covers and that it is meant to be read before the other tools. A test rejects the old
+  phrasings in any served description.
+- **Long descriptions trimmed** to at most 2,800 characters (`togoid_identifyId` 3,493 → 2,668,
+  `search_chembl_molecule` 3,153 → 2,732, `search_chembl_id_lookup` 2,760 → 2,555), by cutting
+  implementation detail and repetition, not usage facts. A test holds the ceiling.
+- **The Usage Guide no longer tells the agent how to write its answer.** The OUTPUT QUALITY
+  section (no meta-commentary, each fact once, prose or list) and the "Repetitive answer"
+  troubleshooting row are gone, and the stale-tool-list row states that the user must update
+  the client instead of instructing the agent what to say. The KEGG note in the database catalog
+  (core and reference, via the generator) likewise states that KEGG is unavailable without
+  `kegg_*` tools and why, instead of telling the agent what not to report. Answer format is the client's and the
+  user's business; the public Skills (PRISM, disease analysis, article analysis) keep their own
+  output templates. The query rules (graph pins, MIE before SPARQL, budgets) are unchanged.
+
+### Security
+
+- **The `endpoint_url` exemption for registered endpoints now covers the exact endpoint, not its
+  whole host.** Through 2.26.2 any path on a registered host:port skipped the public-address check,
+  so a caller could POST to, for example, a Virtuoso admin page on an internally resolving
+  endpoint host. Now scheme, host, port and path must match a registered endpoint (a trailing
+  slash or a query string is fine); any other path on that host goes through the same check as an
+  unregistered URL.
+
 ## [2.26.2] - 2026-10-16
 
 Security fixes only. PATCH: no tool, parameter or return shape changed; what changes is which
@@ -3430,7 +3484,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.26.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[2.27.0]: https://github.com/dbcls/togomcp/compare/v2.26.2...v2.27.0
 [2.26.2]: https://github.com/dbcls/togomcp/compare/v2.26.1...v2.26.2
 [2.26.1]: https://github.com/dbcls/togomcp/compare/v2.26.0...v2.26.1
 [2.26.0]: https://github.com/dbcls/togomcp/compare/v2.25.2...v2.26.0

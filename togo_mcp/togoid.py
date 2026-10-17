@@ -334,7 +334,7 @@ def _format_route_suggestions(routes: list[dict]) -> str:
 # ============================================================================
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("List all ID conversion routes (TogoID)"))
 async def getAllRelation() -> dict:
     """Discover all available ID conversion routes between databases.
 
@@ -373,7 +373,7 @@ async def getAllRelation() -> dict:
     return response.json()
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Check an ID conversion route (TogoID)"))
 async def getRelation(source: str, target: str) -> str:
     """Check if a specific ID conversion route exists and get its details.
 
@@ -455,7 +455,7 @@ async def getRelation(source: str, target: str) -> str:
     return json.dumps(_orient_relations(response.json(), registered=True))
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("List ID datasets (TogoID)"))
 async def getAllDataset() -> dict:
     """List all databases registered in TogoID with their ID formats.
 
@@ -492,7 +492,7 @@ async def getAllDataset() -> dict:
     return {key: _augment_dataset(cfg) for key, cfg in payload.items()}
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Get ID dataset details (TogoID)"))
 async def getDataset(dataset: str) -> dict:
     """Get configuration for a specific database in TogoID.
 
@@ -672,7 +672,7 @@ async def _lookup_tables(local_id: str) -> list[str] | None:
     return [table for table in payload if isinstance(table, str)]
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Identify ID type (TogoID)"))
 async def identifyId(
     ids: str | list[str],
     category: str | None = None,
@@ -680,10 +680,10 @@ async def identifyId(
 ) -> str:
     """Resolve a bare accession to the TogoID dataset key(s) it could belong to.
 
-    The inverse of getDataset: you have an identifier like `AEK21611` or
-    `P38398` and need the `route` key convertId expects. Call this INSTEAD of
-    guessing a plausible-sounding key — `ncbi_protein`, `entrez_gene` and
-    `uniprotkb` are not TogoID datasets and every call using one fails.
+    The inverse of getDataset: given an identifier like `AEK21611` or `P38398`,
+    it returns the `route` key convertId expects. Plausible-sounding keys such as
+    `ncbi_protein`, `entrez_gene` and `uniprotkb` are not TogoID datasets, and
+    any call using one fails.
 
     RETURNS a JSON string of a bare array, one object per input ID, each with
     `id` and `candidates` (possibly empty). Each candidate carries `dataset`
@@ -693,53 +693,40 @@ async def identifyId(
     Candidates are ordered best-first on two pieces of evidence:
 
     - `shape_matches_examples` — whether the ID's character-class shape
-      (`AEK21611` → `L3D5`) is one the dataset's OWN published examples take.
-      This is the per-ID signal, and it does most of the work: `insdc_cds`'s
-      examples are all `L3D5` while `insdc`'s are `L1D5`/`L2D6`, so a protein
-      accession sorts above the gene-level dataset.
-    - `pattern_collisions` — how many of the OTHER 118 datasets' example IDs
-      this dataset's pattern also matches, used to break ties. Low means a
-      distinctive format (`uniprot`: ~10); high means a catch-all
-      (`hgnc_symbol`: over a thousand — it matches nearly any bare uppercase
-      alphanumeric token). Scores are computed from the live config, so the
-      exact figures move when TogoID revises a pattern.
+      (`AEK21611` → `L3D5`) is one the dataset's own example IDs take. This is
+      the main per-ID signal: `insdc_cds`'s examples are all `L3D5`, `insdc`'s
+      `L1D5`/`L2D6`, so a protein accession sorts above the gene-level dataset.
+    - `pattern_collisions` — how many other datasets' example IDs this
+      dataset's pattern also matches, used to break ties. Low means a
+      distinctive format (`uniprot`: ~10), high a catch-all (`hgnc_symbol`:
+      over a thousand).
 
-    On the 1,840 published example IDs, that ordering puts the right dataset
-    first 82% of the time (leave-one-out).
-
-    ⚠️ THE OTHER 18% IS IRREDUCIBLE — ORDER IS EVIDENCE, NOT AN ANSWER. Some
-    accession formats simply do not distinguish: a bare `672` is a well-formed
-    ncbigene, pubmed, chebi and homologene ID, and nothing about the string can
-    say which. **Do not build a client that blindly takes `candidates[0]`.**
-    Pass `category=` when you know what kind of thing the ID names, pass
-    `verify=True` (below), or use what you know about where the ID came from.
-    An empty `candidates` list means no registered dataset's pattern matches —
-    that ID is not convertible by TogoID.
+    The order is evidence, not an answer: it puts the right dataset first for
+    about 82% of TogoID's published example IDs, and the rest cannot be told
+    apart by shape — a bare `672` is a well-formed ncbigene, pubmed, chebi and
+    homologene ID. `category=`, `verify=True`, or knowing where the ID came from
+    settles it. An empty `candidates` list means no registered dataset's pattern
+    matches, so TogoID cannot convert that ID.
 
     VERIFY (`verify=True`) asks TogoID which of its conversion tables actually
-    CONTAIN the ID, which settles what the string's shape cannot. Each candidate
-    then also carries:
+    contain the ID. Each candidate then also carries:
 
     - `attested` — "yes": a table pairing this dataset with a non-candidate
-      holds the ID. "ambiguous": the only such tables pair it with ANOTHER
-      candidate for this ID, and a table name does not say which side holds it
-      (`P04637` is in uniprot-insdc_cds, so insdc_cds is ambiguous, uniprot is
-      yes). "no": no table on this dataset holds it — TogoID cannot convert it
-      FROM this dataset, however well-formed. "unknown": TogoID did not answer
-      in time (the row then has a `verify_note`).
+      holds the ID. "ambiguous": the only such tables pair it with another
+      candidate, and a table name does not say which side holds it (`P04637`
+      is in uniprot-insdc_cds, so insdc_cds is ambiguous, uniprot is yes).
+      "no": no table on this dataset holds it, so TogoID cannot convert it from
+      this dataset. "unknown": TogoID did not answer in time (see `verify_note`).
     - `pairs_with` — datasets this ID shares a direct table with (null when
       unknown); for a "yes" candidate these are single-hop convertId targets.
 
-    Candidates sort yes, ambiguous, unknown, no, then as above. Verification
-    rules out datasets far better than it picks one: a short bare number like
-    `672` is genuinely present in a dozen datasets. It is also slow — one
-    lookup per ID, over 10 s for such a number — so it is off by default and
-    limited to 10 IDs per call; use it on the IDs you need to settle.
+    Candidates then sort yes, ambiguous, unknown, no. Verification rules out
+    datasets better than it picks one (a short number like `672` is present in
+    a dozen), and it is slow — over 10 s for such an ID — so it is off by
+    default and limited to 10 IDs per call.
 
-    Matching uses each dataset's published ID pattern, rewritten to Python
-    syntax (see getAllDataset's `regex_python`). A CURIE or full IRI
-    disambiguates far better than a bare accession — pass `insdc.cds:AEK21611`
-    rather than `AEK21611` when you have it.
+    A CURIE or full IRI disambiguates far better than a bare accession:
+    `insdc.cds:AEK21611` rather than `AEK21611`.
 
     Args:
         ids: Identifiers to resolve. A list of strings, or a comma/whitespace
@@ -893,13 +880,18 @@ async def identifyId(
     return json.dumps(output)
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Get dataset descriptions (TogoID)"))
 async def getDescription() -> dict:
-    """Get human-readable descriptions for all databases in TogoID.
+    """Get human-readable descriptions for all databases in TogoID
+    (https://togoid.dbcls.jp/, DBCLS's ID-conversion service; API at
+    https://api.togoid.dbcls.jp/config/descriptions).
 
-    Returns names, descriptions (in English and Japanese), and organization info
-    for each registered database. Useful for understanding what each database
-    contains when planning cross-database queries.
+    RETURNS a dict keyed by TogoID dataset key (the names convertId's `route`
+    uses). Each value has `name`, `description_en`, `description_ja`,
+    `organization_en` and `organization_ja`; about a third of the keys map to an
+    empty dict (no description recorded). Use it to see what a dataset key stands
+    for when planning cross-database conversions; for prefixes and example IDs use
+    getDataset instead. Raises on an HTTP error.
 
     Returns:
         Dictionary keyed by dataset name with description metadata.
@@ -914,7 +906,7 @@ async def getDescription() -> dict:
 # ============================================================================
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Convert IDs (TogoID)"))
 async def convertId(
     ids: str | list[str],
     route: str,
@@ -1023,7 +1015,7 @@ async def convertId(
     return json.dumps(response.json().get("results") or [])
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Count convertible IDs (TogoID)"))
 async def countId(source: str, target: str, ids: str | list[str]) -> dict:
     """Check how many of your IDs can be converted before doing bulk conversion.
 
