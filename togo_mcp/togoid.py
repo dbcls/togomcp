@@ -334,7 +334,7 @@ def _format_route_suggestions(routes: list[dict]) -> str:
 # ============================================================================
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("List all ID conversion routes (TogoID)"))
 async def getAllRelation() -> dict:
     """Discover all available ID conversion routes between databases.
 
@@ -373,7 +373,7 @@ async def getAllRelation() -> dict:
     return response.json()
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Check an ID conversion route (TogoID)"))
 async def getRelation(source: str, target: str) -> str:
     """Check if a specific ID conversion route exists and get its details.
 
@@ -455,7 +455,7 @@ async def getRelation(source: str, target: str) -> str:
     return json.dumps(_orient_relations(response.json(), registered=True))
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("List ID datasets (TogoID)"))
 async def getAllDataset() -> dict:
     """List all databases registered in TogoID with their ID formats.
 
@@ -492,7 +492,7 @@ async def getAllDataset() -> dict:
     return {key: _augment_dataset(cfg) for key, cfg in payload.items()}
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Get ID dataset details (TogoID)"))
 async def getDataset(dataset: str) -> dict:
     """Get configuration for a specific database in TogoID.
 
@@ -672,7 +672,7 @@ async def _lookup_tables(local_id: str) -> list[str] | None:
     return [table for table in payload if isinstance(table, str)]
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Identify ID type (TogoID)"))
 async def identifyId(
     ids: str | list[str],
     category: str | None = None,
@@ -893,13 +893,18 @@ async def identifyId(
     return json.dumps(output)
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Get dataset descriptions (TogoID)"))
 async def getDescription() -> dict:
-    """Get human-readable descriptions for all databases in TogoID.
+    """Get human-readable descriptions for all databases in TogoID
+    (https://togoid.dbcls.jp/, DBCLS's ID-conversion service; API at
+    https://api.togoid.dbcls.jp/config/descriptions).
 
-    Returns names, descriptions (in English and Japanese), and organization info
-    for each registered database. Useful for understanding what each database
-    contains when planning cross-database queries.
+    RETURNS a dict keyed by TogoID dataset key (the names convertId's `route`
+    uses). Each value has `name`, `description_en`, `description_ja`,
+    `organization_en` and `organization_ja`; about a third of the keys map to an
+    empty dict (no description recorded). Use it to see what a dataset key stands
+    for when planning cross-database conversions; for prefixes and example IDs use
+    getDataset instead. Raises on an HTTP error.
 
     Returns:
         Dictionary keyed by dataset name with description metadata.
@@ -914,7 +919,7 @@ async def getDescription() -> dict:
 # ============================================================================
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Convert IDs (TogoID)"))
 async def convertId(
     ids: str | list[str],
     route: str,
@@ -1023,7 +1028,7 @@ async def convertId(
     return json.dumps(response.json().get("results") or [])
 
 
-@togoid_mcp.tool(annotations=READ_ONLY_TOOL)
+@togoid_mcp.tool(**read_only_tool("Count convertible IDs (TogoID)"))
 async def countId(source: str, target: str, ids: str | list[str]) -> dict:
     """Check how many of your IDs can be converted before doing bulk conversion.
 

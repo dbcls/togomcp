@@ -232,7 +232,7 @@ class TestReadOnlyAnnotations:
         ]
         assert not missing, (
             f"tools missing readOnlyHint=True: {missing}. Add "
-            "`annotations=READ_ONLY_TOOL` to the @mcp.tool decorator — without it "
+            "`**read_only_tool(\"<title>\")` to the @mcp.tool decorator — without it "
             "clients treat the tool as a writer."
         )
 
@@ -259,7 +259,51 @@ class TestReadOnlyAnnotations:
         ]
         assert not wrong, f"read-only tools must leave destructive/idempotent unset: {wrong}"
 
+    def test_every_tool_has_a_human_title_in_both_places(self) -> None:
+        """Connectors Directory review requires a human-readable title on every
+        tool. Without one FastMCP derives it from the function name ("Get Mie
+        File"), so the check is that `Tool.title` and `annotations.title` are both
+        set, equal, and NOT that derived form — which is what all 33 tools shipped
+        with through 2.26."""
+        tools = asyncio.run(self._tools())
+        bad = []
+        for t in tools:
+            ann_title = getattr(getattr(t, "annotations", None), "title", None)
+            derived = t.name.replace("_", " ").title()
+            if not t.title or t.title != ann_title or t.title == derived:
+                bad.append(f"{t.name} (title={t.title!r}, annotations.title={ann_title!r})")
+        assert not bad, (
+            f"tools without a human title in both Tool.title and annotations.title: {bad}. "
+            "Use `**read_only_tool(\"<title>\")` on the @mcp.tool decorator."
+        )
+
+    def test_titles_are_unique(self) -> None:
+        # By name: each _tools() call re-runs setup(), which re-mounts the
+        # sub-servers, so the same tool can be listed more than once.
+        titles = list({t.name: t.title for t in asyncio.run(self._tools())}.values())
+        assert len(titles) == len(set(titles)), sorted(x for x in titles if titles.count(x) > 1)
+
     @staticmethod
     async def _tools():
         await setup()
         return await mcp.list_tools()
+
+
+def test_run_sparql_names_every_endpoint_it_can_send_a_query_to(assembled_tools) -> None:
+    """Directory review asks a query-building tool to name the API it targets, and
+    "RDF Portal" alone is not true: some registered databases run their own
+    endpoints. Every registered endpoint URL off rdfportal.org must appear in the
+    served description, and RDF Portal itself must be named with its URL."""
+    import httpx
+
+    from togo_mcp.server import SPARQL_ENDPOINT
+
+    desc = next(t for t in assembled_tools if t.name == "run_sparql").description or ""
+    assert "https://rdfportal.org/" in desc
+    external = {
+        info["url"] for info in SPARQL_ENDPOINT.values()
+        if httpx.URL(info["url"]).host != "rdfportal.org"
+    }
+    assert external, "registry has no external endpoint — this test's premise changed"
+    missing = sorted(u for u in external if u not in desc)
+    assert not missing, f"run_sparql's description omits external endpoints: {missing}"

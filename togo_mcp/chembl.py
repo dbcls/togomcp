@@ -529,7 +529,7 @@ async def _search_chembl_inchi_sparql(
     return await _run_chembl_sparql(sparql)
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Look up ChEMBL IDs"))
 async def search_chembl_id_lookup(
     query: Annotated[
         str, Field(description="The query string to search for.", default="")
@@ -783,7 +783,7 @@ async def search_chembl_id_lookup(
     return out
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Search ChEMBL targets"))
 async def search_chembl_target(
     query: str = "",
     limit: int = 20,
@@ -988,7 +988,7 @@ async def _extract_chembl_molecules(query: str, limit: int) -> dict:
     return out
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(**read_only_tool("Search ChEMBL molecules"))
 async def search_chembl_molecule(
     query: str = "",
     limit: int = 20,

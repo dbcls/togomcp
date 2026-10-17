@@ -25,7 +25,7 @@ from fastmcp import FastMCP
 import httpx
 from mcp.types import TextContent
 
-from .server import READ_ONLY_TOOL, raise_for_status_with_body, redact_secrets, register_secret
+from .server import read_only_tool, raise_for_status_with_body, redact_secrets, register_secret
 
 # Get API key from environment
 NCBI_API_KEY = os.environ.get("NCBI_API_KEY")
@@ -340,7 +340,7 @@ def _normalize_ids(ids: str | list[str]) -> list[str]:
     return [str(i).strip() for i in ids if str(i).strip()]
 
 
-@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
+@ncbi_mcp.tool(**read_only_tool("Search NCBI databases (ESearch)"))
 async def esearch(
     database: str = "",
     query: str = "",
@@ -495,10 +495,17 @@ async def esearch(
         return [TextContent(type="text", text=f"Unexpected error: {redact_secrets(str(e))}")]
 
 
-@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
+@ncbi_mcp.tool(**read_only_tool("List NCBI databases"))
 async def list_databases() -> list[TextContent]:
     """
-    List all supported NCBI databases with descriptions and example queries.
+    List the NCBI Entrez databases these tools are tuned for (gene, taxonomy,
+    clinvar, medgen, mesh, pubmed, PubChem compound/substance/assay, …), with a
+    description, ID type, example query and supported field tags for each. Makes
+    no network call.
+
+    RETURNS a single text item: a plain-text list, one block per database. Gene and
+    ClinVar queries need field tags (e.g. `BRCA1[Gene Name]`) to be precise; each
+    block lists the tags that database supports.
 
     Returns:
         Formatted list of available databases
@@ -526,7 +533,7 @@ async def list_databases() -> list[TextContent]:
 
 
 # Additional utility functions for future use
-@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
+@ncbi_mcp.tool(**read_only_tool("Get NCBI record summaries (ESummary)"))
 async def esummary(
     database: str = "",
     ids: str | list[str] = "",
@@ -534,8 +541,10 @@ async def esummary(
     id: str | list[str] = "",
 ) -> list[TextContent]:
     """
-    Fetch summary information for given IDs using esummary.
-    Useful for getting detailed info after esearch.
+    Fetch document summaries for known IDs from NCBI E-utilities ESummary
+    (https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi): title, names,
+    organism, dates and similar per-record fields, lighter than ncbi_efetch. Use
+    after ncbi_esearch has produced the IDs.
 
     RETURNS a text item holding the parsed JSON summary data. On a
     missing/invalid `database` or empty `ids` it returns a single text item
@@ -609,7 +618,7 @@ async def esummary(
             ]
 
 
-@ncbi_mcp.tool(annotations=READ_ONLY_TOOL)
+@ncbi_mcp.tool(**read_only_tool("Fetch NCBI records (EFetch)"))
 async def efetch(
     database: str = "",
     ids: str | list[str] = "",
@@ -619,8 +628,17 @@ async def efetch(
     id: str | list[str] = "",
 ) -> list[TextContent]:
     """
-    Fetch full records using efetch.
-    Returns actual data (sequences, records, etc.)
+    Fetch full records for known IDs from NCBI E-utilities EFetch
+    (https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi), e.g. sequences in
+    FASTA, GenBank flat files, or PubMed records. Use after ncbi_esearch has
+    produced the IDs.
+
+    RETURNS a text item holding the raw record text exactly as NCBI sends it, in the
+    format chosen by `rettype`/`retmode` (default XML). Valid combinations differ by
+    database (e.g. protein/nuccore accept `fasta` and `gb`; pubmed accepts
+    `abstract` and `medline`). On missing `database`, empty `ids` or an HTTP error
+    it returns a single text item beginning with "Error" — check for that prefix
+    before use.
 
     Args:
         database: NCBI database name (alias: `db`)

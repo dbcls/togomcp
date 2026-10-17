@@ -13,6 +13,39 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+First half of the Connectors Directory review fixes (the second half, rewording the tool
+descriptions and the Usage Guide, waits on a benchmark run). MINOR: tools gain a `title` field;
+no name, parameter or return shape changes.
+
+### Added
+
+- **Every tool has a human-readable title**, in both `Tool.title` and `annotations.title`
+  (e.g. "Get database schema (MIE file)" instead of the name-derived "Get Mie File"). Directory
+  review checks for this, and clients differ on which field they display. New tools get it through
+  `**read_only_tool("<title>")`, which also carries the read-only hints; a test enforces it.
+
+### Changed
+
+- **`run_sparql` names where queries go**, built from `endpoints.csv`: RDF Portal
+  (https://rdfportal.org/) for most databases, and by URL the seven databases that run their own
+  endpoints (glycosmos, togovar, wikipathways, idsm, lipidmaps, swisslipids, marpolbase). A
+  description saying only "RDF Portal" would have misstated where the data comes from for those.
+  README, the intro page and `get_sparql_endpoints`/`get_graph_list` no longer imply every
+  endpoint is on RDF Portal.
+- **Short tool descriptions now say what they return and which API they call**: `ncbi_efetch`
+  (79 → 633 characters), `ncbi_list_databases`, `ncbi_esummary`, `search_mesh_descriptor`, both
+  PubChem tools, `togoid_getDescription`. `get_compound_attributes_from_pubchem` now states that an
+  unknown CID is not an error but an object with empty fields.
+
+### Security
+
+- **The `endpoint_url` exemption for registered endpoints now covers the exact endpoint, not its
+  whole host.** Through 2.26.2 any path on a registered host:port skipped the public-address check,
+  so a caller could POST to, for example, a Virtuoso admin page on an internally resolving
+  endpoint host. Now scheme, host, port and path must match a registered endpoint (a trailing
+  slash or a query string is fine); any other path on that host goes through the same check as an
+  unregistered URL.
+
 ## [2.26.2] - 2026-10-16
 
 Security fixes only. PATCH: no tool, parameter or return shape changed; what changes is which
