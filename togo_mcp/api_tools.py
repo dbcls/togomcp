@@ -209,8 +209,8 @@ async def search_uniprot_entity(
 
     RETURNS a TSV string with columns: accession, protein_name, organism_name.
     On upstream/HTTP failure this tool does NOT raise — it returns a plain
-    string beginning with "Error:" (not TSV). CHECK FOR the "Error:" prefix
-    BEFORE parsing rows.
+    string beginning with "Error:" (not TSV). check for the "Error:" prefix
+    before parsing rows.
 
     Args:
         query (str): The Solr-style query string for the UniProtKB /search endpoint.
@@ -350,7 +350,7 @@ async def get_pubchem_compound_id(compound_name: str) -> str:
     RETURNS PubChem's JSON verbatim as a string:
     `{"IdentifierList": {"CID": [445154, ...]}}`. On
     upstream/HTTP failure this tool does NOT raise — it returns a plain string
-    beginning with "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE
+    beginning with "Error:" (not JSON). check for the "Error:" prefix before
     parsing.
 
     Args:
@@ -380,7 +380,7 @@ async def get_compound_attributes_from_pubchem(pubchem_compound_id: str) -> str:
     `label`, `molecular_formula`, `SMILES` and `InChI` as empty strings — treat an
     empty `label` as "not found". On upstream/HTTP
     failure this tool does NOT raise — it returns a plain string beginning with
-    "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
+    "Error:" (not JSON). check for the "Error:" prefix before parsing.
 
     Args:
         pubchem_compound_id (str): PubChem Compound ID (CID), e.g. "445154".
@@ -574,7 +574,7 @@ async def search_pdb_entity(
     `total` is `null` when PDBj gives no count (typical for structured-filter
     searches) — that is NOT zero and does NOT mean "no results"; consult
     `results` directly. On upstream/HTTP failure returns a JSON object with an
-    `error` key instead — CHECK FOR `error` BEFORE reading `results`.
+    `error` key instead — check for `error` before reading `results`.
 
     Args:
         db (str): The database to search in. Allowed values are:
@@ -710,7 +710,7 @@ async def search_mesh_descriptor(
     <descriptor name>}` objects (at most `limit`); the descriptor ID (e.g. D001249)
     is the IRI's last path segment. On upstream/HTTP
     failure this tool does NOT raise — it returns a plain string beginning with
-    "Error:" (not JSON). CHECK FOR the "Error:" prefix BEFORE parsing.
+    "Error:" (not JSON). check for the "Error:" prefix before parsing.
 
     Args:
         query (str): The query string to search for. Accepts aliases:
@@ -885,8 +885,8 @@ async def search_reactome_entity(
     'id' (stable Reactome stId, e.g. "R-HSA-109581"), 'name', 'type' (facet
     type), 'exactType' (specific BioPAX-ish class), 'species' (list), and — only
     when include_summation=True — 'summation' (≤240-char description). On
-    upstream failure returns {'error': ...} instead — CHECK FOR 'error' BEFORE
-    READING 'results'.
+    upstream failure returns {'error': ...} instead — check for 'error' before
+    reading 'results'.
 
     `species` and `types` are validated case-INSENSITIVELY against Reactome's
     controlled vocabularies and normalized to canonical casing before dispatch:
@@ -1118,7 +1118,7 @@ async def search_rhea_entity(
     500); 'has_more' is true if more matched beyond the cap. Each result carries
     the requested `columns` as snake_cased keys (e.g. 'rhea-id' → 'rhea_id',
     'chebi-id' → 'chebi_id'). On upstream failure returns {'error': ...} instead
-    — CHECK FOR 'error' BEFORE READING 'results'.
+    — check for 'error' before reading 'results'.
 
     Valid `columns` (default rhea-id,equation): rhea-id, equation, chebi,
     chebi-id, ec, uniprot, go, pubmed, reaction-xref(EcoCyc|KEGG|MetaCyc|
@@ -1159,8 +1159,8 @@ async def search_rhea_entity(
         success, where each result is one reaction keyed by the requested
         columns. `total_count` is the number of rows returned (capped by
         `limit`); `has_more` is true if more reactions matched beyond the cap.
-        On upstream/HTTP failure returns {'error': str} instead — CHECK FOR
-        'error' BEFORE READING 'results'.
+        On upstream/HTTP failure returns {'error': str} instead — check for
+        'error' before reading 'results'.
 
     Raises:
         ValueError: If `query` is blank, `limit` is out of range, or `columns`

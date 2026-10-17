@@ -558,17 +558,15 @@ async def search_chembl_id_lookup(
     """
     Resolve a name to ChEMBL IDs across several entity kinds in one call.
 
-    Cross-entity convenience wrapper over the ChEMBL RDF graph. Two matching
-    regimes, because the entity kinds carry different searchable text:
+    Queries the ChEMBL RDF graph. Two matching regimes, because the entity kinds
+    carry different searchable text:
 
     • EXACT (case-insensitive) NAME match — COMPOUND (skos:altLabel: brands,
       generics, synonyms), TARGET (its own rdfs:label OR its component's
       skos:altLabel — gene symbols and protein names), CELL_LINE and TISSUE
-      (rdfs:label, e.g. "Liver", "CCRF S-180"). Not fuzzy/substring — fix typos
-      before calling, or use `search_chembl_target`, which falls back to a
-      substring pass. Prefer the entity-specific tools
-      (`search_chembl_molecule` / `search_chembl_target`) when you know the kind;
-      they carry extra fields (organism/type).
+      (rdfs:label, e.g. "Liver", "CCRF S-180"). Not fuzzy/substring; for a
+      known kind, `search_chembl_molecule` / `search_chembl_target` return extra
+      fields (organism/type), and the target tool falls back to a substring pass.
 
     • KEYWORD-IN-DESCRIPTION — ASSAY. Assays have no name; their searchable text
       is a free-text dcterms:description, so ASSAY does a keyword (token) match on
@@ -587,21 +585,21 @@ async def search_chembl_id_lookup(
     RETURNS a dict {'total_count', 'has_more', 'results'}. `total_count` is the
     number of rows RETURNED (capped by `limit`), NOT the full match count; check
     `has_more` (true = more results exist beyond this page — relevant mainly for
-    ASSAY, whose keyword search can have many hits). ⚠️ On a default (cross-kind)
+    ASSAY, whose keyword search can have many hits). On a default (cross-kind)
     search, `has_more`=true can also mean an entire entity_type is missing from
-    the page: the kinds are UNIONed and the limit is applied to the whole, so
-    e.g. "Liver" at limit=5 returns 5 TARGET rows and no TISSUE row, though both
-    exist. Do NOT conclude a kind is absent from a truncated page — raise `limit`
-    or re-run with `entity_type` set. Each result carries
+    the page: the limit applies to the UNION, so "Liver" at limit=5 returns 5
+    TARGET rows and no TISSUE row, though both exist. A truncated page therefore
+    does not show that a kind is absent; a larger `limit` or `entity_type` does.
+    Each result carries
     'chembl_id', 'entity_type', and 'organism' (null for COMPOUND / where absent —
     use it to tell e.g. human from mouse targets). Name kinds also carry 'name'
     (rdfs:label); ASSAY rows instead carry 'description' (the free-text assay
     description, name=null) and a relevance 'score' (higher = better match).
 
-    An EMPTY 'results' additionally carries 'hint'. Read it: an empty result is
-    NOT an endpoint failure, and must not be reported as one. On a real endpoint
-    failure this tool does NOT raise — it returns a dict with a single 'error'
-    key instead; CHECK FOR 'error' BEFORE READING 'results'.
+    An empty 'results' carries a 'hint' explaining the empty match; it is not an
+    endpoint failure. On a real endpoint failure this tool does not raise — it
+    returns a dict with a single 'error' key, so check for 'error' before reading
+    'results'.
 
     """
     query = _resolve_query_alias(
@@ -799,9 +797,8 @@ async def search_chembl_target(
     """
     Resolve a biological TARGET (protein/receptor/enzyme) to a ChEMBL ID.
 
-    ⚠️ DO NOT use this tool to look up drugs, compounds, or molecules by name.
-       For drug/compound/molecule names (e.g., "sorafenib", "imatinib", "aspirin"),
-       use `search_chembl_molecule` instead.
+    Not for drugs, compounds or molecules: names like "sorafenib", "imatinib" or
+    "aspirin" are resolved by `search_chembl_molecule`.
 
     Resolution is deterministic SPARQL against the ChEMBL RDF graph, not a lexical
     search — there is no ranking to second-guess:
@@ -836,10 +833,10 @@ async def search_chembl_target(
     nothing and these are looser, UNRANKED matches, so verify 'name' before using
     them; 'none' means both passes ran and neither matched.
 
-    An EMPTY 'results' additionally carries 'hint'. Read it: an empty result is
-    NOT an endpoint failure, and must not be reported as one. On a real endpoint
-    failure this tool does NOT raise — it returns a dict with a single 'error'
-    key instead; CHECK FOR 'error' BEFORE READING 'results'.
+    An empty 'results' carries a 'hint' explaining the empty match; it is not an
+    endpoint failure. On a real endpoint failure this tool does not raise — it
+    returns a dict with a single 'error' key, so check for 'error' before reading
+    'results'.
 
     Args:
         query (str): UniProt accession (preferred), gene symbol, or exact protein
@@ -1003,10 +1000,9 @@ async def search_chembl_molecule(
     """
     Resolve a DRUG / COMPOUND / MOLECULE (by name or structure) to a ChEMBL ID.
 
-    ✅ Use this tool for drug, compound, or molecule names
-       (e.g., "sorafenib", "imatinib", "aspirin", "Gleevec").
-    ⚠️ For biological targets (proteins, receptors, enzymes, genes such as
-       EGFR, BRCA1, TP53), use `search_chembl_target` instead.
+    For drug, compound or molecule names (e.g. "sorafenib", "imatinib",
+    "aspirin", "Gleevec"). Biological targets (proteins, receptors, enzymes,
+    genes such as EGFR, BRCA1, TP53) are resolved by `search_chembl_target`.
 
     Resolution path is auto-selected from the query shape:
 
@@ -1030,19 +1026,14 @@ async def search_chembl_molecule(
     The search string can be passed as any of: `query` (canonical), `search`,
     `term`, `keyword`, `keywords`, `search_term`, or `name`.
 
-    ⚠️ `mode='extract'` — for a string that NAMES a drug rather than IS one.
-       Exact matching (the default) cannot resolve a clinical-trial intervention
-       string, a dosed/formulated product, or a multi-drug regimen, because none
-       of those is a synonym of anything: "Ustekinumab 90 mg", "Diclofenac SR",
-       "Ropivacaine 10% + Clonidine 1 µg/kg" all return 0 rows under 'exact'.
-       `mode='extract'` instead finds every substance NAMED INSIDE the string,
-       returning one result per distinct drug — so the combination above yields
-       ROPIVACAINE and CLONIDINE. Nested synonyms collapse to the longest match
-       ("Sofpironium Bromide Gel" → SOFPIRONIUM BROMIDE, not also BROMIDE).
-       Use it as the RETRY when 'exact' returns nothing, not as the first call:
-       it is a text-extraction heuristic, so treat a hit as a candidate to
-       confirm, and note that it resolves a regimen to its COMPONENTS — it will
-       never return "FOLFIRI" itself, only the drugs a string spells out.
+    `mode='extract'` — for a string that NAMES a drug rather than IS one: a
+       trial intervention, a dosed product or a regimen ("Ustekinumab 90 mg",
+       "Ropivacaine 10% + Clonidine 1 µg/kg"), which return 0 rows under the
+       default 'exact'. It returns one result per distinct substance named inside
+       the string (ROPIVACAINE and CLONIDINE above); nested synonyms collapse to
+       the longest match. It is a text-extraction heuristic meant as the retry
+       after an empty 'exact' call, so a hit is a candidate to confirm, and a
+       regimen resolves to its components, never to "FOLFIRI" itself.
 
     RETURNS a dict {'total_count', 'has_more', 'results'}. `total_count` is rows
     RETURNED (capped by `limit`), not the full match count; `has_more` is true if
@@ -1050,10 +1041,10 @@ async def search_chembl_molecule(
     'name' (rdfs:label, may be None for some structure hits). Under
     `mode='extract'` each result additionally carries 'matched_span' (the text
     that matched) and 'match_type' ('exact' if the span is the whole query,
-    else 'contained') — CHECK 'match_type' before trusting a hit. When a call
-    returns no results, a 'note' key explains why and what to try next. On
-    endpoint/HTTP failure this tool does NOT raise — it returns a dict with a
-    single 'error' key instead; CHECK FOR 'error' BEFORE READING 'results'.
+    else 'contained'), which says how far to trust a hit. When a call returns no
+    results, a 'note' key explains why and what to try next. On endpoint/HTTP
+    failure this tool does not raise — it returns a dict with a single 'error'
+    key, so check for 'error' before reading 'results'.
 
     Args:
         query (str): Drug/compound name, brand, synonym, or a structure string.

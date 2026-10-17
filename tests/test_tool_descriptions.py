@@ -83,8 +83,8 @@ def test_every_tool_description_states_what_it_returns(assembled_tools) -> None:
 
 
 def test_run_sparql_mandates_the_mie_file_in_what_clients_receive(assembled_tools) -> None:
-    """`run_sparql` must tell the agent to read the MIE file first — in the SERVED
-    description, not the docstring.
+    """`run_sparql` must tell the agent its results depend on the MIE file — in the
+    SERVED description, not the docstring.
 
     This is asserted on the assembled tool list rather than on `__doc__` for a
     reason: `run_sparql` carries an explicit `description=` on its decorator, and
@@ -109,7 +109,10 @@ def test_run_sparql_mandates_the_mie_file_in_what_clients_receive(assembled_tool
         "the docstring, clients never see it — the decorator's description= wins."
     )
     lowered = desc.lower()
-    assert "first" in lowered, "the MIE mandate must be ordered ('FIRST'), not merely suggested"
+    assert "depend on get_mie_file" in lowered, (
+        "the description must say correct results DEPEND on the MIE file — stated as a "
+        "fact (directory review rejects 'CALL ... FIRST' imperatives), but still stated"
+    )
     assert "wrong answer" in lowered, (
         "the description must say skipping the MIE yields a WRONG ANSWER, not a "
         "failure — an agent watching for an error will trust a clean wrong result"
@@ -307,3 +310,43 @@ def test_run_sparql_names_every_endpoint_it_can_send_a_query_to(assembled_tools)
     assert external, "registry has no external endpoint — this test's premise changed"
     missing = sorted(u for u in external if u not in desc)
     assert not missing, f"run_sparql's description omits external endpoints: {missing}"
+
+
+# Directory review rejects tool descriptions that steer the model rather than
+# describe the tool ("CALL THIS TOOL FIRST every turn" read as prompt injection).
+# State what a tool returns and what it depends on; leave the procedure to the
+# Usage Guide. Lower-case usage notes ("check for 'error' before reading") are fine.
+_DIRECTIVE_PATTERNS = (
+    r"\bCALL\b[^.]*\bFIRST\b", r"\bALWAYS\b", r"\bMANDATORY\b", r"\bMUST\b",
+    r"\bDO NOT\b", r"\bNEVER\b", r"\bCHECK FOR\b", r"\bREAD THEM\b", r"every turn",
+    r"must not be reported",
+)
+# Longest served description allowed. run_sparql is ~2,550 by itself because it
+# lists the live database/endpoint registry; the rest were trimmed to fit in 2.27.
+_MAX_DESCRIPTION_CHARS = 2800
+
+
+def test_no_tool_description_issues_directives(assembled_tools) -> None:
+    import re as _re
+
+    hits = {
+        t.name: found
+        for t in assembled_tools
+        if (found := [p for p in _DIRECTIVE_PATTERNS if _re.search(p, t.description or "")])
+    }
+    assert not hits, (
+        f"directive wording in tool descriptions: {hits}. Rewrite it as what the tool "
+        "returns or depends on (see the run_sparql description)."
+    )
+
+
+def test_tool_descriptions_stay_under_the_length_ceiling(assembled_tools) -> None:
+    long = {
+        t.name: len(t.description or "")
+        for t in assembled_tools
+        if len(t.description or "") > _MAX_DESCRIPTION_CHARS
+    }
+    assert not long, (
+        f"descriptions over {_MAX_DESCRIPTION_CHARS} characters: {long}. Move history "
+        "and implementation notes into code comments."
+    )

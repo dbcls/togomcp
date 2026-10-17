@@ -204,10 +204,11 @@ def render_compact_kegg_note() -> str:
         "**Not an RDF Portal database — KEGG.** `database=\"kegg\"` is invalid on "
         "`run_sparql` and `get_MIE_file`: KEGG has no SPARQL endpoint and no MIE. The "
         "`kegg_*` tools exist only on a local stdio server whose operator enabled them. "
-        "**If you see no `kegg_*` tool, KEGG is unavailable in this session** — answer "
-        "pathway questions from `reactome` or `rhea`, and do NOT report the absence as "
-        "an error or suggest enabling it. When the tools ARE present, this guide "
-        "carries a KEGG section with the details.",
+        "**If no `kegg_*` tool is listed, KEGG is unavailable in this session**; "
+        "`reactome` and `rhea` cover pathways over SPARQL. The absence is a licensing "
+        "decision of the deployment, not an error, and nothing the user does in this "
+        "session changes it. When the tools ARE present, this guide carries a KEGG "
+        "section with the details.",
         "",
     ])
 
@@ -280,17 +281,17 @@ def render_non_sparql_companions() -> str:
         "on `run_sparql` and `get_MIE_file` — there is no query you can write here that "
         "reaches it.",
         "",
-        "**Check your tool list before offering KEGG to the user.** KEGG is OFF BY "
+        "**KEGG is available only if the tool list has `kegg_*` tools.** It is OFF BY "
         "DEFAULT. The `kegg_*` tools appear only on the local stdio server "
         "(`togo-mcp-local`) AND only when the operator sets `TOGOMCP_ENABLE_KEGG=1`, "
         "because the KEGG API is licensed to academic users at academic institutions; "
         "the public host at togomcp.rdfportal.org cannot verify a caller's affiliation "
-        "and never exposes them whatever the environment says. **If you see no `kegg_*` "
-        "tool, KEGG is simply unavailable in this session** — answer pathway questions "
-        "from `reactome` or `rhea` over SPARQL, and do NOT report the absence as an "
-        "error, ask the user to retry, or suggest they enable it: eligibility is theirs "
-        "to judge, not yours to prompt for. When the tools ARE present, this guide "
-        "carries a KEGG section with the details.",
+        "and never exposes them whatever the environment says. **If no `kegg_*` tool "
+        "is listed, KEGG is simply unavailable in this session**; `reactome` and `rhea` "
+        "cover pathways over SPARQL. The absence is not an error and retrying does not "
+        "change it; whether a user is eligible for KEGG's academic licence is for them "
+        "to judge. When the tools ARE present, this guide carries a KEGG section with "
+        "the details.",
         "",
     ])
 

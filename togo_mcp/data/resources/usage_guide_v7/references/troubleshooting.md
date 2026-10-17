@@ -34,7 +34,6 @@
 | Aggregate returns a suspicious 0 or round number | Empty/abridged `VALUES` block — valid SPARQL, wrong answer. Repopulate from a live query. |
 | TogoID empty | Check ID format with `togoid_getDataset(src)`. |
 | ≥15 tool calls, no answer | Synthesize from partial data. Partial + honest > wrong + exhaustive. |
-| Repetitive answer | Remove any sentence restating an earlier point. |
 | OLS4 / PubMed unavailable | → `search_mesh_descriptor` / `ncbi_esearch`. |
 
 

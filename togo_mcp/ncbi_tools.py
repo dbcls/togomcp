@@ -354,25 +354,22 @@ async def esearch(
     retstart: int | None = None,
 ) -> list[TextContent]:
     """
-    Search NCBI databases using E-utilities esearch API.
+    Search NCBI Entrez databases with E-utilities ESearch
+    (https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi) and return the
+    matching record IDs, for use with ncbi_esummary / ncbi_efetch or as SPARQL
+    anchors.
 
-    ⚠️  CRITICAL FOR COMPREHENSIVE RESULTS ⚠️
-    ALWAYS use NCBI field tags for Gene, ClinVar, and similar databases!
-    Without field tags, you may miss 70-80% of relevant results.
+    Recall depends heavily on NCBI field tags for Gene, ClinVar and similar
+    databases: an untagged query is matched loosely and misses most relevant
+    records. Gene field tags:
+    • [Organism] - taxonomic filter (e.g. "Homo sapiens[Organism]", "Archaea[Organism]")
+    • [Gene Name] - gene symbol (e.g. "TP53[Gene Name]", "nifH[Gene Name]")
+    • [All Fields] - broad keyword (e.g. "nitrogenase[All Fields]")
 
-    MANDATORY FIELD TAGS FOR GENE DATABASE:
-    • [Organism] - Taxonomic filtering (e.g., "Homo sapiens[Organism]", "Archaea[Organism]")
-    • [Gene Name] - Gene symbols (e.g., "TP53[Gene Name]", "nifH[Gene Name]")
-    • [All Fields] - Broad keyword search (e.g., "nitrogenase[All Fields]")
-
-    IMPACT OF FIELD TAGS (Gene Database):
-    • Without field tags: ~300 results (20-30% recall) ❌
-    • With field tags: ~1,300 results (100% recall) ✅
-    • Performance loss: Missing field tags = 70-80% data loss!
-
-    EXAMPLE (Gene):
-    ✅ query="Archaea[Organism] AND (nifH[Gene Name] OR nitrogenase[All Fields])"
-    ❌ query="archaea AND nifH"  (missing [Organism]/[Gene Name] tags → ~23% recall)
+    Measured on Gene for archaeal nitrogenase genes:
+    • query="Archaea[Organism] AND (nifH[Gene Name] OR nitrogenase[All Fields])"
+      → ~1,300 records (full recall)
+    • query="archaea AND nifH" → ~300 records (~23% recall)
 
     RETURNS formatted text results carrying the database-specific IDs. On a
     missing/invalid `database` or `query` it returns a single text item whose
