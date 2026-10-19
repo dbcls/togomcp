@@ -46,7 +46,7 @@ on the hub for production use.
 
 ## Bundled widget provenance
 
-Source: https://github.com/yayamamo/llm_meta_widget/tree/674235d
+Source: https://github.com/yayamamo/llm_meta_widget/tree/89ade7f
 Built asset: `app/assets/javascripts/llm_meta_widget/llm-meta-widget.js`.
 The adjacent Apache-2.0 license covers the widget; bundled dependencies retain
 license comments in the asset. To update, build the pinned widget source with
@@ -74,3 +74,13 @@ The page model is unchanged by this UI update. If deploying llm_meta_server
 PR #192's local-only anonymous policy, first switch the page model to an allowed
 Ollama model and configure the matching ANONYMOUS_MODELS allowlist; the current
 house-funded gpt-oss-120b configuration does not satisfy that policy.
+
+## Limit-stop messages
+
+When an internal round cap or a service resource limit stops processing, the
+widget explains in Japanese/English that the reply may be incomplete and that
+another attempt may take a different path and finish within the limits. It
+suggests narrowing the question. Rate/capacity errors advise waiting (including
+Retry-After when supplied), while daily quotas and operator stops require reset
+or service resumption. There is no automatic retry after a resource-limit MCP
+rejection; ordinary query errors can still be passed to the model for correction.

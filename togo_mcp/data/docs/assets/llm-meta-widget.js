@@ -3,6 +3,58 @@
 
 
 // app/assets/javascripts/llm_meta_widget/orchestrator.js
+function httpCallError(what, response, text) {
+  const error = new Error(`${what}: HTTP ${response.status} ${response.statusText || ""}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+  error.status = response.status;
+  error.retryAfter = response.headers?.get?.("Retry-After") || null;
+  try {
+    const body = JSON.parse(text);
+    error.code = typeof body.error === "string" ? body.error : body.error?.code || body.code;
+    if (response.status === 502 && /MCP response exceeds \d+ bytes/.test(body.message || "")) error.code = "result_too_large";
+  } catch {
+  }
+  return error;
+}
+var RESOURCE_LIMIT_CODES = /* @__PURE__ */ new Set([
+  "max_rounds",
+  "rate_limit",
+  "concurrency",
+  "capacity",
+  "tool_busy",
+  "tool_rate_limit",
+  "daily_budget",
+  "global_daily_budget",
+  "stopped",
+  "execution_timeout",
+  "timeout",
+  "result_too_large",
+  "payload_too_large",
+  "context_length_exceeded"
+]);
+function isResourceLimit(error) {
+  return RESOURCE_LIMIT_CODES.has(error?.code) || [413, 429, 503, 504].includes(error?.status);
+}
+function limitStopMessage(error, { lang = "en", rounds } = {}) {
+  if (!isResourceLimit(error)) return null;
+  const ja = lang.toLowerCase().startsWith("ja");
+  const code = error?.code;
+  const daily = code === "daily_budget" || code === "global_daily_budget";
+  const stopped = code === "stopped";
+  const size = ["result_too_large", "payload_too_large", "context_length_exceeded"].includes(code) || error?.status === 413;
+  const timeout = ["execution_timeout", "timeout"].includes(code) || error?.status === 504;
+  const roundLimit = code === "max_rounds";
+  const rawRetry = error?.retryAfter;
+  const retrySeconds = /^\d+$/.test(rawRetry || "") ? Number(rawRetry) : Math.ceil((Date.parse(rawRetry) - Date.now()) / 1e3);
+  const wait = Number.isFinite(retrySeconds) && retrySeconds > 0 ? retrySeconds : null;
+  if (ja) {
+    const reason2 = roundLimit ? "\u30C4\u30FC\u30EB\u5229\u7528\u306E\u51E6\u7406\u56DE\u6570\u306E\u4E0A\u9650" + (rounds ? "\uFF08" + rounds + "\u56DE\uFF09" : "") : size ? "\u5165\u529B\u307E\u305F\u306F\u30C4\u30FC\u30EB\u7D50\u679C\u306E\u30B5\u30A4\u30BA\u4E0A\u9650" : timeout ? "\u5FDC\u7B54\u6642\u9593\u306E\u4E0A\u9650" : daily ? "\u30B5\u30FC\u30D3\u30B9\u306E\u5229\u7528\u91CF\u306E\u4E0A\u9650" : stopped ? "\u30B5\u30FC\u30D3\u30B9\u5074\u306E\u505C\u6B62\u63AA\u7F6E" : "\u6DF7\u96D1\u307E\u305F\u306F\u30B5\u30FC\u30D3\u30B9\u5074\u306E\u5229\u7528\u5236\u9650";
+    const next2 = daily ? "\u5229\u7528\u4E0A\u9650\u304C\u89E3\u9664\u30FB\u30EA\u30BB\u30C3\u30C8\u3055\u308C\u3066\u304B\u3089\u3001" : stopped ? "\u30B5\u30FC\u30D3\u30B9\u304C\u518D\u958B\u3057\u3066\u304B\u3089\u3001" : !roundLimit && !size && !timeout ? wait ? "\u5C11\u306A\u304F\u3068\u3082" + wait + "\u79D2\u5F85\u3063\u3066\u304B\u3089\u3001" : "\u3057\u3070\u3089\u304F\u5F85\u3063\u3066\u304B\u3089\u3001" : "";
+    return reason2 + "\u306B\u3088\u308A\u51E6\u7406\u3092\u505C\u6B62\u3057\u307E\u3057\u305F\u3002\u3053\u3053\u307E\u3067\u306E\u56DE\u7B54\u306F\u672A\u5B8C\u4E86\u306E\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\u3002" + next2 + "\u5BFE\u8C61\u3084\u6761\u4EF6\u3092\u7D5E\u3063\u3066\u3084\u308A\u76F4\u3057\u3066\u304F\u3060\u3055\u3044\u3002\u6539\u3081\u3066\u5B9F\u884C\u3059\u308B\u3068\u3001\u51E6\u7406\u306E\u9032\u307F\u65B9\u306B\u3088\u3063\u3066\u306F\u5236\u9650\u5185\u3067\u5B8C\u4E86\u3059\u308B\u5834\u5408\u304C\u3042\u308A\u307E\u3059\u3002";
+  }
+  const reason = roundLimit ? "the tool-use round limit" + (rounds ? " (" + rounds + ")" : "") : size ? "an input or tool-result size limit" : timeout ? "a response time limit" : daily ? "the service usage budget" : stopped ? "a service-side stop" : "service capacity or a usage limit";
+  const next = daily ? "After the budget is reset or restored, " : stopped ? "Once the service resumes, " : !roundLimit && !size && !timeout ? wait ? "Wait at least " + wait + " seconds, then " : "Wait a while, then " : "";
+  return "Processing stopped because of " + reason + ". The reply so far may be incomplete. " + next + (next ? "try" : "Try") + " again with a narrower question. A new attempt may follow a different path and finish within the limits.";
+}
 async function singleLlmCall({
   baseUrl,
   apiKeyUuid,
@@ -44,7 +96,7 @@ async function singleLlmCall({
   const response = await fetch(url, { method: "POST", headers, body, signal });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`singleLlmCall: HTTP ${response.status} ${response.statusText}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+    throw httpCallError("singleLlmCall", response, text);
   }
   if (!response.body) {
     throw new Error("singleLlmCall: response has no body (streaming unsupported?)");
@@ -343,6 +395,7 @@ async function runChatLoop(opts) {
       } catch (error) {
         allDispatched.push({ toolCall: tc, error });
         onToolDispatched?.({ toolCall: tc, error });
+        if (isResourceLimit(error)) throw error;
         roundTripResults.push({ tc, result: { error: String(error.message || error) } });
       }
     }
@@ -363,6 +416,7 @@ async function runChatLoop(opts) {
       } catch (error) {
         allDispatched.push({ toolCall: tc, error });
         onToolDispatched?.({ toolCall: tc, error });
+        if (isResourceLimit(error)) throw error;
         roundTripResults.push({ tc, result: { error: String(error.message || error) } });
       }
     }
@@ -460,7 +514,7 @@ async function mcpRpc({ endpoint, method, params, signal, label }) {
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`${what}: HTTP ${response.status}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+    throw httpCallError(what, response, text);
   }
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -557,7 +611,7 @@ async function dispatchRemoteToolCall({ baseUrl, bearerToken, toolId, args, sign
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`dispatchRemoteToolCall: HTTP ${response.status} ${response.statusText}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+    throw httpCallError("dispatchRemoteToolCall", response, text);
   }
   const body = await response.json();
   return body.result;
@@ -5110,17 +5164,18 @@ function boot(cfg, host) {
         }).join(", "));
       }
       if (result.stopped_reason && result.stopped_reason !== "duplicate_tool_calls") {
-        appendTurn(
-          "system",
-          "The assistant reached its tool-use limit before finishing. The reply above may be incomplete \u2014 try asking again or rephrasing."
-        );
+        appendTurn("system", limitStopMessage({ code: "max_rounds" }, {
+          lang: host.closest("[lang]")?.lang || document.documentElement.lang || "en",
+          rounds: MAX_ROUNDS
+        }));
       }
     } catch (err) {
       if (cfg.AUTH_REQUIRED && authenticationFailed(err)) host.bearerToken = null;
       if (err.name === "AbortError" || /aborted/i.test(err.message || "")) {
         appendTurn("system", "\u23F9 stopped");
       } else {
-        appendTurn("error", err.message);
+        var limitMessage = limitStopMessage(err, { lang: host.closest("[lang]")?.lang || document.documentElement.lang || "en" });
+        appendTurn(limitMessage ? "system" : "error", limitMessage || err.message);
       }
     } finally {
       markDone(assistantBody.roleLabel);
