@@ -10,8 +10,8 @@
 
 | ファイル | 用途 |
 |---|---|
-| [`slides/togomcp-tutorial-ja.html`](slides/togomcp-tutorial-ja.html) | 投影用スライド・日本語（64 枚・単一 HTML） |
-| [`slides/togomcp-tutorial-en.html`](slides/togomcp-tutorial-en.html) | 投影用スライド・英語（64 枚・内容は日本語版と同一） |
+| [`slides/togomcp-tutorial-ja.html`](slides/togomcp-tutorial-ja.html) | 投影用スライド・日本語（70 枚・単一 HTML） |
+| [`slides/togomcp-tutorial-en.html`](slides/togomcp-tutorial-en.html) | 投影用スライド・英語（70 枚・内容は日本語版と同一） |
 | [`instructor/script-ja.md`](instructor/script-ja.md) | **逐語の講師台本**。プロンプト・時間配分・言い忘れ注意 |
 | [`instructor/fallback/`](instructor/fallback/) | **障害時の差し替え素材**（後述・省略不可） |
 | [`handbook/togomcp-handbook-ja.html`](handbook/togomcp-handbook-ja.html) | 受講者への配布物 |

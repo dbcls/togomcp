@@ -122,7 +122,7 @@ Ask Claude this.
 What databases can you use from TogoMCP?
 ```
 
-**What you should see:** in about ten seconds, a list of 47 databases (as of 2026-10-14) including UniProt, PDB, ChEMBL and TogoVar, organized by field.
+**What you should see:** in about 10–20 seconds, a list of 47 databases (as of 2026-10-20) including UniProt, PDB, ChEMBL and TogoVar, organized by field.
 
 **If it does not work:**
 
@@ -133,6 +133,10 @@ What databases can you use from TogoMCP?
 | It tries to call a tool and fails | the network. Possibly a corporate proxy or VPN |
 
 For details, go to [08. Troubleshooting](08-troubleshooting-en.md).
+
+### Which model to use
+
+**For real work, use Sonnet or above.** Haiku works, and the values it returns are mostly right, but in the 2026-10-20 measurement it once **built from memory** a list of targets it should have pulled from a database (38 lysosomal enzymes), and once **called a tool unrelated to TogoMCP by mistake** (scheduling a task). On complex questions it also took more than twice as long as Sonnet. Haiku is fine for a quick try; if you will use the result, put it through the checks in Chapter 7.
 
 ---
 

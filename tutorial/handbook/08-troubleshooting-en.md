@@ -26,9 +26,9 @@ Remedies, in descending order of effect:
 **1. Pin the graph, and narrow the target by IRI.** A query without a graph pin also reads every co-resident dataset. `FILTER(CONTAINS(...))` and `FILTER(regex(...))` are effectively unusable on large graphs. Consider whether you can specify the IRI directly.
 
 ```
-Measured (2026-10-01, a query fetching insulin's sequence):
-  no graph pin + FILTER(CONTAINS)  → 10 s, 219,437 rows (inflated)
-  graph pinned with FROM           → 1.4 s, 919 rows
+Measured (October 2026, a query fetching insulin's sequence; row counts 10-20):
+  no graph pin + FILTER(CONTAINS)  → 10 s, 219,436 rows (inflated)
+  graph pinned with FROM           → 1.4 s, 918 rows (the answer is 1 row)
 ```
 
 > ⚠️ The same form died at 60 seconds on 2026-08-20. **Runtime also depends on the state of the endpoint's cache.** A query that passed once will not necessarily pass again, and one that timed out once is not necessarily badly written ([Chapter 3](03-how-it-works-en.md)).
@@ -158,7 +158,7 @@ The SPARQL endpoint is not responding. Can you answer the same question using on
 
 | Question | How to answer |
 |---|---|
-| "How many tokens does it use?" | The usage guide is **designed to be re-read on every message** (once per round trip, no matter how many times tools are called; it is designed that way). The core that arrives each time is 34,123 characters (2026-10-14) ≒ 8,000–10,000 tokens (rough estimate); the detail sits in reference files fetched only when needed. It accumulates over a long conversation |
+| "How many tokens does it use?" | When measured (2.25 and earlier), the usage guide **was re-read on every message** (once per round trip, no matter how many times tools are called). Since 2.27.0 how often it is called is up to the model. The core that arrives is 33,813 characters (2026-10-20, 2.27.0) ≒ 8,000–10,000 tokens (rough estimate); the detail sits in reference files fetched only when needed. It accumulates over a long conversation |
 | "Does it work on the free plan?" | It does. On Free you get one custom connector |
 | "What about KEGG?" | Local stdio only. Because of the licence conditions for academic use (→ [appendix](99-appendix-local-install-en.md)) |
 | "Is my own data sent anywhere?" | The question text, and the query where needed, are passed to the server. Tell people not to paste sensitive data |

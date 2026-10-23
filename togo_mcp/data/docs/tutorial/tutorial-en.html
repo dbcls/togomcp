@@ -602,7 +602,7 @@ claude mcp remove togomcp --scope user   # remove within a specified scope
 <p>Ask Claude this.</p>
 <pre><code>What databases can you use from TogoMCP?
 </code></pre>
-<p><strong>What you should see:</strong> in about ten seconds, a list of 47 databases (as of 2026-10-14) including UniProt, PDB, ChEMBL and TogoVar, organized by field.</p>
+<p><strong>What you should see:</strong> in about 10–20 seconds, a list of 47 databases (as of 2026-10-20) including UniProt, PDB, ChEMBL and TogoVar, organized by field.</p>
 <p><strong>If it does not work:</strong></p>
 <table>
 <thead>
@@ -627,6 +627,8 @@ claude mcp remove togomcp --scope user   # remove within a specified scope
 </tbody>
 </table>
 <p>For details, go to <a href="#ch08">08. Troubleshooting</a>.</p>
+<h3>Which model to use</h3>
+<p><strong>For real work, use Sonnet or above.</strong> Haiku works, and the values it returns are mostly right, but in the 2026-10-20 measurement it once <strong>built from memory</strong> a list of targets it should have pulled from a database (38 lysosomal enzymes), and once <strong>called a tool unrelated to TogoMCP by mistake</strong> (scheduling a task). On complex questions it also took more than twice as long as Sonnet. Haiku is fine for a quick try; if you will use the result, put it through the checks in Chapter 7.</p>
 <hr />
 <h2 id="ch01-5">Note: using it from ChatGPT / Gemini</h2>
 <p>TogoMCP is not Claude-only. But each host has its quirks.</p>
@@ -674,7 +676,7 @@ claude mcp remove togomcp --scope user   # remove within a specified scope
 <p>Paste this as it is.</p>
 <pre><code>Give me the UniProt entry for the human insulin (INS) gene product. Function and sequence length too.
 </code></pre>
-<p><strong>What comes back</strong> (measured at 18–28 s; it varies by model):</p>
+<p><strong>What comes back</strong> (measured at 18–29 s; it varies by model):</p>
 <table>
 <thead>
 <tr>
@@ -813,8 +815,8 @@ claude mcp remove togomcp --scope user   # remove within a specified scope
          → Usage_Guide, togoid_getRelation, togoid_convertId, answer
             ↑ and once again</code></p>
 </blockquote>
-<p>This is by design — the tool description says explicitly "call this every turn, before any other tool," on the premise that <strong>nothing from the previous turn's work carries over</strong>.</p>
-<p>What arrives every time is the guide's <strong>core, 34,123 characters</strong> (2026-10-14, TogoMCP 2.25.0; five English markdown files plus the list of workflows, concatenated; a rough estimate of 8,000–10,000 tokens). Detail such as federated queries and the full troubleshooting table lives in six reference files that are fetched with <code>get_workflow</code> only when needed. The core grows with the database catalog each time a database is added (history: 44,570 characters in August 2026; 58,118 on 10-01 under 2.21, before the guide was split). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.</p>
+<p>This happened because the tool description at the time of measurement (2.25 and earlier) said "call this every turn, before any other tool." The design assumes that <strong>nothing from the previous turn's work carries over</strong>, and the guide itself says a new question starts again at the first check (GATE 0). Since 2.27.0 the description states facts rather than orders ("meant to be read once, before the other tools are used"), so <strong>whether it is called every time is up to the model</strong>.</p>
+<p>What arrives every time is the guide's <strong>core, 33,813 characters</strong> (2026-10-20, TogoMCP 2.27.0; five English markdown files plus the list of workflows, concatenated; a rough estimate of 8,000–10,000 tokens). Detail such as federated queries and the full troubleshooting table lives in six reference files that are fetched with <code>get_workflow</code> only when needed. The core grows with the database catalog each time a database is added (history: 44,570 characters in August 2026; 58,118 on 10-01 under 2.21, before the guide was split; 34,123 on 10-14 under 2.25.0). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.</p>
 <blockquote>
 <p>💡 If you have KEGG enabled in a local installation, the KEGG section is added and it grows further.</p>
 </blockquote>
@@ -1081,7 +1083,7 @@ WHERE {                                   # what shape of triple to look for
 <pre><code>specific IRI  ≫  narrowing by type  ≫  FILTER(CONTAINS(...))
     fast                              slow (effectively impossible on large graphs)
 </code></pre>
-<p><strong>But do not use elapsed time as your yardstick.</strong> The August edition of this handbook said that a query fetching insulin's sequence with <code>FILTER(CONTAINS(STR(?seq), "/P01308-1"))</code> died at the 60-second timeout, and that naming the IRI directly brought it back in about 5 seconds. Re-run on 2026-10-01 in nearly the same form (no graph pin, <code>FILTER(CONTAINS)</code>, two <code>OPTIONAL</code>s), it <strong>came back in 10 seconds</strong>, but with <strong>219,437 rows</strong>. Pinning the graph with <code>FROM</code> gives <strong>919 rows in 1.4 seconds</strong>.</p>
+<p><strong>But do not use elapsed time as your yardstick.</strong> The August edition of this handbook said that a query fetching insulin's sequence with <code>FILTER(CONTAINS(STR(?seq), "/P01308-1"))</code> died at the 60-second timeout, and that naming the IRI directly brought it back in about 5 seconds. Re-run in October 2026 in nearly the same form (no graph pin, <code>FILTER(CONTAINS)</code>, two <code>OPTIONAL</code>s), it <strong>came back in 10 seconds</strong>, but with <strong>219,436 rows</strong>. Pinning the graph with <code>FROM</code> still gives <strong>918 rows</strong> (in 1.4 seconds), when the answer is one row (row counts: 2026-10-20).</p>
 <p>Runtime depends not only on how a query is written but on the state of the endpoint's cache. TogoMCP's own records include a query that took over 75 seconds and returned in 0.1 seconds on the very next run. Hence TogoMCP's policy: <strong>never judge a query's correctness from how long it took.</strong> Fast may only mean warm. And every silent-wrong-answer trap in this handbook comes back fast.</p>
 <blockquote>
 <p>📝 <strong>One more correction.</strong> The August edition taught "name the canonical sequence directly as <code>isoforms/P01308-1</code>." For insulin that happens to be right, but as a general rule it is wrong. Swiss-Prot has <strong>782 entries</strong> whose canonical isoform is not <code>-1</code> (fibronectin P02751's is <code>-15</code>), and in 613 of them a <code>-1</code> node still exists as a different isoform. Hard-coding <code>-1</code> does not give you 0 rows; it <strong>silently gives you a different sequence</strong>. The UniProt MIE fixed this rule on 2026-09-14 (the example above).</p>
@@ -1141,9 +1143,10 @@ then compare the counts. Give both COUNT(*) and COUNT(DISTINCT).
 <p>You can find out where the duplication came from by asking:</p>
 <pre><code>Which graph are those doubled rows coming from? Check with GRAPH ?g.
 </code></pre>
-<p>In the measurement, the <code>a up:Protein</code> typing was <strong>supplied by two graphs</strong> — UniProt itself, and another dataset co-resident at the same endpoint. Both declare the type on the same IRI, so without specifying a graph you get two rows per protein.</p>
+<p><code>GRAPH ?g</code> is SPARQL for "tell me which graph (compartment) each row came from", returned in the blank (variable) <code>?g</code>. You do not need to write it yourself; ask like this and the AI builds it into the query.</p>
+<p>In the measurement, the <code>a up:Protein</code> typing ("this is a protein") was <strong>supplied by two graphs</strong>: UniProt itself, and the ortholog database OMA, co-resident at the same endpoint. Both declare the type on the same IRI, so without specifying a graph you get two rows per protein.</p>
 <blockquote>
-<p><strong>Learn this diagnostic move itself.</strong> "When a count looks suspicious, count the suppliers with <code>GRAPH ?g</code>" transfers directly to real work.</p>
+<p><strong>Learn this diagnostic move itself.</strong> When a count looks suspicious, ask "<strong>which graph is this coming from? Count per graph</strong>" (the AI counts the suppliers with <code>GRAPH ?g</code>). It transfers directly to real work.</p>
 </blockquote>
 <h3>(c) Duplication from multi-valued predicates — this one does happen</h3>
 <p>Even after preventing (b), things can still inflate. That is the case where <strong>one entity holds the same predicate more than once</strong>.</p>
@@ -1205,12 +1208,15 @@ COUNT(DISTINCT ?protein)    = 52      ← a 19% difference
 <pre><code>Give me the top 10 PDB structures of the SARS-CoV-2 main protease
 (3CL protease), ordered by best resolution.
 </code></pre>
-<p><strong>Measured at 39–51 s. The most robust of the five demos</strong> (measured on two different models, zero failures and zero retries in both).</p>
+<p><strong>Measured at 39–54 s</strong> (on two models in August and on Sonnet on 10-20; zero failures and zero retries every time).</p>
 <h3>What to watch for is that it hits a wall partway through</h3>
-<p><code>search_pdb_entity</code> runs first. The result: <strong>1,872 hits, in no particular order</strong>.</p>
+<p><code>search_pdb_entity</code> runs first. The result: <strong>thousands of hits, ordered by relevance (not by resolution)</strong>. The hit count depends on the search words (3,710 for "SARS-CoV-2 main protease" on 2026-10-20).</p>
 <p><strong>This search tool cannot answer the question.</strong> Producing "the top 10 by best resolution" requires sorting on resolution, a numeric field, and that is a job for SPARQL, not for a search API.</p>
-<p>So it proceeds to <code>get_MIE_file("pdb")</code> → <code>run_sparql</code>. This is one of the few demos where <strong>the reason SPARQL is needed is visible on screen</strong>.</p>
-<h3>Results (measured 2026-08-21)</h3>
+<p>So it proceeds to <code>get_MIE_file("pdb")</code> → <code>run_sparql</code>. This is one of the few demos where <strong>the reason SPARQL is needed is visible on screen</strong> (recorded 2026-08).</p>
+<blockquote>
+<p>📝 <strong>The 2026-10-20 re-run (Sonnet) took a different path.</strong> It sliced the range several times with the search tool's resolution filter (<code>res_max</code>) and reached <strong>the same top 10</strong> without SPARQL. The model itself noted that it could not guarantee completeness below 1.3 Å. Which path a run takes depends on the model and the run. If you need completeness, have it write SPARQL on structured conditions (EC number and taxon).</p>
+</blockquote>
+<h3>Results (measured 2026-10-20; unchanged since August)</h3>
 <table>
 <thead>
 <tr>
@@ -1284,9 +1290,11 @@ COUNT(DISTINCT ?protein)    = 52      ← a 19% difference
 </tbody>
 </table>
 <p>Ranks 7–10 are <strong>4 of the 6 entries tied at 1.25 Å</strong>. <code>ORDER BY ?res</code> alone leaves ties unordered, so they reshuffle from run to run (9HAK and 9RJ5 sometimes make the cut). The query uses <code>?entry_id</code> as a second sort key to fix the order (checked 2026-10-14).</p>
-<p>You can also get the breakdown by method: <strong>X-ray 1,799 / cryo-EM 25 / neutron 4 / solution NMR 3 / electron crystallography 1</strong> (1,832 total, measured 2026-08-21).</p>
+<p>You can also get the breakdown by method: <strong>X-ray 1,818 / cryo-EM 25 / neutron 4 / solution NMR 3 / electron crystallography 1</strong> (1,851 counted by method, measured 2026-10-20; some entries, such as joint X-ray and neutron studies, use more than one method, so there are 1,847 entries). Ask like this to get it (checked with Sonnet on 2026-10-20):</p>
+<pre><code>How many PDB structures of the SARS-CoV-2 main protease (3CL protease) are there for each experimental method?
+</code></pre>
 <blockquote>
-<p>💡 <strong>These numbers move.</strong> Three weeks earlier the measurement totalled 1,822. Ten more since. <strong>The databases are alive.</strong></p>
+<p>💡 <strong>These numbers move.</strong> On 2026-08-21 the total was 1,832 (and three weeks before that, 1,822). Nineteen more in two months. <strong>The databases are alive.</strong></p>
 </blockquote>
 <h3>The query that ran</h3>
 <pre><code class="language-sparql">PREFIX pdbo: &lt;http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#&gt;
@@ -1317,7 +1325,10 @@ LIMIT 10
 <h2 id="ch04-2">Demo 3': across several databases</h2>
 <pre><code>Among human lysosomal enzymes, tell me which ones are targets of approved drugs.
 </code></pre>
-<p>This requires connecting UniProt (function and localization annotations) with ChEMBL (drug–target relationships). Measured at 79 s.</p>
+<p>This requires connecting UniProt (function and localization annotations) with ChEMBL (drug–target relationships). Measured at 64–79 s.</p>
+<blockquote>
+<p>📝 The results below are the August 2026 record. On the 2026-10-20 re-run (Sonnet) the model chose GO:0005764 (lysosome) as the definition itself, picked about 80 proteins, and answered <strong>GLA and GAA only</strong> (no PDGFRB). <strong>If you do not specify the definition, each run picks its own</strong>: the subject of the second half of this section.</p>
+</blockquote>
 <h3>Results</h3>
 <p><strong>Of 52 human lysosomal lumen enzymes, 3 are mechanism-of-action targets of an approved drug.</strong></p>
 <table>
@@ -1340,7 +1351,7 @@ LIMIT 10
 <td><strong>GAA</strong></td>
 <td>miglitol, voglibose</td>
 <td>INHIBITOR</td>
-<td>The intent is not Pompe disease but <strong>type 2 diabetes</strong> (inhibition of intestinal α-glucosidase)</td>
+<td>GAA deficiency causes Pompe disease, but these two are <strong>type 2 diabetes</strong> drugs (aimed at intestinal α-glucosidases; ChEMBL also records GAA itself as their target)</td>
 </tr>
 <tr>
 <td><strong>PDGFRB</strong></td>
@@ -1389,22 +1400,55 @@ LIMIT 10
 <p><strong>The lesson: "not in the database" is not "not a fact."</strong></p>
 <p>When 0 rows come back, that is not evidence of nonexistence — it is evidence that <strong>it cannot be found by this route</strong>. Chapter 7 takes this up again.</p>
 </blockquote>
-<h3>⚠️ The most important thing here is that the original question was bad</h3>
-<p>How you define "lysosomal enzyme" makes the answer <strong>an entirely different thing</strong>.</p>
-<p>Take UniProt's keyword <strong>KW-0458 "Lysosome"</strong> at face value and 161 proteins match even counting only those with an EC number (442 carry the keyword in all). But that is <strong>a subcellular-localization keyword, not "lysosomal enzyme."</strong> In come INSR (the insulin receptor), PDGFRB, MTOR, PCSK9, LRRK2, and a dozen or so RAB GTPases.</p>
-<p>The approved-drug side then looks like this:</p>
+<h3>⚠️ The most important thing here is that the original question did not state its intent</h3>
+<p>What the instructor meant in this demo was "<strong>enzymes that work inside the lysosome</strong>" (such as the hydrolases whose loss causes lysosomal storage diseases). But the prompt only says "lysosomal enzymes." <strong>It can be read in more than one way, and every reading fits the words.</strong> And the AI answers without saying which reading it chose.</p>
+<table>
+<thead>
+<tr>
+<th>Definition the AI chose</th>
+<th style="text-align: right;">Candidates (reviewed human proteins with an EC number)</th>
+<th>Approved-drug targets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>UniProt keyword <strong>KW-0458 "Lysosome"</strong> (can localize to the lysosome)</td>
+<td style="text-align: right;">161 (442 carry the keyword in all)</td>
+<td><strong>11 proteins</strong>: INSR (21 insulin preparations), PDGFRB (11 drugs), PCSK9, HCK, PSEN2, mTOR, GLA, GAA, and more</td>
+</tr>
+<tr>
+<td>GO <strong>GO:0043202</strong> (localizes to the lysosomal lumen)</td>
+<td style="text-align: right;">52</td>
+<td><strong>3 proteins</strong>: GLA, GAA, PDGFRB</td>
+</tr>
+<tr>
+<td>GO <strong>GO:0005764</strong> (localizes to the lysosome) + hand-picking by the model (Sonnet, 2026-10-20)</td>
+<td style="text-align: right;">~80</td>
+<td><strong>2 proteins</strong>: GLA, GAA</td>
+</tr>
+</tbody>
+</table>
+<p>(2026-10-20. Salt forms of one drug count as one drug. The August measurement had 22 insulin preparations. The third row is a single run.)</p>
+<p><strong>Every definition lets in things the intent excludes.</strong></p>
+<ul>
+<li><strong>KW-0458:</strong> INSR (the insulin receptor), MTOR, PCSK9, LRRK2, PSEN2, and ten RAB GTPases. They pass through the lysosome; they are not enzymes that work inside it</li>
+<li><strong>GO:0043202:</strong> PDGFRB (a receptor tyrosine kinase), HSP90AA1 and HSPA8 (chaperones), GYG1 (glycogenin). The set does center on lumenal hydrolases such as GBA1, GLA, HEXA/HEXB, GAA, IDUA, IDS and ARSA/ARSB, but this too is <strong>a localization term, not a function</strong></li>
+</ul>
+<p><strong>Narrowing by EC number to <code>3.*</code> (hydrolases) does not fix it.</strong> With KW-0458, 114 of the 161 survive. RAB GTPases are EC 3.6.5.2, and HSP90AA1 and HSPA8 are EC 3.6.4.10 hydrolases too.</p>
+<p>What matters is that <strong>every answer fits the words, so none of them looks wrong.</strong> The "21 insulin preparations" table is a correct answer to the question as written. It only looks strange against your own intent.</p>
 <blockquote>
-<p><strong>22 insulin preparations and 12 PDGFR kinase inhibitors</strong></p>
+<p><strong>Lesson 1 of this chapter:</strong> when the answer looks strange, suspect not the query's syntax but <strong>whether you wrote your intent into the question</strong>. If you do not, the AI picks a definition silently, and a different one each run.</p>
 </blockquote>
-<p>Put that under the heading "approved drugs targeting lysosomal enzymes" and in a room of biologists you would be called out within seconds.</p>
-<p><strong>Narrowing by EC number to <code>3.*</code> (hydrolases) does not fix it either.</strong> 114 of the 161 survive. RAB GTPases are EC 3.6.5.2 — respectable hydrolases.</p>
-<p><strong>The fix that worked was switching to a GO term.</strong></p>
-<pre><code class="language-sparql">up:classifiedWith obo:GO_0043202     # lysosomal lumen
+<h3>What happens when you write the intent in</h3>
+<p>Write the intent into the same question and it looks like this:</p>
+<pre><code>Among human enzymes that work inside the lysosomal lumen (such as the hydrolases whose loss causes lysosomal storage diseases; exclude receptors, chaperones, and proteins that only pass through the lysosome), tell me which are mechanism-of-action targets of approved drugs (ChEMBL highest development phase 4). State which database and which annotation you used to define the set, and give the candidate count with COUNT.
 </code></pre>
-<p>Candidates narrow from 161 → <strong>52</strong>, and the set comes to center on genuine lumenal hydrolases: GBA1, GLA, HEXA/HEXB, GAA, IDUA, IDS, ARSA/ARSB.</p>
-<blockquote>
-<p><strong>Lesson 1 of this chapter:</strong> when the answer looks strange, what is wrong is usually not the query's syntax but <strong>how you defined the target</strong>.</p>
-</blockquote>
+<p>We ran it three times on Sonnet on 2026-10-20 (63–90 s). <strong>All three runs chose GO:0043202 as the definition, excluded PDGFRB from the 52 candidates with the reason "it is a receptor," and answered GLA and GAA.</strong> All three also stated which annotation defined the set. With the intent written in, the AI stops picking a definition silently.</p>
+<p><strong>And yet you still cross-check.</strong></p>
+<ul>
+<li><strong>What got excluded was the model's judgement, not an annotation.</strong> PDGFRB went in all three runs, but HSP90AA1, HSPA8, ATP13A2, TXNDC5 and HGSNAT were handled differently from run to run (none has an approved drug, so the final answer was unaffected)</li>
+<li><strong>Run 3 never ran the COUNT and reported the candidate count as "50."</strong> It is 52, and that run had passed 52 accessions to ChEMBL. Whether the cross-check you asked for was done, only the log tells you</li>
+</ul>
 <h3>Anticipated questions</h3>
 <p><strong>Q. Why do enzyme replacement therapies like imiglucerase not show up?</strong></p>
 <p>Imiglucerase <strong>does exist</strong> in ChEMBL (<code>CHEMBL1201632</code>, approved phase 4, mechanism of action registered as well). Follow it and here is what you get.</p>
@@ -1455,7 +1499,7 @@ LIMIT 10
 <h3>First, throw a bad question at it</h3>
 <pre><code>Tell me about genes involved in cancer
 </code></pre>
-<p><strong>Measured at 12–22 s. And the tool calls numbered 1, or 0.</strong> What comes back is a fluent answer like this:</p>
+<p><strong>Measured at 12–25 s, with 0–2 tool calls.</strong> What comes back is a fluent answer like this (the August 2026 record):</p>
 <blockquote>
 <p>The main genes involved in cancer include the tumor suppressors TP53, RB1, PTEN, APC, BRCA1/2, and the oncogenes KRAS, MYC, EGFR, ERBB2 (HER2), PIK3CA, ALK, BRAF. TP53 is mutated in roughly half of all human cancers…</p>
 </blockquote>
@@ -1482,7 +1526,7 @@ LIMIT 10
 </table>
 <hr />
 <h4>Pattern ① — the log is empty</h4>
-<p><strong>Nothing was called.</strong> Not even the usage guide (which itself says "call me first, every time").</p>
+<p><strong>Nothing was called.</strong> Not even the usage guide (whose tool description at the time said "call me first, every time").</p>
 <p>Twenty-seven genes came back in 20 seconds, sorted neatly into oncogenes and tumor suppressors. <strong>Not one of them was looked up just now.</strong></p>
 <p>Here is the model's own account of it:</p>
 <blockquote>
@@ -1504,7 +1548,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)
 ...
 </code></pre>
 <p><strong>TP53, KRAS, MYC, PTEN, RB1 and APC — the genes lined up in the answer — are not among these. Not one of them.</strong></p>
-<p>That is no accident. This search only looks at <strong>whether the protein's name contains the string "cancer."</strong> TP53's UniProt name is "Cellular tumor antigen p53"; KRAS is "GTPase KRas". <strong>Neither contains the string "cancer," so they are structurally unreachable.</strong></p>
+<p>That is no accident, but it is not because their names lack "cancer" either. TP53's UniProt name is "Cellular tumor antigen p53" and KRAS's is "GTPase KRas", yet both <strong>do match this search</strong> (<code>cancer AND gene_exact:TP53 AND organism_id:9606 AND reviewed:true</code> returns P04637; checked 2026-10-20). What came back was <strong>only the top 20</strong>, led by proteins with "cancer" in their names, and TP53 was outside it. <strong>The AI saw only those 20, and the genes in its answer did not come from them.</strong></p>
 <blockquote>
 <p><strong>There are traces of a database being touched, and the answer comes from memory.</strong></p>
 <p>This is the failure mode this tutorial most wants to convey.</p>
@@ -1513,6 +1557,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)
 <p>Pattern ① is "never touched it"; Pattern ② is "only traces of touching it." <strong>Different phrasings — but either way, the answer came from memory.</strong></p>
 <p>And here is what matters — <strong>from what is on screen, you cannot tell which one it was.</strong> The fluency is the same, the speed is the same. <strong>You only find out by opening the log.</strong></p>
 <blockquote>
+<p>📝 <strong>The 2026-10-20 re-runs showed a third pattern.</strong> Sonnet and Haiku each issued 2–7 searches and then <strong>disclosed in the answer</strong> that TP53, KRAS and the like were not in the search results and came from general knowledge. Some runs do disclose. <strong>Others do not, so the conclusion stands: the only thing you can rely on is checking for yourself.</strong></p>
 <p>💡 <strong>This is model-dependent behavior.</strong> When you try it yourself, something different from what is written here may happen. <strong>What matters is not "which pattern you got" but the fact that you opened the log and checked.</strong></p>
 </blockquote>
 <h3>Why this is dangerous</h3>
@@ -1552,7 +1597,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)
 human genes associated with that disease as a table — the top 20, ordered by strength of
 association — stating the source database and field names. Cross-check the counts with COUNT.
 </code></pre>
-<p><strong>Measured at 182 s, with 8 tool calls. Roughly 15× the cost.</strong> — That run gets as far as cross-checking one gene, TP53 (step 4 below). The <strong>re-ranking of all top-20 genes by a full count comes from a second run of the same prompt</strong>, which took <strong>369 s, 13 tool calls and 8 SPARQL queries (one of which timed out) — roughly 30×</strong>. Both runs drew the same 20,000-row sample, so their sample ranks agree.</p>
+<p><strong>Measured at 182 s, with 8 tool calls. Roughly 15× the cost</strong> (the August 2026 record below). — That run gets as far as cross-checking one gene, TP53 (step 4 below). The <strong>re-ranking of all top-20 genes by a full count comes from a second run of the same prompt</strong>, which took <strong>369 s, 13 tool calls and 8 SPARQL queries (one of which timed out) — roughly 30×</strong>. Both runs drew the same 20,000-row sample, so their sample ranks agree.</p>
 <h3>What changed</h3>
 <p><strong>1. The target became grounded in a verified ID.</strong> <code>search_mesh_descriptor</code> ran and <strong>MeSH D010190</strong> was settled. Every subsequent query is anchored to that IRI, so string matching disappeared entirely.</p>
 <p><strong>2. The provenance became sayable.</strong></p>
@@ -1661,10 +1706,10 @@ association — stating the source database and field names. Cross-check the cou
 <pre><code>Total papers annotated with D010190                    = 236,144
 Of those, papers where TP53 co-occurs (strict, all)    =  32,597
 </code></pre>
-<p>The value on the sample (1,581) and the strict value (32,597) are <strong>off by about 20×</strong>. To avoid a timeout, an inner <code>LIMIT 20000</code> had been applied — and <strong>those 20,000 rows were not a uniform random sample.</strong></p>
+<p>The value on the sample (1,581) and the strict value (32,597) are <strong>off by about 20×</strong>. To avoid a timeout, an inner <code>LIMIT 20000</code> had been applied, so a smaller sample value is expected in itself. The problem is the ratio: as shown below, <strong>those 20,000 rows were not a uniform random sample.</strong></p>
 <p><strong>And it was not only the absolute numbers that were off.</strong></p>
 <p>The sample is 20,000 out of 236,144 = <strong>8.47%</strong>. Under a uniform sample the full-set value should be <strong>11.81×</strong> the sample value. The measured ratios ran <strong>14.97× to 32.33×</strong>, all 20 genes exceeded the expected value, and the spread between genes was <strong>2.2×</strong>.</p>
-<p>As a result, <strong>the ranking actually changed</strong> (from here on, the results are from the 369 s run).</p>
+<p>As a result, <strong>the ranking actually changed</strong> (from here on, the results are from the 369 s run; ranks on all rows are corrected to the full top list recomputed on 2026-10-20).</p>
 <table>
 <thead>
 <tr>
@@ -1684,8 +1729,8 @@ Of those, papers where TP53 co-occurs (strict, all)    =  32,597
 <tr>
 <td><strong>INS</strong></td>
 <td style="text-align: right;">6th</td>
-<td style="text-align: right;"><strong>16th</strong></td>
-<td>← down 10 places</td>
+<td style="text-align: right;"><strong>17th</strong></td>
+<td>← down 11 places</td>
 </tr>
 <tr>
 <td>IL6</td>
@@ -1696,7 +1741,7 @@ Of those, papers where TP53 co-occurs (strict, all)    =  32,597
 <tr>
 <td>EGF</td>
 <td style="text-align: right;">13th</td>
-<td style="text-align: right;">20th</td>
+<td style="text-align: right;">outside (26th or lower)</td>
 <td></td>
 </tr>
 </tbody>
@@ -1708,15 +1753,18 @@ Of those, papers where TP53 co-occurs (strict, all)    =  32,597
 <blockquote>
 <p><strong>Had the cross-check not been demanded, a plausible-looking table would have gone straight through.</strong></p>
 <p>That single line, "cross-check the counts with COUNT as well," is the highest-return request in this tutorial.</p>
+<p>📝 <strong>On the 2026-10-20 re-runs this error did not occur.</strong> Sonnet (63 s) and Haiku (151 s) applied no inner <code>LIMIT</code>, counted all rows from the start, and did not time out. Whether a run samples depends on the model and the run. <strong>That some runs avoid it is no reason to skip the cross-check</strong>: without it you cannot tell which run you got.</p>
+<p>The top 20 recomputed on all rows (2026-10-20) includes <strong>CD8A (14th), CD274 (PD-L1, 18th) and CD4 (20th)</strong>, which were missing from August's "sample top 20, recounted in full" table.</p>
+<p>TP53 32,597 / AKT1 31,314 / EGFR 24,044 / TGFB1 21,785 / VEGFA 21,011 / TNF 20,199 / KRAS 20,109 / NFKB1 18,370 / MTOR 17,748 / ERBB2 17,375 / MYC 16,765 / IL6 16,763 / GAPDH 16,581 / CD8A 16,416 / CTNNB1 16,310 / MAPK1 15,751 / INS 15,517 / CD274 14,766 / BCL2 14,534 / CD4 13,923</p>
 </blockquote>
 <hr />
 <h3>★ And even with a good question, limits remain</h3>
 <p>Do not stop here. <strong>The specified version's answer has clear flaws too.</strong></p>
 <p><strong>(a) Things that are not biological have crept into the top ranks</strong></p>
 <ul>
-<li><strong>INS (insulin), 6th on the sample, 16th in full</strong> — co-occurrence via the organ, the pancreas. Insulin turning up in pancreatic cancer papers is a matter of course, not a causal relationship</li>
+<li><strong>INS (insulin), 6th on the sample, 17th in full</strong> — co-occurrence via the organ, the pancreas. Insulin turning up in pancreatic cancer papers is a matter of course, not a causal relationship</li>
 <li><strong>GAPDH, 16th on the sample, 13th in full</strong> — it appears in the Methods section of a great many papers simply because it has served for years as a housekeeping gene used as an internal control</li>
-<li><strong>POTEF, 14th on the sample, 18th in full</strong> — a primate-specific chimeric gene formed by the fusion of an actin retrogene (UniProt A5A3E0 even names it "Chimeric POTE-actin protein"). Its C-terminal region is highly similar to ACTB, and in mass spectrometry <strong>some peptides assigned to ACTB are reported to be shared with POTEF/POTEE/POTEI/POTEJ</strong></li>
+<li><strong>POTEF, 14th on the sample, 24th in full (outside the top 20)</strong> — a primate-specific chimeric gene formed by the fusion of an actin retrogene (UniProt A5A3E0 even names it "Chimeric POTE-actin protein"). Its C-terminal region is highly similar to ACTB, and in mass spectrometry <strong>some peptides assigned to ACTB are reported to be shared with POTEF/POTEE/POTEI/POTEJ</strong></li>
 <li>⚠️ <strong>But whether that is "the reason it lands at 14th in pancreatic cancer papers" has not been confirmed.</strong> All we have is a suspicion of identification ambiguity from sequence similarity. <strong>Do not promote a guess into an assertion</strong> — do not do here the very thing this tutorial warns against in Chapter 7</li>
 </ul>
 <p><strong>(b) The genuine drivers are missing</strong></p>
@@ -1730,9 +1778,9 @@ Of those, papers where TP53 co-occurs (strict, all)    =  32,597
 <hr />
 <h2 id="ch04-4">Chapter summary</h2>
 <ol>
-<li><strong>Some questions cannot be answered by search tools.</strong> That is where SPARQL becomes necessary (Demo 4)</li>
-<li><strong>When the answer looks strange, suspect the definition of the target, not the syntax.</strong> KW-0458 and GO:0043202 gave completely different answers (Demo 3')</li>
-<li><strong>A vague question fails plausibly, in 12 seconds, without consulting a database</strong> (the failure demo)</li>
+<li><strong>Some questions are hard to answer with search tools alone.</strong> Guaranteeing completeness takes SPARQL (Demo 4)</li>
+<li><strong>When the answer looks strange, suspect whether you wrote your intent into the question, not the syntax.</strong> KW-0458 and GO:0043202 gave completely different answers (Demo 3')</li>
+<li><strong>A vague question gets a plausible answer from memory, without consulting a database</strong> (the failure demo)</li>
 <li><strong>Specifying it costs 15× more, but the provenance can be stated and errors can be found by yourself</strong></li>
 <li><strong>Limits remain even after specification.</strong> Co-occurrence in text mining is not causation</li>
 </ol>
@@ -1850,7 +1898,7 @@ Skill = the written procedure (how to use it, in what order, what to verify)
 <tr>
 <td>Time</td>
 <td><strong>12 s</strong></td>
-<td>182 s (<strong>~15× longer</strong>); 369 s (~30×) in the run that cross-checked all 20 genes</td>
+<td>182 s (<strong>~15× longer</strong>); 369 s (~30×) in the run that cross-checked all 20 genes. Both August 2026; the 10-20 re-run took 25 s (vague) and 63 s (specified)</td>
 </tr>
 <tr>
 <td>Tool calls</td>
@@ -1933,9 +1981,9 @@ Skill = the written procedure (how to use it, in what order, what to verify)
 <blockquote>
 <p>"<strong>and cross-check the counts with COUNT</strong>"</p>
 </blockquote>
-<p><strong>Of the five, this one did the most work.</strong></p>
+<p><strong>In this comparison, this is the one that exposed the error.</strong> (The effect of each element was not measured separately.)</p>
 <p>Without it, a table reading "TP53 = 1,581" would have gone out unchallenged. The COUNT produced two numbers — 236,144 papers annotated with the disease, and 32,597 in which TP53 genuinely co-occurs — and the fact that the ratio did not add up <strong>exposed a methodological flaw: the 20,000 rows taken by the inner LIMIT were not a uniform sample.</strong></p>
-<p><strong>And when the counts were redone exactly, the ranking itself changed</strong> — MTOR moved from 20th to 9th, INS from 6th to 16th. <strong>Not just the absolute numbers: the ordering could not be trusted either.</strong></p>
+<p><strong>And when the counts were redone exactly, the ranking itself changed</strong> — MTOR moved from 20th to 9th, INS from 6th to 17th. <strong>Not just the absolute numbers: the ordering could not be trusted either.</strong></p>
 <blockquote>
 <p><strong>"Cross-check with COUNT" is not proofreading. It is a detector that exposes sampling bias and counting traps. No other single line you can add returns as much.</strong></p>
 </blockquote>
@@ -2040,7 +2088,7 @@ If any could not be converted, say so explicitly.
 </tr>
 </tbody>
 </table>
-<p>For any number that goes into a paper, <strong>satisfy all five</strong>. If you put an unverified number into a manuscript — like the one that came back in twelve seconds — you will not be able to answer for it at review.</p>
+<p>For any number that goes into a paper, <strong>satisfy all five</strong>. If you put an unverified number into a manuscript (like the unchecked "TP53 = 1,581" table) you will not be able to answer for it at review.</p>
 <hr />
 <p>Next → <a href="#ch07">07. Verification and Reproducibility</a></p></section><section class="chapter" id="sec-ch07"><p class="chlabel">07</p><h1 id="ch07">07. Believing the Result / Doubting It — Verification and Reproducibility</h1>
 <p>As we saw in <a href="#ch06">Chapter 6</a>, a good question makes the answer better. <strong>But there are limits that remain even after you have made the question a good one.</strong> This chapter deals with those.</p>
@@ -2063,10 +2111,10 @@ COUNT(DISTINCT ?protein) = 52      ← a 19% gap
 TP53 co-occurrences over all rows = 32,597      ← about 20×
 </code></pre>
 <p>Writing "TP53 appears in 1,581 pancreatic cancer papers" would have been wrong.</p>
-<p><strong>Worse still, the ranking itself changed</strong> — MTOR went from 20th in the sample to 9th over all rows, INS from 6th to 16th. There was not even the escape route of "the absolute numbers may be off, but the ordering can be trusted."</p>
-<h3>(c) Mistaking the definition</h3>
-<p>UniProt's keyword <strong>KW-0458 "Lysosome" is a subcellular localization</strong>, not "lysosomal enzyme." Using it, the approved-drug side of the result was dominated by <strong>22 insulin preparations and 12 PDGFR inhibitors</strong>.</p>
-<p><strong>The syntax was perfectly correct, execution succeeded, and the answer was meaningless.</strong></p>
+<p><strong>Worse still, the ranking itself changed</strong> — MTOR went from 20th in the sample to 9th over all rows, INS from 6th to 17th. There was not even the escape route of "the absolute numbers may be off, but the ordering can be trusted."</p>
+<h3>(c) A definition chosen without your intent</h3>
+<p>Given a question that only says "lysosomal enzymes," the AI may choose UniProt's keyword <strong>KW-0458 "Lysosome"</strong> (can localize to the lysosome). It fits the words, but not the intent of "enzymes that work inside the lysosome." Using it, the approved-drug side of the result was dominated by <strong>21 insulin preparations and 11 approved drugs targeting PDGFRB</strong> (2026-10-20; 22 insulin preparations in August).</p>
+<p><strong>The syntax was perfectly correct, execution succeeded, and the answer even fit the words of the question. Only the intent was missed,</strong> so it did not look wrong.</p>
 <h3>(d) Misreading the unit of aggregation</h3>
 <p>When we looked into variants in TogoVar:</p>
 <table>
@@ -2103,7 +2151,7 @@ TP53 co-occurrences over all rows = 32,597      ← about 20×
 <p>⚠️ The unit of these breakdowns changed when TogoVar reloaded its data on 2026-10-09 (before, they counted variant × condition records and variant × transcript). <strong>What a count means can change silently, on the database's side.</strong> If a number is going into a paper, check the unit on the day.</p>
 </blockquote>
 <h3>(e) Misunderstanding what the metric measures</h3>
-<p><strong>INS, GAPDH and POTEF</strong> came out at the top as genes associated with pancreatic cancer. None of them is a driver of pancreatic cancer.</p>
+<p><strong>INS, GAPDH and POTEF</strong> came out near the top of the sample as genes associated with pancreatic cancer (on all rows: INS 17th, GAPDH 13th, POTEF 24th). None of them is a driver of pancreatic cancer.</p>
 <ul>
 <li><strong>INS</strong> — organ-level co-occurrence, because the pancreas is an endocrine organ</li>
 <li><strong>GAPDH</strong> — a housekeeping gene, merely mentioned as an internal control in experiments</li>
@@ -2336,9 +2384,9 @@ in a form I can save to files as-is.
 <p>SPARQL has an upper limit on execution time. <strong>Do not re-send the same query.</strong> You will get the same result.</p>
 <p>Remedies, in descending order of effect:</p>
 <p><strong>1. Pin the graph, and narrow the target by IRI.</strong> A query without a graph pin also reads every co-resident dataset. <code>FILTER(CONTAINS(...))</code> and <code>FILTER(regex(...))</code> are effectively unusable on large graphs. Consider whether you can specify the IRI directly.</p>
-<pre><code>Measured (2026-10-01, a query fetching insulin's sequence):
-  no graph pin + FILTER(CONTAINS)  → 10 s, 219,437 rows (inflated)
-  graph pinned with FROM           → 1.4 s, 919 rows
+<pre><code>Measured (October 2026, a query fetching insulin's sequence; row counts 10-20):
+  no graph pin + FILTER(CONTAINS)  → 10 s, 219,436 rows (inflated)
+  graph pinned with FROM           → 1.4 s, 918 rows (the answer is 1 row)
 </code></pre>
 <blockquote>
 <p>⚠️ The same form died at 60 seconds on 2026-08-20. <strong>Runtime also depends on the state of the endpoint's cache.</strong> A query that passed once will not necessarily pass again, and one that timed out once is not necessarily badly written (<a href="#ch03">Chapter 3</a>).</p>
@@ -2773,6 +2821,9 @@ If there are other candidates, explain why it is not one of those.
 <p>⚠️ But the <code>include_transcripts</code> output is large — for rs421016 it comes back for 24 transcripts. Do the same thing on something BRCA1-sized (over 400) and your screen falls apart.</p>
 <p><strong>(d) Enrichment in the Japanese population — the highlight of this exercise</strong></p>
 <p>Take pathogenic + likely pathogenic and apply a ToMMo frequency ≥0.0005, and <strong>only one is left</strong> — rs421016 (L444P in the old notation, <code>NP_000148.2:p.Leu483Pro</code> in the current one).</p>
+<blockquote>
+<p>⚠️ <strong>If you did not get exactly one.</strong> The question only says "frequent", so the AI picks the threshold. With ToMMo frequency ≥0.0001 (0.01%) you get <strong>four</strong>: rs421016, rs381737, rs439898 and rs1064651 (2026-10-22). Both answers are right under the threshold that was chosen; the problem is that <strong>the choice of threshold is not written in the answer</strong>. Treat it as a worked example for Chapter 6 (How to Ask a Good Question): put the threshold in the question, or make the AI state which one it chose.</p>
+</blockquote>
 <table>
 <thead>
 <tr>
@@ -2828,12 +2879,12 @@ If there are other candidates, explain why it is not one of those.
 <tr>
 <td>P06213</td>
 <td><strong>INSR</strong></td>
-<td><strong>22</strong> insulin preparations</td>
+<td><strong>21</strong> insulin preparations</td>
 </tr>
 <tr>
 <td>P09619</td>
 <td><strong>PDGFRB</strong></td>
-<td>imatinib, sunitinib, sorafenib and others, <strong>12</strong></td>
+<td>imatinib, sunitinib, sorafenib and others, <strong>12</strong> molecules (11 drugs once salt forms are merged)</td>
 </tr>
 <tr>
 <td>P06280</td>
@@ -2852,19 +2903,20 @@ If there are other candidates, explain why it is not one of those.
 </tr>
 </tbody>
 </table>
-<p><strong>34 of the 48 rows are insulin and PDGFR inhibitors.</strong> Put that out under the heading "approved drugs targeting lysosomal enzymes" and you will be called on it immediately.</p>
+<p><strong>33 of the 48 rows are INSR and PDGFRB</strong> (2026-10-20; in August, 22 insulin preparations and 34 rows). Put that out under the heading "approved drugs targeting lysosomal enzymes" and you will be called on it immediately.</p>
 <p><strong>(b) Using GO:0043202 (lysosomal lumen)</strong></p>
 <p><strong>52 proteins</strong> as candidates. On the approved-drug side, <strong>16 rows / 3 proteins / 14 drugs</strong>. The candidates now center on the genuine luminal hydrolases — GBA1, GLA, HEXA/HEXB, GAA, IDUA, IDS, ARSA/ARSB, SGSH, NAGLU, GALC, SMPD1, TPP1, PPT1.</p>
-<p><strong>The 22 insulin preparations are gone.</strong> PDGFRB stays (because GO:0043202 really is annotated on it), but the result is now at a scale you can read.</p>
+<p><strong>The insulin preparations are gone.</strong> PDGFRB stays (because GO:0043202 really is annotated on it), but the result is now at a scale you can read.</p>
 <p><strong>The answer:</strong></p>
 <blockquote>
 <p>Of the 52 human lysosomal luminal enzymes, <strong>3</strong> are targets of approved drugs — <strong>GLA</strong> (migalastat, a pharmacological chaperone), <strong>GAA</strong> (miglitol / voglibose, though the indication is type 2 diabetes), and <strong>PDGFRB</strong> (11 drugs; a receptor tyrosine kinase, not a lysosomal enzyme).</p>
 <p>Take PDGFRB out and <strong>there is effectively one approved small-molecule line that targets a lysosomal enzyme directly: migalastat. Because lysosomal diseases are treated by enzyme replacement, substrate reduction or chaperones — never by inhibiting the causative enzyme.</strong></p>
 </blockquote>
 <p><strong>(c) Why they are this different</strong></p>
-<p><strong>KW-0458 is a subcellular-localization keyword, not a classification of function.</strong> It means "a protein that localizes (at least sometimes) to the lysosome," so INSR, PDGFRB, MTOR, PCSK9, LRRK2, PSEN2, and a dozen or so RAB GTPases come in with it.</p>
+<p><strong>KW-0458 is a subcellular-localization keyword, not a classification of function.</strong> It means "a protein that localizes (at least sometimes) to the lysosome," so INSR, PDGFRB, MTOR, PCSK9, LRRK2, PSEN2, and ten RAB GTPases come in with it.</p>
 <p><strong>Narrowing by EC number to <code>3.*</code> (hydrolases) does not fix it either.</strong> 114 of the 161 survive. <strong>Because RAB GTPases are EC 3.6.5.2 — perfectly respectable hydrolases.</strong></p>
-<p><strong>And PDGFRB still survives into the GO:0043202 version.</strong> Because that annotation genuinely is on it. <strong>A localization annotation ≠ a functional classification.</strong> It is not an error; it is a question of the resolution of your question.</p>
+<p><strong>And PDGFRB still survives into the GO:0043202 version.</strong> Because that annotation genuinely is on it. <strong>A localization annotation ≠ a functional classification.</strong> GO:0043202 is also a localization term (the lumen); the count fell because a broad localization was swapped for a narrow one. It is not an error; it is a question of the resolution of your question.</p>
+<p><strong>One more thing that matters:</strong> both the KW-0458 and the GO:0043202 versions <strong>fit the words</strong> "lysosomal enzyme." Which one is right is decided by what you wanted to know, which the question does not say. If what you want is "enzymes that work inside the lysosome," the GO version still lets in things outside that intent, such as PDGFRB, HSP90AA1, HSPA8 and GYG1. <strong>If you do not write your intent into the question, the AI picks a definition silently.</strong></p>
 <p><strong>(d) Analogues in your own field</strong> — what to look for:</p>
 <ul>
 <li><strong>A localization word used as a function word</strong> ("mitochondrial protein" — works in the mitochondrion? localizes there? is encoded there?)</li>
@@ -2950,7 +3002,7 @@ Show me which predicate has multiple values, and give one concrete example.
 <tr>
 <td>Time</td>
 <td>12 s</td>
-<td>182 s (<strong>~15×</strong>); 369 s (~30×) in the run that cross-checked all 20 genes</td>
+<td>182 s (<strong>~15×</strong>); 369 s (~30×) in the run that cross-checked all 20 genes. Both August 2026; the 10-20 re-run took 25 s and 63 s</td>
 </tr>
 <tr>
 <td>Tool calls</td>

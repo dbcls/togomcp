@@ -15,17 +15,19 @@ Give me the top 10 PDB structures of the SARS-CoV-2 main protease
 (3CL protease), ordered by best resolution.
 ```
 
-**Measured at 39–51 s. The most robust of the five demos** (measured on two different models, zero failures and zero retries in both).
+**Measured at 39–54 s** (on two models in August and on Sonnet on 10-20; zero failures and zero retries every time).
 
 ### What to watch for is that it hits a wall partway through
 
-`search_pdb_entity` runs first. The result: **1,872 hits, in no particular order**.
+`search_pdb_entity` runs first. The result: **thousands of hits, ordered by relevance (not by resolution)**. The hit count depends on the search words (3,710 for "SARS-CoV-2 main protease" on 2026-10-20).
 
 **This search tool cannot answer the question.** Producing "the top 10 by best resolution" requires sorting on resolution, a numeric field, and that is a job for SPARQL, not for a search API.
 
-So it proceeds to `get_MIE_file("pdb")` → `run_sparql`. This is one of the few demos where **the reason SPARQL is needed is visible on screen**.
+So it proceeds to `get_MIE_file("pdb")` → `run_sparql`. This is one of the few demos where **the reason SPARQL is needed is visible on screen** (recorded 2026-08).
 
-### Results (measured 2026-08-21)
+> 📝 **The 2026-10-20 re-run (Sonnet) took a different path.** It sliced the range several times with the search tool's resolution filter (`res_max`) and reached **the same top 10** without SPARQL. The model itself noted that it could not guarantee completeness below 1.3 Å. Which path a run takes depends on the model and the run. If you need completeness, have it write SPARQL on structured conditions (EC number and taxon).
+
+### Results (measured 2026-10-20; unchanged since August)
 
 | # | PDB | Å | Title (excerpt) |
 |---|---|---|---|
@@ -42,9 +44,13 @@ So it proceeds to `get_MIE_file("pdb")` → `run_sparql`. This is one of the few
 
 Ranks 7–10 are **4 of the 6 entries tied at 1.25 Å**. `ORDER BY ?res` alone leaves ties unordered, so they reshuffle from run to run (9HAK and 9RJ5 sometimes make the cut). The query uses `?entry_id` as a second sort key to fix the order (checked 2026-10-14).
 
-You can also get the breakdown by method: **X-ray 1,799 / cryo-EM 25 / neutron 4 / solution NMR 3 / electron crystallography 1** (1,832 total, measured 2026-08-21).
+You can also get the breakdown by method: **X-ray 1,818 / cryo-EM 25 / neutron 4 / solution NMR 3 / electron crystallography 1** (1,851 counted by method, measured 2026-10-20; some entries, such as joint X-ray and neutron studies, use more than one method, so there are 1,847 entries). Ask like this to get it (checked with Sonnet on 2026-10-20):
 
-> 💡 **These numbers move.** Three weeks earlier the measurement totalled 1,822. Ten more since. **The databases are alive.**
+```
+How many PDB structures of the SARS-CoV-2 main protease (3CL protease) are there for each experimental method?
+```
+
+> 💡 **These numbers move.** On 2026-08-21 the total was 1,832 (and three weeks before that, 1,822). Nineteen more in two months. **The databases are alive.**
 
 ### The query that ran
 
@@ -86,7 +92,9 @@ LIMIT 10
 Among human lysosomal enzymes, tell me which ones are targets of approved drugs.
 ```
 
-This requires connecting UniProt (function and localization annotations) with ChEMBL (drug–target relationships). Measured at 79 s.
+This requires connecting UniProt (function and localization annotations) with ChEMBL (drug–target relationships). Measured at 64–79 s.
+
+> 📝 The results below are the August 2026 record. On the 2026-10-20 re-run (Sonnet) the model chose GO:0005764 (lysosome) as the definition itself, picked about 80 proteins, and answered **GLA and GAA only** (no PDGFRB). **If you do not specify the definition, each run picks its own**: the subject of the second half of this section.
 
 ### Results
 
@@ -95,7 +103,7 @@ This requires connecting UniProt (function and localization annotations) with Ch
 | Gene | Approved drug | Action | What it means |
 |---|---|---|---|
 | **GLA** | migalastat | **STABILISER** | A pharmacological chaperone for Fabry disease. **Within these 52, the only case that targets the causative enzyme of a lysosomal disease itself** |
-| **GAA** | miglitol, voglibose | INHIBITOR | The intent is not Pompe disease but **type 2 diabetes** (inhibition of intestinal α-glucosidase) |
+| **GAA** | miglitol, voglibose | INHIBITOR | GAA deficiency causes Pompe disease, but these two are **type 2 diabetes** drugs (aimed at intestinal α-glucosidases; ChEMBL also records GAA itself as their target) |
 | **PDGFRB** | 11 drugs incl. imatinib, sunitinib | INHIBITOR (becaplermin: AGONIST) | A receptor tyrosine kinase. **Not a lysosomal enzyme** |
 
 > 💡 **An easy confusion.** In ChEMBL, the drug carrying an indication for Pompe disease (Glycogen Storage Disease Type II) is **miglustat**, not miglitol. The names are similar.
@@ -133,29 +141,43 @@ Eliglustat is a UGCG inhibitor too, but **you have to cross-check that in the li
 >
 > When 0 rows come back, that is not evidence of nonexistence — it is evidence that **it cannot be found by this route**. Chapter 7 takes this up again.
 
-### ⚠️ The most important thing here is that the original question was bad
+### ⚠️ The most important thing here is that the original question did not state its intent
 
-How you define "lysosomal enzyme" makes the answer **an entirely different thing**.
+What the instructor meant in this demo was "**enzymes that work inside the lysosome**" (such as the hydrolases whose loss causes lysosomal storage diseases). But the prompt only says "lysosomal enzymes." **It can be read in more than one way, and every reading fits the words.** And the AI answers without saying which reading it chose.
 
-Take UniProt's keyword **KW-0458 "Lysosome"** at face value and 161 proteins match even counting only those with an EC number (442 carry the keyword in all). But that is **a subcellular-localization keyword, not "lysosomal enzyme."** In come INSR (the insulin receptor), PDGFRB, MTOR, PCSK9, LRRK2, and a dozen or so RAB GTPases.
+| Definition the AI chose | Candidates (reviewed human proteins with an EC number) | Approved-drug targets |
+|---|---:|---|
+| UniProt keyword **KW-0458 "Lysosome"** (can localize to the lysosome) | 161 (442 carry the keyword in all) | **11 proteins**: INSR (21 insulin preparations), PDGFRB (11 drugs), PCSK9, HCK, PSEN2, mTOR, GLA, GAA, and more |
+| GO **GO:0043202** (localizes to the lysosomal lumen) | 52 | **3 proteins**: GLA, GAA, PDGFRB |
+| GO **GO:0005764** (localizes to the lysosome) + hand-picking by the model (Sonnet, 2026-10-20) | ~80 | **2 proteins**: GLA, GAA |
 
-The approved-drug side then looks like this:
+(2026-10-20. Salt forms of one drug count as one drug. The August measurement had 22 insulin preparations. The third row is a single run.)
 
-> **22 insulin preparations and 12 PDGFR kinase inhibitors**
+**Every definition lets in things the intent excludes.**
 
-Put that under the heading "approved drugs targeting lysosomal enzymes" and in a room of biologists you would be called out within seconds.
+- **KW-0458:** INSR (the insulin receptor), MTOR, PCSK9, LRRK2, PSEN2, and ten RAB GTPases. They pass through the lysosome; they are not enzymes that work inside it
+- **GO:0043202:** PDGFRB (a receptor tyrosine kinase), HSP90AA1 and HSPA8 (chaperones), GYG1 (glycogenin). The set does center on lumenal hydrolases such as GBA1, GLA, HEXA/HEXB, GAA, IDUA, IDS and ARSA/ARSB, but this too is **a localization term, not a function**
 
-**Narrowing by EC number to `3.*` (hydrolases) does not fix it either.** 114 of the 161 survive. RAB GTPases are EC 3.6.5.2 — respectable hydrolases.
+**Narrowing by EC number to `3.*` (hydrolases) does not fix it.** With KW-0458, 114 of the 161 survive. RAB GTPases are EC 3.6.5.2, and HSP90AA1 and HSPA8 are EC 3.6.4.10 hydrolases too.
 
-**The fix that worked was switching to a GO term.**
+What matters is that **every answer fits the words, so none of them looks wrong.** The "21 insulin preparations" table is a correct answer to the question as written. It only looks strange against your own intent.
 
-```sparql
-up:classifiedWith obo:GO_0043202     # lysosomal lumen
+> **Lesson 1 of this chapter:** when the answer looks strange, suspect not the query's syntax but **whether you wrote your intent into the question**. If you do not, the AI picks a definition silently, and a different one each run.
+
+### What happens when you write the intent in
+
+Write the intent into the same question and it looks like this:
+
+```
+Among human enzymes that work inside the lysosomal lumen (such as the hydrolases whose loss causes lysosomal storage diseases; exclude receptors, chaperones, and proteins that only pass through the lysosome), tell me which are mechanism-of-action targets of approved drugs (ChEMBL highest development phase 4). State which database and which annotation you used to define the set, and give the candidate count with COUNT.
 ```
 
-Candidates narrow from 161 → **52**, and the set comes to center on genuine lumenal hydrolases: GBA1, GLA, HEXA/HEXB, GAA, IDUA, IDS, ARSA/ARSB.
+We ran it three times on Sonnet on 2026-10-20 (63–90 s). **All three runs chose GO:0043202 as the definition, excluded PDGFRB from the 52 candidates with the reason "it is a receptor," and answered GLA and GAA.** All three also stated which annotation defined the set. With the intent written in, the AI stops picking a definition silently.
 
-> **Lesson 1 of this chapter:** when the answer looks strange, what is wrong is usually not the query's syntax but **how you defined the target**.
+**And yet you still cross-check.**
+
+- **What got excluded was the model's judgement, not an annotation.** PDGFRB went in all three runs, but HSP90AA1, HSPA8, ATP13A2, TXNDC5 and HGSNAT were handled differently from run to run (none has an approved drug, so the final answer was unaffected)
+- **Run 3 never ran the COUNT and reported the candidate count as "50."** It is 52, and that run had passed 52 accessions to ChEMBL. Whether the cross-check you asked for was done, only the log tells you
 
 ### Anticipated questions
 
@@ -205,7 +227,7 @@ From here on is the most important part of this tutorial.
 Tell me about genes involved in cancer
 ```
 
-**Measured at 12–22 s. And the tool calls numbered 1, or 0.** What comes back is a fluent answer like this:
+**Measured at 12–25 s, with 0–2 tool calls.** What comes back is a fluent answer like this (the August 2026 record):
 
 > The main genes involved in cancer include the tumor suppressors TP53, RB1, PTEN, APC, BRCA1/2, and the oncogenes KRAS, MYC, EGFR, ERBB2 (HER2), PIK3CA, ALK, BRAF. TP53 is mutated in roughly half of all human cancers…
 
@@ -224,7 +246,7 @@ Tell me about genes involved in cancer
 
 #### Pattern ① — the log is empty
 
-**Nothing was called.** Not even the usage guide (which itself says "call me first, every time").
+**Nothing was called.** Not even the usage guide (whose tool description at the time said "call me first, every time").
 
 Twenty-seven genes came back in 20 seconds, sorted neatly into oncogenes and tumor suppressors. **Not one of them was looked up just now.**
 
@@ -258,7 +280,7 @@ P78358  Cancer/testis antigen 1 (NY-ESO-1)
 
 **TP53, KRAS, MYC, PTEN, RB1 and APC — the genes lined up in the answer — are not among these. Not one of them.**
 
-That is no accident. This search only looks at **whether the protein's name contains the string "cancer."** TP53's UniProt name is "Cellular tumor antigen p53"; KRAS is "GTPase KRas". **Neither contains the string "cancer," so they are structurally unreachable.**
+That is no accident, but it is not because their names lack "cancer" either. TP53's UniProt name is "Cellular tumor antigen p53" and KRAS's is "GTPase KRas", yet both **do match this search** (`cancer AND gene_exact:TP53 AND organism_id:9606 AND reviewed:true` returns P04637; checked 2026-10-20). What came back was **only the top 20**, led by proteins with "cancer" in their names, and TP53 was outside it. **The AI saw only those 20, and the genes in its answer did not come from them.**
 
 > **There are traces of a database being touched, and the answer comes from memory.**
 >
@@ -269,6 +291,8 @@ That is no accident. This search only looks at **whether the protein's name cont
 Pattern ① is "never touched it"; Pattern ② is "only traces of touching it." **Different phrasings — but either way, the answer came from memory.**
 
 And here is what matters — **from what is on screen, you cannot tell which one it was.** The fluency is the same, the speed is the same. **You only find out by opening the log.**
+
+> 📝 **The 2026-10-20 re-runs showed a third pattern.** Sonnet and Haiku each issued 2–7 searches and then **disclosed in the answer** that TP53, KRAS and the like were not in the search results and came from general knowledge. Some runs do disclose. **Others do not, so the conclusion stands: the only thing you can rely on is checking for yourself.**
 
 > 💡 **This is model-dependent behavior.** When you try it yourself, something different from what is written here may happen. **What matters is not "which pattern you got" but the fact that you opened the log and checked.**
 
@@ -298,7 +322,7 @@ human genes associated with that disease as a table — the top 20, ordered by s
 association — stating the source database and field names. Cross-check the counts with COUNT.
 ```
 
-**Measured at 182 s, with 8 tool calls. Roughly 15× the cost.** — That run gets as far as cross-checking one gene, TP53 (step 4 below). The **re-ranking of all top-20 genes by a full count comes from a second run of the same prompt**, which took **369 s, 13 tool calls and 8 SPARQL queries (one of which timed out) — roughly 30×**. Both runs drew the same 20,000-row sample, so their sample ranks agree.
+**Measured at 182 s, with 8 tool calls. Roughly 15× the cost** (the August 2026 record below). — That run gets as far as cross-checking one gene, TP53 (step 4 below). The **re-ranking of all top-20 genes by a full count comes from a second run of the same prompt**, which took **369 s, 13 tool calls and 8 SPARQL queries (one of which timed out) — roughly 30×**. Both runs drew the same 20,000-row sample, so their sample ranks agree.
 
 ### What changed
 
@@ -336,20 +360,20 @@ Total papers annotated with D010190                    = 236,144
 Of those, papers where TP53 co-occurs (strict, all)    =  32,597
 ```
 
-The value on the sample (1,581) and the strict value (32,597) are **off by about 20×**. To avoid a timeout, an inner `LIMIT 20000` had been applied — and **those 20,000 rows were not a uniform random sample.**
+The value on the sample (1,581) and the strict value (32,597) are **off by about 20×**. To avoid a timeout, an inner `LIMIT 20000` had been applied, so a smaller sample value is expected in itself. The problem is the ratio: as shown below, **those 20,000 rows were not a uniform random sample.**
 
 **And it was not only the absolute numbers that were off.**
 
 The sample is 20,000 out of 236,144 = **8.47%**. Under a uniform sample the full-set value should be **11.81×** the sample value. The measured ratios ran **14.97× to 32.33×**, all 20 genes exceeded the expected value, and the spread between genes was **2.2×**.
 
-As a result, **the ranking actually changed** (from here on, the results are from the 369 s run).
+As a result, **the ranking actually changed** (from here on, the results are from the 369 s run; ranks on all rows are corrected to the full top list recomputed on 2026-10-20).
 
 | Gene | Rank on the sample | Rank on all rows | |
 |---|---:|---:|---|
 | **MTOR** | 20th | **9th** | ← up 11 places |
-| **INS** | 6th | **16th** | ← down 10 places |
+| **INS** | 6th | **17th** | ← down 11 places |
 | IL6 | 17th | 12th | |
-| EGF | 13th | 20th | |
+| EGF | 13th | outside (26th or lower) | |
 
 > **Had the cross-check not been demanded, a table with the wrong ranking would have gone straight through.** Not just the absolute numbers — the ordering itself could not be trusted.
 
@@ -359,6 +383,12 @@ Note that trying to count all 20 genes strictly in a single query **timed out at
 >
 > That single line, "cross-check the counts with COUNT as well," is the highest-return request in this tutorial.
 
+> 📝 **On the 2026-10-20 re-runs this error did not occur.** Sonnet (63 s) and Haiku (151 s) applied no inner `LIMIT`, counted all rows from the start, and did not time out. Whether a run samples depends on the model and the run. **That some runs avoid it is no reason to skip the cross-check**: without it you cannot tell which run you got.
+>
+> The top 20 recomputed on all rows (2026-10-20) includes **CD8A (14th), CD274 (PD-L1, 18th) and CD4 (20th)**, which were missing from August's "sample top 20, recounted in full" table.
+>
+> TP53 32,597 / AKT1 31,314 / EGFR 24,044 / TGFB1 21,785 / VEGFA 21,011 / TNF 20,199 / KRAS 20,109 / NFKB1 18,370 / MTOR 17,748 / ERBB2 17,375 / MYC 16,765 / IL6 16,763 / GAPDH 16,581 / CD8A 16,416 / CTNNB1 16,310 / MAPK1 15,751 / INS 15,517 / CD274 14,766 / BCL2 14,534 / CD4 13,923
+
 ---
 
 ### ★ And even with a good question, limits remain
@@ -367,9 +397,9 @@ Do not stop here. **The specified version's answer has clear flaws too.**
 
 **(a) Things that are not biological have crept into the top ranks**
 
-- **INS (insulin), 6th on the sample, 16th in full** — co-occurrence via the organ, the pancreas. Insulin turning up in pancreatic cancer papers is a matter of course, not a causal relationship
+- **INS (insulin), 6th on the sample, 17th in full** — co-occurrence via the organ, the pancreas. Insulin turning up in pancreatic cancer papers is a matter of course, not a causal relationship
 - **GAPDH, 16th on the sample, 13th in full** — it appears in the Methods section of a great many papers simply because it has served for years as a housekeeping gene used as an internal control
-- **POTEF, 14th on the sample, 18th in full** — a primate-specific chimeric gene formed by the fusion of an actin retrogene (UniProt A5A3E0 even names it "Chimeric POTE-actin protein"). Its C-terminal region is highly similar to ACTB, and in mass spectrometry **some peptides assigned to ACTB are reported to be shared with POTEF/POTEE/POTEI/POTEJ**
+- **POTEF, 14th on the sample, 24th in full (outside the top 20)** — a primate-specific chimeric gene formed by the fusion of an actin retrogene (UniProt A5A3E0 even names it "Chimeric POTE-actin protein"). Its C-terminal region is highly similar to ACTB, and in mass spectrometry **some peptides assigned to ACTB are reported to be shared with POTEF/POTEE/POTEI/POTEJ**
   - ⚠️ **But whether that is "the reason it lands at 14th in pancreatic cancer papers" has not been confirmed.** All we have is a suspicion of identification ambiguity from sequence similarity. **Do not promote a guess into an assertion** — do not do here the very thing this tutorial warns against in Chapter 7
 
 **(b) The genuine drivers are missing**
@@ -388,9 +418,9 @@ The question said "ordered by strength of association," but **it never specified
 
 ## Chapter summary
 
-1. **Some questions cannot be answered by search tools.** That is where SPARQL becomes necessary (Demo 4)
-2. **When the answer looks strange, suspect the definition of the target, not the syntax.** KW-0458 and GO:0043202 gave completely different answers (Demo 3')
-3. **A vague question fails plausibly, in 12 seconds, without consulting a database** (the failure demo)
+1. **Some questions are hard to answer with search tools alone.** Guaranteeing completeness takes SPARQL (Demo 4)
+2. **When the answer looks strange, suspect whether you wrote your intent into the question, not the syntax.** KW-0458 and GO:0043202 gave completely different answers (Demo 3')
+3. **A vague question gets a plausible answer from memory, without consulting a database** (the failure demo)
 4. **Specifying it costs 15× more, but the provenance can be stated and errors can be found by yourself**
 5. **Limits remain even after specification.** Co-occurrence in text mining is not causation
 

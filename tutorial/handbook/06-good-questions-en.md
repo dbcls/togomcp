@@ -11,7 +11,7 @@ The five elements below are not general advice. They are the **changes we actual
 | | Vague question | Specified question |
 |---|---|---|
 | Wording | "Tell me about genes involved in cancer" | "First identify the MeSH descriptor for 'Pancreatic Neoplasms', then…" |
-| Time | **12 s** | 182 s (**~15× longer**); 369 s (~30×) in the run that cross-checked all 20 genes |
+| Time | **12 s** | 182 s (**~15× longer**); 369 s (~30×) in the run that cross-checked all 20 genes. Both August 2026; the 10-20 re-run took 25 s (vague) and 63 s (specified) |
 | Tool calls | **1** | 8 |
 | SPARQL executions | **0** | 4 |
 | MIE consulted | no | yes |
@@ -72,11 +72,11 @@ Vocabularies worth naming: **MeSH** (diseases, medical concepts), **GO** (functi
 
 > "**and cross-check the counts with COUNT**"
 
-**Of the five, this one did the most work.**
+**In this comparison, this is the one that exposed the error.** (The effect of each element was not measured separately.)
 
 Without it, a table reading "TP53 = 1,581" would have gone out unchallenged. The COUNT produced two numbers — 236,144 papers annotated with the disease, and 32,597 in which TP53 genuinely co-occurs — and the fact that the ratio did not add up **exposed a methodological flaw: the 20,000 rows taken by the inner LIMIT were not a uniform sample.**
 
-**And when the counts were redone exactly, the ranking itself changed** — MTOR moved from 20th to 9th, INS from 6th to 16th. **Not just the absolute numbers: the ordering could not be trusted either.**
+**And when the counts were redone exactly, the ranking itself changed** — MTOR moved from 20th to 9th, INS from 6th to 17th. **Not just the absolute numbers: the ordering could not be trusted either.**
 
 > **"Cross-check with COUNT" is not proofreading. It is a detector that exposes sampling bias and counting traps. No other single line you can add returns as much.**
 
@@ -160,7 +160,7 @@ Satisfying all five elements takes roughly **15× longer**. You do not need to d
 | For discussion, or a slide | Elements 1, 3, 4 |
 | **For a paper or a formal report** | **All five. No exceptions.** |
 
-For any number that goes into a paper, **satisfy all five**. If you put an unverified number into a manuscript — like the one that came back in twelve seconds — you will not be able to answer for it at review.
+For any number that goes into a paper, **satisfy all five**. If you put an unverified number into a manuscript (like the unchecked "TP53 = 1,581" table) you will not be able to answer for it at review.
 
 ---
 

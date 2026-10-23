@@ -125,6 +125,8 @@ What you get: `NM_000157.4:c.1448T>C` / `NP_000148.2:p.Leu483Pro`
 
 Take pathogenic + likely pathogenic and apply a ToMMo frequency ≥0.0005, and **only one is left** — rs421016 (L444P in the old notation, `NP_000148.2:p.Leu483Pro` in the current one).
 
+> ⚠️ **If you did not get exactly one.** The question only says "frequent", so the AI picks the threshold. With ToMMo frequency ≥0.0001 (0.01%) you get **four**: rs421016, rs381737, rs439898 and rs1064651 (2026-10-22). Both answers are right under the threshold that was chosen; the problem is that **the choice of threshold is not written in the answer**. Treat it as a worked example for Chapter 6 (How to Ask a Good Question): put the threshold in the question, or make the AI state which one it chose.
+
 | Cohort | Allele frequency |
 |---|---|
 | ToMMo (Japanese, n≈61,000) | **0.000785** |
@@ -157,19 +159,19 @@ Take pathogenic + likely pathogenic and apply a ToMMo frequency ≥0.0005, and *
 
 | UniProt | Gene | Approved drugs |
 |---|---|---|
-| P06213 | **INSR** | **22** insulin preparations |
-| P09619 | **PDGFRB** | imatinib, sunitinib, sorafenib and others, **12** |
+| P06213 | **INSR** | **21** insulin preparations |
+| P09619 | **PDGFRB** | imatinib, sunitinib, sorafenib and others, **12** molecules (11 drugs once salt forms are merged) |
 | P06280 | GLA | migalastat |
 | P10253 | GAA | miglitol, voglibose |
 | … | | |
 
-**34 of the 48 rows are insulin and PDGFR inhibitors.** Put that out under the heading "approved drugs targeting lysosomal enzymes" and you will be called on it immediately.
+**33 of the 48 rows are INSR and PDGFRB** (2026-10-20; in August, 22 insulin preparations and 34 rows). Put that out under the heading "approved drugs targeting lysosomal enzymes" and you will be called on it immediately.
 
 **(b) Using GO:0043202 (lysosomal lumen)**
 
 **52 proteins** as candidates. On the approved-drug side, **16 rows / 3 proteins / 14 drugs**. The candidates now center on the genuine luminal hydrolases — GBA1, GLA, HEXA/HEXB, GAA, IDUA, IDS, ARSA/ARSB, SGSH, NAGLU, GALC, SMPD1, TPP1, PPT1.
 
-**The 22 insulin preparations are gone.** PDGFRB stays (because GO:0043202 really is annotated on it), but the result is now at a scale you can read.
+**The insulin preparations are gone.** PDGFRB stays (because GO:0043202 really is annotated on it), but the result is now at a scale you can read.
 
 **The answer:**
 
@@ -179,11 +181,13 @@ Take pathogenic + likely pathogenic and apply a ToMMo frequency ≥0.0005, and *
 
 **(c) Why they are this different**
 
-**KW-0458 is a subcellular-localization keyword, not a classification of function.** It means "a protein that localizes (at least sometimes) to the lysosome," so INSR, PDGFRB, MTOR, PCSK9, LRRK2, PSEN2, and a dozen or so RAB GTPases come in with it.
+**KW-0458 is a subcellular-localization keyword, not a classification of function.** It means "a protein that localizes (at least sometimes) to the lysosome," so INSR, PDGFRB, MTOR, PCSK9, LRRK2, PSEN2, and ten RAB GTPases come in with it.
 
 **Narrowing by EC number to `3.*` (hydrolases) does not fix it either.** 114 of the 161 survive. **Because RAB GTPases are EC 3.6.5.2 — perfectly respectable hydrolases.**
 
-**And PDGFRB still survives into the GO:0043202 version.** Because that annotation genuinely is on it. **A localization annotation ≠ a functional classification.** It is not an error; it is a question of the resolution of your question.
+**And PDGFRB still survives into the GO:0043202 version.** Because that annotation genuinely is on it. **A localization annotation ≠ a functional classification.** GO:0043202 is also a localization term (the lumen); the count fell because a broad localization was swapped for a narrow one. It is not an error; it is a question of the resolution of your question.
+
+**One more thing that matters:** both the KW-0458 and the GO:0043202 versions **fit the words** "lysosomal enzyme." Which one is right is decided by what you wanted to know, which the question does not say. If what you want is "enzymes that work inside the lysosome," the GO version still lets in things outside that intent, such as PDGFRB, HSP90AA1, HSPA8 and GYG1. **If you do not write your intent into the question, the AI picks a definition silently.**
 
 **(d) Analogues in your own field** — what to look for:
 
@@ -235,7 +239,7 @@ The second one is decisive. In the worked example in Chapter 4, TP53, KRAS and M
 
 | | Vague version | Specified version |
 |---|---|---|
-| Time | 12 s | 182 s (**~15×**); 369 s (~30×) in the run that cross-checked all 20 genes |
+| Time | 12 s | 182 s (**~15×**); 369 s (~30×) in the run that cross-checked all 20 genes. Both August 2026; the 10-20 re-run took 25 s and 63 s |
 | Tool calls | 1 | 8 |
 | SPARQL | 0 | 4 |
 | IDs verified | none | yes |
