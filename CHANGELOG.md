@@ -13,6 +13,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.3] - 2026-10-24
+
+A TogoID fix. PATCH: no tool or parameter changed; `togoid_identifyId(verify=True)` returns what it
+already promised again, and its `attested` field no longer takes the value "ambiguous".
+
 ### Fixed
 
 - **`togoid_identifyId(verify=True)` said "no" for every candidate.** TogoID reworked `/lookup/id`
@@ -3549,6 +3554,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[2.27.3]: https://github.com/dbcls/togomcp/compare/v2.27.2...v2.27.3
 [2.27.2]: https://github.com/dbcls/togomcp/compare/v2.27.1...v2.27.2
 [2.27.1]: https://github.com/dbcls/togomcp/compare/v2.27.0...v2.27.1
 [2.27.0]: https://github.com/dbcls/togomcp/compare/v2.26.2...v2.27.0
