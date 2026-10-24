@@ -13,6 +13,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.2] - 2026-10-24
+
+Trial-chat widget update. PATCH: no tool, parameter or return shape changed. The served intro pages
+(and their bundled widget script) and the Docker base image are the only runtime artifacts that
+differ from 2.27.1.
+
 ### Changed
 
 - **Trial chat widget updated to llm_meta_widget 0.12.2** (#270, by @yayamamo; bundle built from
@@ -3530,6 +3536,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[2.27.2]: https://github.com/dbcls/togomcp/compare/v2.27.1...v2.27.2
 [2.27.1]: https://github.com/dbcls/togomcp/compare/v2.27.0...v2.27.1
 [2.27.0]: https://github.com/dbcls/togomcp/compare/v2.26.2...v2.27.0
 [2.26.2]: https://github.com/dbcls/togomcp/compare/v2.26.1...v2.26.2
