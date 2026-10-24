@@ -13,6 +13,34 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.1] - 2026-10-24
+
+Documentation only. PATCH: no tool, parameter or return shape changed. What changes is the tutorial
+served at `/tutorial` and `/tutorial/ja` (plus the workshop slides, handbook and instructor material in
+`tutorial/`, which are not served).
+
+### Changed
+
+- **Tutorial re-measured against 2.27.0 (2026-10-20).** Every demo was re-run and the figures that had
+  drifted since August were updated: the PDB SARS-CoV-2 main-protease counts (X-ray 1,818, 1,851 counted
+  by method, against 1,832 in August), the Usage Guide core size (33,813 characters), timings, and the
+  `search_pdb_entity` result description (thousands of hits ranked by relevance, not 1,872 unordered).
+  Where a re-run on Sonnet took a different path or gave a different answer than the August record, the
+  tutorial now says so rather than presenting the old run as current.
+- **The "lysosomal enzymes" demo is reframed.** It now teaches that the question failed to state its
+  intent, not that one definition was wrong: a table compares three definitions the AI can pick (UniProt
+  KW-0458, GO:0043202, GO:0005764) and what each lets in, then shows the question rewritten with its
+  intent, re-run three times, plus the run-to-run differences that still call for cross-checking.
+- **New "which model to use" advice**: Sonnet or above for real work. In the re-measurement Haiku once
+  built a list from memory that it should have pulled from a database.
+- The cancer-gene search example corrects its explanation (TP53 and KRAS *do* match the search; the
+  name-string reason was wrong), and the sampling example notes that the 2026-10-20 re-runs did not
+  sample at all.
+- `tutorial/check-consistency.py` now pins the new figures and accepts the old ones only where they are
+  labelled as history. The slide decks grow from 64 to 70 slides.
+- README: the REST APIs are listed in full, the directory tree gains `pubcasefinder.py`, `skills.py`,
+  `data/skills/` and `tutorial/`, and `compose.yaml` is described as a local main+test setup.
+
 ## [2.27.0] - 2026-10-17
 
 <!-- whatsnew: 2026-10-17 | Every tool now shows a <strong>readable name</strong> in your client (for example “Run SPARQL query” instead of “Run Sparql”), and <code>run_sparql</code> names the endpoint each database is queried at, including the seven hosted outside RDF Portal. -->
@@ -3485,6 +3513,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[2.27.1]: https://github.com/dbcls/togomcp/compare/v2.27.0...v2.27.1
 [2.27.0]: https://github.com/dbcls/togomcp/compare/v2.26.2...v2.27.0
 [2.26.2]: https://github.com/dbcls/togomcp/compare/v2.26.1...v2.26.2
 [2.26.1]: https://github.com/dbcls/togomcp/compare/v2.26.0...v2.26.1
