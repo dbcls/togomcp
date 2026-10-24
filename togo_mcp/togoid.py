@@ -254,7 +254,8 @@ async def _validate_dataset_keys(keys: list[str], *, context: str) -> None:
 #
 # Two properties of the live endpoint shape the helper below (probed
 # 2026-09-16): the path ORDER changes from call to call, so we sort; and an
-# unknown dataset key yields a silent `[]`, so callers validate keys first.
+# unknown dataset key yielded a silent `[]` (a 400 since 2026-10-21), so
+# callers validate keys first.
 # ============================================================================
 
 # Categories whose IDs name one molecular entity. A hop through any OTHER
@@ -631,45 +632,49 @@ def _example_shapes(config: dict) -> dict[str, set[str]]:
     return shapes
 
 
-# `/lookup/id/{id}` lists the relation TABLES an ID string actually occurs in —
+# `/lookup/id/{id}` lists the relation tables an ID actually occurs in —
 # evidence the pattern match cannot give, since `672` is well-formed for a dozen
 # datasets but only present in some. Upstream built it for us
-# (togoid/togoid-config#396) and warns it is slow: live probes on 2026-09-16
-# took 0.2 s for an accession and 14 s for the bare number `672`, well past the
-# shared client's 5 s default, hence the dedicated timeout. It takes ONE bare
-# local ID (a comma list, or a CURIE like `GO:0005515`, yields `[]`), and a
-# table name does not say which side the ID sits on.
+# (togoid/togoid-config#396) and reworked it on 2026-10-21; live probes since:
+#
+# - Each entry is `{"dataset", "table"}`: the dataset names the side of the
+#   table that holds the ID (it was a bare table name before, which could not
+#   say which side, so `P04637` in uniprot-insdc_cds half-attested insdc_cds).
+# - It resolves prefixes itself and wants the ID as written: `GO:0005515`,
+#   `hgnc:11998` and `insdc.cds:AEK21611.1` all hit, while the bare `0005515`
+#   is now `[]` — so send the token, not the captured local ID. (A full IRI
+#   404s, but no dataset pattern matches one, so it never gets this far.)
+# - It is fast now (0.2–0.6 s, `672` included; it took 14 s in 2026-09). The
+#   timeout stays generous because one slow answer should read "unknown".
 _LOOKUP_TIMEOUT = 45.0
 _LOOKUP_MAX_IDS = 10
 _LOOKUP_CONCURRENCY = 4
-_ATTESTED_RANK = {"yes": 0, "ambiguous": 1, "unknown": 2, "no": 3}
+_ATTESTED_RANK = {"yes": 0, "unknown": 1, "no": 2}
 
 
-def _local_id(match: re.Match, token: str) -> str:
-    """The bare accession a dataset pattern captured (`GO:0005515` -> `0005515`).
-
-    TogoID patterns name the capture `id`, or `id1`..`idN` across alternations
-    (uniprot, ensembl_*); take the one that participated.
-    """
-    for name, value in match.groupdict().items():
-        if name.startswith("id") and value:
-            return value
-    return token
-
-
-async def _lookup_tables(local_id: str) -> list[str] | None:
-    """Relation tables containing `local_id`, or None if TogoID timed out."""
+async def _lookup_tables(lookup_id: str) -> list[tuple[str, str]] | None:
+    """`(dataset, table)` pairs holding `lookup_id`, or None if TogoID timed out."""
     try:
         response = await _client.get(
-            f"/lookup/id/{quote(local_id, safe='')}", timeout=_LOOKUP_TIMEOUT
+            f"/lookup/id/{quote(lookup_id, safe='')}", timeout=_LOOKUP_TIMEOUT
         )
     except httpx.TimeoutException:
         return None
+    if response.status_code == 404:
+        # "not found" — what an unresolvable form (an IRI) gets, where a
+        # well-formed absent ID gets `[]`. Either way no table holds it.
+        return []
     raise_for_status_with_body(response, context="TogoID identifyId (verify)")
     payload = response.json()
     if not isinstance(payload, list):
         return None
-    return [table for table in payload if isinstance(table, str)]
+    return [
+        (entry["dataset"], entry["table"])
+        for entry in payload
+        if isinstance(entry, dict)
+        and isinstance(entry.get("dataset"), str)
+        and isinstance(entry.get("table"), str)
+    ]
 
 
 @togoid_mcp.tool(**read_only_tool("Identify ID type (TogoID)"))
@@ -711,22 +716,23 @@ async def identifyId(
     VERIFY (`verify=True`) asks TogoID which of its conversion tables actually
     contain the ID. Each candidate then also carries:
 
-    - `attested` — "yes": a table pairing this dataset with a non-candidate
-      holds the ID. "ambiguous": the only such tables pair it with another
-      candidate, and a table name does not say which side holds it (`P04637`
-      is in uniprot-insdc_cds, so insdc_cds is ambiguous, uniprot is yes).
-      "no": no table on this dataset holds it, so TogoID cannot convert it from
-      this dataset. "unknown": TogoID did not answer in time (see `verify_note`).
-    - `pairs_with` — datasets this ID shares a direct table with (null when
-      unknown); for a "yes" candidate these are single-hop convertId targets.
+    - `attested` — "yes": TogoID holds the ID as this dataset in at least one
+      table. "no": it holds it under no table for this dataset, so TogoID
+      cannot convert it from this dataset. "unknown": TogoID did not answer in
+      time (see `verify_note`).
+    - `pairs_with` — datasets this ID shares a direct table with on this
+      dataset's side (null when unknown); for a "yes" candidate these are
+      single-hop convertId targets.
 
-    Candidates then sort yes, ambiguous, unknown, no. Verification rules out
-    datasets better than it picks one (a short number like `672` is present in
-    a dozen), and it is slow — over 10 s for such an ID — so it is off by
-    default and limited to 10 IDs per call.
+    Candidates then sort yes, unknown, no. Verification rules out datasets
+    better than it picks one (a short number like `672` is present in a dozen),
+    and costs one lookup per ID, so it is off by default and limited to 10 IDs
+    per call. Pass the ID as written (`GO:0005515`, not `0005515`): TogoID
+    resolves the prefix, and a bare ontology number is found nowhere.
 
-    A CURIE or full IRI disambiguates far better than a bare accession:
-    `insdc.cds:AEK21611` rather than `AEK21611`.
+    A CURIE disambiguates far better than a bare accession:
+    `insdc.cds:AEK21611` rather than `AEK21611`. A full IRI matches no
+    dataset's pattern; pass its accession or CURIE instead.
 
     Args:
         ids: Identifiers to resolve. A list of strings, or a comma/whitespace
@@ -797,7 +803,7 @@ async def identifyId(
             "pattern_collisions": collisions.get(key, 0),
         }))
 
-    def _matches(token: str) -> list[tuple[dict, str]]:
+    def _matches(token: str) -> list[dict]:
         # Ranking is PER TOKEN: `pattern_collisions` is a property of the
         # pattern alone and cannot know anything about the ID in hand, which is
         # how the gene-level `insdc` (63) came to outrank `insdc_cds` (73) for a
@@ -810,59 +816,47 @@ async def identifyId(
         signature = _shape_signature(token)
         matched = []
         for key, matcher, meta in compiled:
-            hit = matcher.fullmatch(token)
-            if not hit:
+            if not matcher.fullmatch(token):
                 continue
             shape_match = signature in shapes.get(key, ())
-            matched.append((
-                dict(meta, shape_matches_examples=shape_match),
-                _local_id(hit, token),
-            ))
+            matched.append(dict(meta, shape_matches_examples=shape_match))
         return matched
 
     rows = [(token, _matches(token)) for token in tokens]
 
-    tables: dict[str, list[str] | None] = {}
+    tables: dict[str, list[tuple[str, str]] | None] = {}
     if verify:
-        local_ids = sorted({local for _, matched in rows for _, local in matched})
+        keys = sorted({token for token, matched in rows if matched})
         semaphore = asyncio.Semaphore(_LOOKUP_CONCURRENCY)
 
-        async def _bounded(local: str) -> list[str] | None:
+        async def _bounded(key: str) -> list[tuple[str, str]] | None:
             async with semaphore:
-                return await _lookup_tables(local)
+                return await _lookup_tables(key)
 
-        results = await asyncio.gather(*(_bounded(local) for local in local_ids))
-        tables = dict(zip(local_ids, results))
+        results = await asyncio.gather(*(_bounded(key) for key in keys))
+        tables = dict(zip(keys, results))
 
-    def _verified(candidate: dict, local: str, rivals: set[str]) -> dict:
-        found = tables.get(local)
+    def _verified(candidate: dict, key: str) -> dict:
+        found = tables.get(key)
         if found is None:
             return dict(candidate, attested="unknown", pairs_with=None)
         partners = set()
-        for table in found:
+        for dataset, table in found:
+            if dataset != candidate["dataset"]:
+                continue
             left, _, right = table.partition("-")
-            if left == candidate["dataset"]:
-                partners.add(right)
-            if right == candidate["dataset"]:
-                partners.add(left)
-        # A table name does not say which side holds the ID. If every table
-        # naming this dataset pairs it with ANOTHER candidate for the same
-        # token, the ID may sit on that other side: `P04637` shows up in
-        # uniprot-insdc_cds, which "attests" insdc_cds for a UniProt accession.
-        if not partners:
-            attested = "no"
-        elif partners <= rivals - {candidate["dataset"]}:
-            attested = "ambiguous"
-        else:
-            attested = "yes"
-        return dict(candidate, attested=attested, pairs_with=sorted(partners))
+            partners.add(right if left == dataset else left)
+        return dict(
+            candidate,
+            attested="yes" if partners else "no",
+            pairs_with=sorted(partners),
+        )
 
     output = []
     for token, matched in rows:
-        rivals = {candidate["dataset"] for candidate, _ in matched}
         candidates = [
-            _verified(candidate, local, rivals) if verify else candidate
-            for candidate, local in matched
+            _verified(candidate, token) if verify else candidate
+            for candidate in matched
         ]
         candidates.sort(key=lambda c: (
             _ATTESTED_RANK[c["attested"]] if verify else 0,
@@ -871,7 +865,7 @@ async def identifyId(
             c["dataset"],
         ))
         row = {"id": token, "candidates": candidates}
-        if verify and any(tables.get(local) is None for _, local in matched):
+        if verify and matched and tables.get(token) is None:
             row["verify_note"] = (
                 f"TogoID's /lookup/id did not answer within {_LOOKUP_TIMEOUT:.0f} s "
                 "for this ID; `attested` is \"unknown\", not \"no\"."
