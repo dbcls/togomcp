@@ -13,6 +13,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- **Trial chat widget updated to llm_meta_widget 0.12.2** (#270, by @yayamamo; bundle built from
+  yayamamo/llm_meta_widget 89ade7f). Readers can now scroll back while a reply is streaming without
+  being pulled to the end, and a finished thinking block no longer traps scrolling in Chromium. The
+  panel gains a top-left resize grip (drag, or arrow keys in 32px steps) whose size survives reloads
+  and stays inside the viewport, and both pages title it "TogoMCP Trial". The model (`gpt-oss-120b`)
+  and the 10-round / 4-question limits are unchanged. The script URL now carries `?v=89ade7f`: the
+  asset is served without cache headers, so without it a returning visitor could keep the old bundle.
+- **A limit-stopped reply now says so.** When the round cap or a service resource limit cuts a
+  reply short, the widget explains (in Japanese or English) that the answer may be incomplete, that
+  a retry may take a different path and finish, and that a narrower question helps. Rate limits
+  honour `Retry-After`; daily quotas and operator stops say to wait for reset. A resource-limit MCP
+  rejection now ends the turn instead of spending another model call; ordinary query errors still
+  go back to the model to fix.
+- Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `e28141c` (#271, Renovate).
+
 ## [2.27.1] - 2026-10-24
 
 Documentation only. PATCH: no tool, parameter or return shape changed. What changes is the tutorial
