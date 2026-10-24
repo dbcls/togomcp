@@ -12,7 +12,7 @@ Paste this as it is.
 Give me the UniProt entry for the human insulin (INS) gene product. Function and sequence length too.
 ```
 
-**What comes back** (measured at 18–28 s; it varies by model):
+**What comes back** (measured at 18–29 s; it varies by model):
 
 | Item | Value |
 |---|---|
@@ -111,9 +111,9 @@ In Demo 1, this was the order of operations.
 >             ↑ and once again
 > ```
 
-This is by design — the tool description says explicitly "call this every turn, before any other tool," on the premise that **nothing from the previous turn's work carries over**.
+This happened because the tool description at the time of measurement (2.25 and earlier) said "call this every turn, before any other tool." The design assumes that **nothing from the previous turn's work carries over**, and the guide itself says a new question starts again at the first check (GATE 0). Since 2.27.0 the description states facts rather than orders ("meant to be read once, before the other tools are used"), so **whether it is called every time is up to the model**.
 
-What arrives every time is the guide's **core, 34,123 characters** (2026-10-14, TogoMCP 2.25.0; five English markdown files plus the list of workflows, concatenated; a rough estimate of 8,000–10,000 tokens). Detail such as federated queries and the full troubleshooting table lives in six reference files that are fetched with `get_workflow` only when needed. The core grows with the database catalog each time a database is added (history: 44,570 characters in August 2026; 58,118 on 10-01 under 2.21, before the guide was split). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.
+What arrives every time is the guide's **core, 33,813 characters** (2026-10-20, TogoMCP 2.27.0; five English markdown files plus the list of workflows, concatenated; a rough estimate of 8,000–10,000 tokens). Detail such as federated queries and the full troubleshooting table lives in six reference files that are fetched with `get_workflow` only when needed. The core grows with the database catalog each time a database is added (history: 44,570 characters in August 2026; 58,118 on 10-01 under 2.21, before the guide was split; 34,123 on 10-14 under 2.25.0). It stacks up as a conversation gets long, so if you care about your usage, keep it in mind.
 
 > 💡 If you have KEGG enabled in a local installation, the KEGG section is added and it grows further.
 

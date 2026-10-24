@@ -3,7 +3,7 @@
 ![Python >=3.11](https://img.shields.io/badge/python-%3E%3D3.11-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that gives AI assistants (Claude, etc.) access to biological and biomedical RDF databases via SPARQL — mostly at the [RDF Portal](https://rdfportal.org/), plus a few databases' own public endpoints (GlyCosmos, TogoVar, WikiPathways, IDSM, LIPID MAPS, SwissLipids, MarpolBase) — as well as selected REST APIs (NCBI E-utilities, UniProt, ChEMBL, PDB, Reactome, Rhea, MeSH, and more).
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that gives AI assistants (Claude, etc.) access to biological and biomedical RDF databases via SPARQL — mostly at the [RDF Portal](https://rdfportal.org/), plus a few databases' own public endpoints (GlyCosmos, TogoVar, WikiPathways, IDSM, LIPID MAPS, SwissLipids, MarpolBase) — as well as selected REST APIs (NCBI E-utilities, UniProt, ChEMBL, PDB, PubChem, Reactome, Rhea, MeSH, TogoID, TogoVar, PubCaseFinder).
 
 ## Quick Start: Remote Server (No Installation)
 
@@ -86,7 +86,7 @@ A `Dockerfile` is provided for containerized deployment.
 
 ### Recommended: `docker compose`
 
-`compose.yaml` defines two services — `togomcp-main` (port 8000) and `togomcp-test` (port 8001) — so you can run production and staging endpoints side by side from the same image.
+`compose.yaml` defines two services — `togomcp-main` (port 8000) and `togomcp-test` (port 8001) — so you can run a main and a test endpoint side by side from the same image (for local and development use).
 
 ```bash
 cp .env.example .env                                # then fill in NCBI_API_KEY
@@ -271,16 +271,20 @@ togomcp/
 │   ├── ncbi_tools.py       # NCBI E-utilities sub-server
 │   ├── togoid.py           # TogoID identifier-conversion sub-server
 │   ├── togovar.py          # TogoVar human-variation sub-server
+│   ├── pubcasefinder.py    # PubCaseFinder phenotype-ranking / case-report sub-server
+│   ├── skills.py           # Agent Skills registry (served by get_workflow and as skill:// resources)
 │   ├── kegg.py             # KEGG sub-server — mounted by togo-mcp-local ONLY (licence, see above)
 │   ├── kgml.py             # KGML -> signed pathway graph (pure; no network, no FastMCP)
 │   ├── stats.py            # Tool-call usage-log analysis
 │   └── data/               # Bundled data files (included in wheel)
 │       ├── mie/            # MIE files (YAML, one per database)
 │       ├── docs/           # Developer documentation (MIE spec, examples)
-│       └── resources/      # Static resources (endpoints.csv, usage guide, etc.)
+│       ├── resources/      # Static resources (endpoints.csv, usage guide, etc.)
+│       └── skills/         # Public Agent Skills (served by get_workflow)
 ├── benchmark/              # Benchmark question set, scripts, and results
 ├── scripts/                # Utility/maintenance scripts (deploy, Docker, MIE keywords)
 ├── tests/                  # Pytest test suite
+├── tutorial/               # Workshop materials (slides, handbook, hands-on, instructor script)
 ├── Dockerfile              # Docker build configuration
 ├── compose.yaml            # Docker Compose (main + test services)
 ├── pyproject.toml          # Python project metadata and entry points

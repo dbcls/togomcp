@@ -219,7 +219,7 @@ specific IRI  ≫  narrowing by type  ≫  FILTER(CONTAINS(...))
     fast                              slow (effectively impossible on large graphs)
 ```
 
-**But do not use elapsed time as your yardstick.** The August edition of this handbook said that a query fetching insulin's sequence with `FILTER(CONTAINS(STR(?seq), "/P01308-1"))` died at the 60-second timeout, and that naming the IRI directly brought it back in about 5 seconds. Re-run on 2026-10-01 in nearly the same form (no graph pin, `FILTER(CONTAINS)`, two `OPTIONAL`s), it **came back in 10 seconds**, but with **219,437 rows**. Pinning the graph with `FROM` gives **919 rows in 1.4 seconds**.
+**But do not use elapsed time as your yardstick.** The August edition of this handbook said that a query fetching insulin's sequence with `FILTER(CONTAINS(STR(?seq), "/P01308-1"))` died at the 60-second timeout, and that naming the IRI directly brought it back in about 5 seconds. Re-run in October 2026 in nearly the same form (no graph pin, `FILTER(CONTAINS)`, two `OPTIONAL`s), it **came back in 10 seconds**, but with **219,436 rows**. Pinning the graph with `FROM` still gives **918 rows** (in 1.4 seconds), when the answer is one row (row counts: 2026-10-20).
 
 Runtime depends not only on how a query is written but on the state of the endpoint's cache. TogoMCP's own records include a query that took over 75 seconds and returned in 0.1 seconds on the very next run. Hence TogoMCP's policy: **never judge a query's correctness from how long it took.** Fast may only mean warm. And every silent-wrong-answer trap in this handbook comes back fast.
 
@@ -291,9 +291,11 @@ You can find out where the duplication came from by asking:
 Which graph are those doubled rows coming from? Check with GRAPH ?g.
 ```
 
-In the measurement, the `a up:Protein` typing was **supplied by two graphs** — UniProt itself, and another dataset co-resident at the same endpoint. Both declare the type on the same IRI, so without specifying a graph you get two rows per protein.
+`GRAPH ?g` is SPARQL for "tell me which graph (compartment) each row came from", returned in the blank (variable) `?g`. You do not need to write it yourself; ask like this and the AI builds it into the query.
 
-> **Learn this diagnostic move itself.** "When a count looks suspicious, count the suppliers with `GRAPH ?g`" transfers directly to real work.
+In the measurement, the `a up:Protein` typing ("this is a protein") was **supplied by two graphs**: UniProt itself, and the ortholog database OMA, co-resident at the same endpoint. Both declare the type on the same IRI, so without specifying a graph you get two rows per protein.
+
+> **Learn this diagnostic move itself.** When a count looks suspicious, ask "**which graph is this coming from? Count per graph**" (the AI counts the suppliers with `GRAPH ?g`). It transfers directly to real work.
 
 ### (c) Duplication from multi-valued predicates — this one does happen
 

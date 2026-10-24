@@ -34,13 +34,13 @@ TP53 co-occurrences over all rows = 32,597      ← about 20×
 
 Writing "TP53 appears in 1,581 pancreatic cancer papers" would have been wrong.
 
-**Worse still, the ranking itself changed** — MTOR went from 20th in the sample to 9th over all rows, INS from 6th to 16th. There was not even the escape route of "the absolute numbers may be off, but the ordering can be trusted."
+**Worse still, the ranking itself changed** — MTOR went from 20th in the sample to 9th over all rows, INS from 6th to 17th. There was not even the escape route of "the absolute numbers may be off, but the ordering can be trusted."
 
-### (c) Mistaking the definition
+### (c) A definition chosen without your intent
 
-UniProt's keyword **KW-0458 "Lysosome" is a subcellular localization**, not "lysosomal enzyme." Using it, the approved-drug side of the result was dominated by **22 insulin preparations and 12 PDGFR inhibitors**.
+Given a question that only says "lysosomal enzymes," the AI may choose UniProt's keyword **KW-0458 "Lysosome"** (can localize to the lysosome). It fits the words, but not the intent of "enzymes that work inside the lysosome." Using it, the approved-drug side of the result was dominated by **21 insulin preparations and 11 approved drugs targeting PDGFRB** (2026-10-20; 22 insulin preparations in August).
 
-**The syntax was perfectly correct, execution succeeded, and the answer was meaningless.**
+**The syntax was perfectly correct, execution succeeded, and the answer even fit the words of the question. Only the intent was missed,** so it did not look wrong.
 
 ### (d) Misreading the unit of aggregation
 
@@ -64,7 +64,7 @@ When we looked into variants in TogoVar:
 
 ### (e) Misunderstanding what the metric measures
 
-**INS, GAPDH and POTEF** came out at the top as genes associated with pancreatic cancer. None of them is a driver of pancreatic cancer.
+**INS, GAPDH and POTEF** came out near the top of the sample as genes associated with pancreatic cancer (on all rows: INS 17th, GAPDH 13th, POTEF 24th). None of them is a driver of pancreatic cancer.
 
 - **INS** — organ-level co-occurrence, because the pancreas is an endocrine organ
 - **GAPDH** — a housekeeping gene, merely mentioned as an internal control in experiments
