@@ -46,7 +46,7 @@ on the hub for production use.
 
 ## Bundled widget provenance
 
-Source: https://github.com/yayamamo/llm_meta_widget/tree/d20130f
+Source: https://github.com/yayamamo/llm_meta_widget/tree/89ade7f
 Built asset: `app/assets/javascripts/llm_meta_widget/llm-meta-widget.js`.
 The adjacent Apache-2.0 license covers the widget; bundled dependencies retain
 license comments in the asset. To update, build the pinned widget source with
@@ -59,3 +59,28 @@ The page stylesheet places the chat launcher 96px above the bottom edge, plus
 the device safe area, leaving the back-to-top button at its existing position.
 Adjust `bottom` and `right` in `llm-meta-widget #llm-meta-widget-toggle` to move
 the launcher. The scoped selector overrides the bundled widget stylesheet.
+
+## Updated widget and panel controls
+
+This bundle merges upstream llm_meta_widget 0.12.2 through commit 1f7d80a,
+including reader-follow scrolling and the finished-thinking-block Chromium
+workaround. It retains the TogoMCP conversation limits and initial tool selection.
+Both pages set `chat-title="TogoMCP Trial"`. Drag the top-left ⤢ handle to resize
+while keeping the bottom/right edges anchored. Focus the handle and use arrow
+keys for 32px adjustments. The preferred size survives closing and reloading;
+viewport bounds prevent the panel from growing off screen.
+
+The page model is unchanged by this UI update. If deploying llm_meta_server
+PR #192's local-only anonymous policy, first switch the page model to an allowed
+Ollama model and configure the matching ANONYMOUS_MODELS allowlist; the current
+house-funded gpt-oss-120b configuration does not satisfy that policy.
+
+## Limit-stop messages
+
+When an internal round cap or a service resource limit stops processing, the
+widget explains in Japanese/English that the reply may be incomplete and that
+another attempt may take a different path and finish within the limits. It
+suggests narrowing the question. Rate/capacity errors advise waiting (including
+Retry-After when supplied), while daily quotas and operator stops require reset
+or service resumption. There is no automatic retry after a resource-limit MCP
+rejection; ordinary query errors can still be passed to the model for correction.
