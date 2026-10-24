@@ -3,6 +3,58 @@
 
 
 // app/assets/javascripts/llm_meta_widget/orchestrator.js
+function httpCallError(what, response, text) {
+  const error = new Error(`${what}: HTTP ${response.status} ${response.statusText || ""}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+  error.status = response.status;
+  error.retryAfter = response.headers?.get?.("Retry-After") || null;
+  try {
+    const body = JSON.parse(text);
+    error.code = typeof body.error === "string" ? body.error : body.error?.code || body.code;
+    if (response.status === 502 && /MCP response exceeds \d+ bytes/.test(body.message || "")) error.code = "result_too_large";
+  } catch {
+  }
+  return error;
+}
+var RESOURCE_LIMIT_CODES = /* @__PURE__ */ new Set([
+  "max_rounds",
+  "rate_limit",
+  "concurrency",
+  "capacity",
+  "tool_busy",
+  "tool_rate_limit",
+  "daily_budget",
+  "global_daily_budget",
+  "stopped",
+  "execution_timeout",
+  "timeout",
+  "result_too_large",
+  "payload_too_large",
+  "context_length_exceeded"
+]);
+function isResourceLimit(error) {
+  return RESOURCE_LIMIT_CODES.has(error?.code) || [413, 429, 503, 504].includes(error?.status);
+}
+function limitStopMessage(error, { lang = "en", rounds } = {}) {
+  if (!isResourceLimit(error)) return null;
+  const ja = lang.toLowerCase().startsWith("ja");
+  const code = error?.code;
+  const daily = code === "daily_budget" || code === "global_daily_budget";
+  const stopped = code === "stopped";
+  const size = ["result_too_large", "payload_too_large", "context_length_exceeded"].includes(code) || error?.status === 413;
+  const timeout = ["execution_timeout", "timeout"].includes(code) || error?.status === 504;
+  const roundLimit = code === "max_rounds";
+  const rawRetry = error?.retryAfter;
+  const retrySeconds = /^\d+$/.test(rawRetry || "") ? Number(rawRetry) : Math.ceil((Date.parse(rawRetry) - Date.now()) / 1e3);
+  const wait = Number.isFinite(retrySeconds) && retrySeconds > 0 ? retrySeconds : null;
+  if (ja) {
+    const reason2 = roundLimit ? "\u30C4\u30FC\u30EB\u5229\u7528\u306E\u51E6\u7406\u56DE\u6570\u306E\u4E0A\u9650" + (rounds ? "\uFF08" + rounds + "\u56DE\uFF09" : "") : size ? "\u5165\u529B\u307E\u305F\u306F\u30C4\u30FC\u30EB\u7D50\u679C\u306E\u30B5\u30A4\u30BA\u4E0A\u9650" : timeout ? "\u5FDC\u7B54\u6642\u9593\u306E\u4E0A\u9650" : daily ? "\u30B5\u30FC\u30D3\u30B9\u306E\u5229\u7528\u91CF\u306E\u4E0A\u9650" : stopped ? "\u30B5\u30FC\u30D3\u30B9\u5074\u306E\u505C\u6B62\u63AA\u7F6E" : "\u6DF7\u96D1\u307E\u305F\u306F\u30B5\u30FC\u30D3\u30B9\u5074\u306E\u5229\u7528\u5236\u9650";
+    const next2 = daily ? "\u5229\u7528\u4E0A\u9650\u304C\u89E3\u9664\u30FB\u30EA\u30BB\u30C3\u30C8\u3055\u308C\u3066\u304B\u3089\u3001" : stopped ? "\u30B5\u30FC\u30D3\u30B9\u304C\u518D\u958B\u3057\u3066\u304B\u3089\u3001" : !roundLimit && !size && !timeout ? wait ? "\u5C11\u306A\u304F\u3068\u3082" + wait + "\u79D2\u5F85\u3063\u3066\u304B\u3089\u3001" : "\u3057\u3070\u3089\u304F\u5F85\u3063\u3066\u304B\u3089\u3001" : "";
+    return reason2 + "\u306B\u3088\u308A\u51E6\u7406\u3092\u505C\u6B62\u3057\u307E\u3057\u305F\u3002\u3053\u3053\u307E\u3067\u306E\u56DE\u7B54\u306F\u672A\u5B8C\u4E86\u306E\u53EF\u80FD\u6027\u304C\u3042\u308A\u307E\u3059\u3002" + next2 + "\u5BFE\u8C61\u3084\u6761\u4EF6\u3092\u7D5E\u3063\u3066\u3084\u308A\u76F4\u3057\u3066\u304F\u3060\u3055\u3044\u3002\u6539\u3081\u3066\u5B9F\u884C\u3059\u308B\u3068\u3001\u51E6\u7406\u306E\u9032\u307F\u65B9\u306B\u3088\u3063\u3066\u306F\u5236\u9650\u5185\u3067\u5B8C\u4E86\u3059\u308B\u5834\u5408\u304C\u3042\u308A\u307E\u3059\u3002";
+  }
+  const reason = roundLimit ? "the tool-use round limit" + (rounds ? " (" + rounds + ")" : "") : size ? "an input or tool-result size limit" : timeout ? "a response time limit" : daily ? "the service usage budget" : stopped ? "a service-side stop" : "service capacity or a usage limit";
+  const next = daily ? "After the budget is reset or restored, " : stopped ? "Once the service resumes, " : !roundLimit && !size && !timeout ? wait ? "Wait at least " + wait + " seconds, then " : "Wait a while, then " : "";
+  return "Processing stopped because of " + reason + ". The reply so far may be incomplete. " + next + (next ? "try" : "Try") + " again with a narrower question. A new attempt may follow a different path and finish within the limits.";
+}
 async function singleLlmCall({
   baseUrl,
   apiKeyUuid,
@@ -44,7 +96,7 @@ async function singleLlmCall({
   const response = await fetch(url, { method: "POST", headers, body, signal });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`singleLlmCall: HTTP ${response.status} ${response.statusText}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+    throw httpCallError("singleLlmCall", response, text);
   }
   if (!response.body) {
     throw new Error("singleLlmCall: response has no body (streaming unsupported?)");
@@ -168,6 +220,18 @@ async function runChatLoop(opts) {
     remoteTools = [],
     hostWideTools = [],
     maxRounds = 10,
+    // The model's own context window, from /api/llms. Without it the loop
+    // cannot know how much room is left, so it budgets nothing and a long
+    // tool-heavy turn is refused by the provider instead of degrading.
+    contextWindow = null,
+    // Tokens held back for the answer: a request that fills the window leaves
+    // nothing to generate into.
+    outputReserve = 2048,
+    // Called when a tool result is dropped to make room, so the panel can say
+    // so rather than the context quietly thinning.
+    onContextEvicted,
+    // Called when one oversized result is shortened, so the panel can say so.
+    onContextTruncated,
     // "hub" (default) talks to llm_meta_server; "ollama" talks straight to an
     // Ollama, with no server component of ours in between. The loop is the
     // same either way — only the call is swapped.
@@ -189,7 +253,7 @@ async function runChatLoop(opts) {
     onPhase,
     ...singleOpts
   } = opts;
-  const messages = [...singleOpts.messages || []];
+  let messages = [...singleOpts.messages || []];
   const remoteByName = Object.fromEntries((remoteTools || []).map((t) => [t.name, t]));
   const hostWideByName = Object.fromEntries((hostWideTools || []).map((t) => [t.name, t]));
   const toolIds = [...singleOpts.toolIds || [], ...(remoteTools || []).map((t) => t.id)];
@@ -200,6 +264,13 @@ async function runChatLoop(opts) {
   }
   const mergedLocalTools = Object.values(inlineByName);
   const rounds = [];
+  const evicted = [];
+  const truncatedResults = [];
+  const toolsTokens = estimateToolsTokens([].concat(
+    singleOpts.localTools || [],
+    remoteTools || [],
+    hostWideTools || []
+  ));
   const allDispatched = [];
   const allSkipped = [];
   let lastResult = null;
@@ -230,6 +301,26 @@ async function runChatLoop(opts) {
   for (let round = 0; round < maxRounds; round++) {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
     onRoundStart?.(round);
+    const capped = truncateOversizedToolResults({
+      messages,
+      window: contextWindow,
+      truncated: truncatedResults
+    });
+    if (capped.messages !== messages) {
+      messages = capped.messages;
+      onContextTruncated?.(truncatedResults.slice());
+    }
+    const room = evictOldToolResults({
+      messages,
+      window: contextWindow,
+      dropped: evicted,
+      // The tools take their share of the window before any message does.
+      reserve: outputReserve + toolsTokens
+    });
+    if (room.messages !== messages) {
+      messages = room.messages;
+      onContextEvicted?.({ dropped: evicted.slice(), needed: room.needed, window: room.window });
+    }
     const call = provider === "ollama" ? ollamaChatCall : singleLlmCall;
     const turnResult = await call({
       ...singleOpts,
@@ -304,6 +395,7 @@ async function runChatLoop(opts) {
       } catch (error) {
         allDispatched.push({ toolCall: tc, error });
         onToolDispatched?.({ toolCall: tc, error });
+        if (isResourceLimit(error)) throw error;
         roundTripResults.push({ tc, result: { error: String(error.message || error) } });
       }
     }
@@ -324,6 +416,7 @@ async function runChatLoop(opts) {
       } catch (error) {
         allDispatched.push({ toolCall: tc, error });
         onToolDispatched?.({ toolCall: tc, error });
+        if (isResourceLimit(error)) throw error;
         roundTripResults.push({ tc, result: { error: String(error.message || error) } });
       }
     }
@@ -421,7 +514,7 @@ async function mcpRpc({ endpoint, method, params, signal, label }) {
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`${what}: HTTP ${response.status}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+    throw httpCallError(what, response, text);
   }
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("application/json")) {
@@ -483,6 +576,17 @@ async function readMcpResource({ endpoint, uri, signal }) {
     label: `readMcpResource(${uri})`
   });
 }
+async function getPagePrompt({ name, args, prompts }) {
+  const handler = prompts && prompts[name];
+  if (typeof handler !== "function") {
+    throw new Error('the page declares prompt "' + name + '" but no handler answers to that name');
+  }
+  const result = await handler(args || {});
+  if (typeof result === "string") {
+    return { messages: [{ role: "user", content: { type: "text", text: result } }] };
+  }
+  return result || { messages: [] };
+}
 function promptMessagesToText(result) {
   return (result?.messages || []).map((m) => {
     const c = m.content;
@@ -507,7 +611,7 @@ async function dispatchRemoteToolCall({ baseUrl, bearerToken, toolId, args, sign
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`dispatchRemoteToolCall: HTTP ${response.status} ${response.statusText}${text ? " \u2014 " + text.slice(0, 200) : ""}`);
+    throw httpCallError("dispatchRemoteToolCall", response, text);
   }
   const body = await response.json();
   return body.result;
@@ -549,24 +653,222 @@ function parseSseFrame(raw) {
   return { name, data };
 }
 var STATIC_PRIMITIVES_META = "io.modelcontextprotocol/static-primitives";
+var PAGE_CARD_MEDIA_TYPE = "application/mcp-static-primitives+json";
+var RESOURCE_SHARE_OF_WINDOW = 0.0625;
+var RESOURCE_BYTES_PER_TOKEN = 4;
+function resourceBudgetBytes(window2, { floor = 8e3, cap = 64e3 } = {}) {
+  if (!window2 || !Number.isFinite(window2)) return floor;
+  const share = Math.round(window2 * RESOURCE_SHARE_OF_WINDOW * RESOURCE_BYTES_PER_TOKEN);
+  return Math.min(cap, Math.max(floor, share));
+}
+var PROSE_CHARS_PER_TOKEN = 3.5;
+var DENSE_CHARS_PER_TOKEN = 1.6;
+var CJK_CHARS_PER_TOKEN = 1;
+var MESSAGE_OVERHEAD_TOKENS = 4;
+var CJK_PATTERN = /[\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/g;
+var PROSE_PATTERN = /[A-Za-z \n\t]/g;
+function estimateTextTokens(text) {
+  const str = typeof text === "string" ? text : String(text ?? "");
+  const cjk = (str.match(CJK_PATTERN) || []).length;
+  const prose = (str.match(PROSE_PATTERN) || []).length;
+  const dense = str.length - cjk - prose;
+  return Math.ceil(cjk / CJK_CHARS_PER_TOKEN + prose / PROSE_CHARS_PER_TOKEN + dense / DENSE_CHARS_PER_TOKEN);
+}
+function estimateTokens(messages) {
+  return (messages || []).reduce((sum, m) => {
+    const content = typeof m?.content === "string" ? m.content : JSON.stringify(m?.content ?? "");
+    return sum + estimateTextTokens(content) + MESSAGE_OVERHEAD_TOKENS;
+  }, 0);
+}
+function estimateToolsTokens(tools) {
+  const text = (tools || []).map((t) => JSON.stringify({
+    name: t?.name,
+    description: t?.description,
+    schema: t?.input_schema || t?.inputSchema
+  })).join("");
+  return estimateTextTokens(text);
+}
+var MAX_TOOL_RESULT_SHARE = 0.4;
+function truncateOversizedToolResults({
+  messages,
+  window: window2,
+  share = MAX_TOOL_RESULT_SHARE,
+  truncated = []
+} = {}) {
+  if (!window2 || !Number.isFinite(window2)) return { messages, truncated };
+  const cap = Math.floor(window2 * share);
+  let out = null;
+  (messages || []).forEach((m, i) => {
+    if (m?.role !== "tool" || typeof m.content !== "string") return;
+    const tokens = estimateTextTokens(m.content);
+    if (tokens <= cap) return;
+    const keep = Math.max(1, Math.floor(m.content.length * cap / tokens));
+    out = out || messages.slice();
+    truncated.push({ name: m.name, fromTokens: tokens, toTokens: cap });
+    out[i] = Object.assign({}, m, {
+      content: m.content.slice(0, keep) + "\n\n[truncated: " + keep + " of " + m.content.length + " characters shown. One tool result may use at most " + Math.round(share * 100) + "% of the context window. Call the tool again with a narrower query to see more.]"
+    });
+  });
+  return { messages: out || messages, truncated };
+}
+function evictOldToolResults({ messages, window: window2, reserve = 0, dropped = [] }) {
+  if (!window2 || !Number.isFinite(window2)) return { messages, dropped };
+  const budget = window2 - reserve;
+  const needed = estimateTokens(messages) + reserve;
+  if (estimateTokens(messages) <= budget) return { messages, dropped, needed, window: window2 };
+  const out = messages.slice();
+  for (let i = 0; i < out.length; i++) {
+    if (estimateTokens(out) <= budget) break;
+    const m = out[i];
+    if (m?.role !== "tool") continue;
+    if (typeof m.content === "string" && m.content.startsWith("[dropped")) continue;
+    dropped.push({ name: m.name, tokens: estimateTokens([m]) });
+    out[i] = Object.assign({}, m, {
+      content: "[dropped to make room in the context window. Call the tool again if you still need it, with a narrower query.]"
+    });
+  }
+  return { messages: out, dropped, needed, window: window2 };
+}
+function modelWindowFrom(payload, modelId) {
+  for (const family of payload && payload.llms || []) {
+    const entries = [].concat(family.available_models || [], family.models || []);
+    for (const entry of entries) {
+      if (!entry) continue;
+      const id = entry.value || entry.name;
+      if (id !== modelId) continue;
+      const window2 = Number(entry.max_input_tokens);
+      return Number.isFinite(window2) && window2 > 0 ? window2 : null;
+    }
+  }
+  return null;
+}
+var PAGE_GLOBAL_TRANSPORT = "page-global";
+function declaredPageGlobal(card) {
+  for (const remote of card && card.remotes || []) {
+    if (!remote || remote.type !== PAGE_GLOBAL_TRANSPORT) continue;
+    if (typeof remote.global === "string" && remote.global.trim() !== "") return remote.global.trim();
+  }
+  return null;
+}
+function pageHandlers({ card, scope = {}, legacy = {}, warn = console.warn } = {}) {
+  const name = declaredPageGlobal(card);
+  const declared = name ? scope[name] : null;
+  if (name && !declared) {
+    warn(`[llm-meta-widget] the page card declares global "${name}", but window.${name} is not defined \u2014 is the script that defines it loaded, and did it run?`);
+  }
+  const isMap = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  const pick = (kind, legacyName) => {
+    const fromGlobal = declared ? declared[kind] : void 0;
+    if (isMap(fromGlobal)) return fromGlobal;
+    if (declared && fromGlobal !== void 0 && !isMap(fromGlobal)) {
+      warn(`[llm-meta-widget] window.${name}.${kind} is ${Array.isArray(fromGlobal) ? "an array" : typeof fromGlobal}; it must be an object keyed by ${kind === "resources" ? "uri" : "name"}`);
+    }
+    return legacyName && scope[legacyName] || {};
+  };
+  return {
+    global: name,
+    tools: pick("tools", legacy.tools),
+    prompts: pick("prompts", legacy.prompts),
+    resources: pick("resources", legacy.resources)
+  };
+}
+function mergeStaticPrimitivesCards(cards, warn = console.warn) {
+  const merged = { remotes: [], tools: [], prompts: [], resources: [] };
+  for (const card of cards || []) {
+    for (const remote of card && card.remotes || []) {
+      const clash = merged.remotes.find((r) => r.type === remote.type && r.global !== remote.global);
+      if (clash) {
+        warn(`[llm-meta-widget] two blocks declare different ${remote.type} globals ("${clash.global}" and "${remote.global}"); using "${clash.global}"`);
+        continue;
+      }
+      if (!merged.remotes.some((r) => r.type === remote.type && r.global === remote.global)) {
+        merged.remotes.push(remote);
+      }
+    }
+  }
+  const keyOf = { tools: "name", prompts: "name", resources: "uri" };
+  for (const kind of ["tools", "prompts", "resources"]) {
+    const key = keyOf[kind];
+    const all = [];
+    for (const card of cards || []) all.push(...card && card[kind] || []);
+    const counts = /* @__PURE__ */ new Map();
+    for (const entry of all) counts.set(entry[key], (counts.get(entry[key]) || 0) + 1);
+    for (const [id, n] of counts) {
+      if (n > 1) {
+        warn(`[llm-meta-widget] the page declares ${kind} "${id}" ${n} times; dropping every copy \u2014 remove the duplicate to say which one you mean`);
+      }
+    }
+    merged[kind] = all.filter((entry) => counts.get(entry[key]) === 1);
+  }
+  return merged;
+}
+function readStaticPrimitivesCard(text, warn = console.warn) {
+  const empty = { remotes: [], tools: [], prompts: [], resources: [] };
+  if (typeof text !== "string" || text.trim() === "") return empty;
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch (e) {
+    warn("[llm-meta-widget] page card is not valid JSON; ignoring it:", e.message);
+    return empty;
+  }
+  const ext = doc && doc._meta && doc._meta[STATIC_PRIMITIVES_META] || null;
+  if (!ext) {
+    warn(`[llm-meta-widget] page card has no _meta["${STATIC_PRIMITIVES_META}"]; ignoring it`);
+    return empty;
+  }
+  const named = (arr, kind) => (Array.isArray(arr) ? arr : []).filter((e) => {
+    const ok = e && typeof e.name === "string" && e.name.trim() !== "";
+    if (!ok) warn(`[llm-meta-widget] page card: dropping a ${kind} with no name`);
+    return ok;
+  });
+  return {
+    // The whole card's transport, so what it declares survives the parse.
+    remotes: Array.isArray(doc.remotes) ? doc.remotes : [],
+    tools: named(ext.tools, "tool"),
+    prompts: named(ext.prompts, "prompt"),
+    // Resources are addressed by uri, not name — resources/read takes the uri.
+    resources: (Array.isArray(ext.resources) ? ext.resources : []).filter((e) => {
+      const ok = e && typeof e.uri === "string" && e.uri.trim() !== "";
+      if (!ok) warn("[llm-meta-widget] page card: dropping a resource with no uri");
+      return ok;
+    })
+  };
+}
 var VOLATILITIES = ["stable", "volatile"];
+var usableSize = (n) => typeof n === "number" && isFinite(n) ? n : null;
+var pickDeclared = (own, fromMeta) => own === void 0 ? fromMeta : own;
 function resourceHints(entry) {
   const meta = entry && entry._meta && entry._meta[STATIC_PRIMITIVES_META] || {};
   return {
     // A non-numeric or absent size means "unknown", never 0 — 0 would read
     // as a free resource and sail through every budget check.
-    sizeBytes: typeof meta.sizeBytes === "number" && isFinite(meta.sizeBytes) ? meta.sizeBytes : null,
-    volatility: VOLATILITIES.indexOf(meta.volatility) === -1 ? "stable" : meta.volatility,
-    autoAttach: typeof meta.autoAttach === "boolean" ? meta.autoAttach : true
+    // Base `size` wins; `_meta.sizeBytes` is the earlier draft's spelling and
+    // is accepted so a new client keeps its budget gate against an old server.
+    size: usableSize(entry && entry.size) ?? usableSize(meta.sizeBytes),
+    // Deprecated alias, kept for one release so renaming the field is not a
+    // breaking change: orchestrator.js is a published entry point, so anything
+    // it returns is public API. Dropped at 0.9.0 together with the
+    // `_meta.sizeBytes` fallback above — one deprecation, one bump.
+    get sizeBytes() {
+      return this.size;
+    },
+    // Same rule as `size`: the entry's own field wins, `_meta` is the fallback.
+    // SEP-0000 defines these ON the Resource object; a server puts them in
+    // `_meta` only because the extension is not merged yet. A PAGE card's
+    // entries already sit inside the extension block, so for them the fields
+    // are simply top-level — reading both is what lets one planner serve both.
+    volatility: VOLATILITIES.indexOf(pickDeclared(entry && entry.volatility, meta.volatility)) === -1 ? "stable" : pickDeclared(entry && entry.volatility, meta.volatility),
+    autoAttach: typeof pickDeclared(entry && entry.autoAttach, meta.autoAttach) === "boolean" ? pickDeclared(entry && entry.autoAttach, meta.autoAttach) : true
   };
 }
 function planResourceAttachment(entry, budgetBytes) {
-  const { sizeBytes, volatility, autoAttach } = resourceHints(entry);
-  const base = { sizeBytes, volatility, uri: entry && entry.uri };
+  const { size, volatility, autoAttach } = resourceHints(entry);
+  const base = { size, sizeBytes: size, volatility, uri: entry && entry.uri };
   if (!autoAttach) {
     return { ...base, fetch: false, autoAttach: false, reason: "not-auto-attach" };
   }
-  if (sizeBytes !== null && sizeBytes > budgetBytes) {
+  if (size !== null && size > budgetBytes) {
     return { ...base, fetch: false, autoAttach: false, reason: "over-budget" };
   }
   return {
@@ -575,7 +877,7 @@ function planResourceAttachment(entry, budgetBytes) {
     autoAttach: true,
     // Unknown size still gets fetched, then trimmed — the trim is the
     // safety net for servers that do not declare a size.
-    reason: sizeBytes === null ? "size-unknown" : "within-budget"
+    reason: size === null ? "size-unknown" : "within-budget"
   };
 }
 function trimResourceText(text, maxBytes) {
@@ -598,6 +900,45 @@ async function readResourceContext({ endpoint, uri, name, read, budgetBytes }) {
     if (!entry || !entry.text) return null;
     return { uri, name: name || uri, text: trimResourceText(entry.text, budgetBytes) };
   } catch (e) {
+    return null;
+  }
+}
+function planPageResources({ entries, budgetBytes, onSkip }) {
+  return (entries || []).map((entry) => {
+    const plan = planResourceAttachment(entry, budgetBytes);
+    plan.name = entry.name || entry.uri;
+    plan.description = entry.description || "";
+    if (!plan.fetch && onSkip) onSkip(plan);
+    return plan;
+  }).filter((plan) => plan.fetch);
+}
+function pageResourceLine(plan, text) {
+  return "- " + plan.name + (plan.description ? " (" + plan.description + ")" : "") + ": " + text;
+}
+async function pageResourceLinesForTurn({ plans, resources, budgetBytes, cache = {} }) {
+  const lines = [];
+  for (const plan of plans || []) {
+    let text = plan.volatility === "volatile" ? null : cache[plan.uri];
+    if (text === null || text === void 0) {
+      text = await readPageResource({ uri: plan.uri, resources, budgetBytes });
+      if (plan.volatility !== "volatile" && text !== null) cache[plan.uri] = text;
+    }
+    if (text !== null) lines.push(pageResourceLine(plan, text));
+  }
+  return { lines, cache };
+}
+async function readPageResource({ uri, resources, budgetBytes }) {
+  const handler = resources && resources[uri];
+  if (typeof handler !== "function") {
+    console.warn('[llm-meta-widget] the page declares resource "' + uri + '" but no handler answers to that uri');
+    return null;
+  }
+  try {
+    const value = await handler();
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    return trimResourceText(text === void 0 ? "" : text, budgetBytes);
+  } catch (e) {
+    console.warn('[llm-meta-widget] reading "' + uri + '" failed:', e && e.message);
     return null;
   }
 }
@@ -640,9 +981,23 @@ async function resourceLinesForTurn({ plan, cached, endpoint, read, budgetBytes 
   }
   return { lines: resourceContextLines(cached), cached };
 }
+var PAGE_URI_PREFIX = "page:";
 var PROMPT_ARG_ALIASES = { dictionaries: "selected_dictionaries" };
+function promptArgState({ entries = [], resources = {}, state = {} } = {}) {
+  const merged = Object.assign({}, state);
+  for (const entry of entries) {
+    const uri = entry && entry.uri;
+    if (!uri || uri.indexOf(PAGE_URI_PREFIX) !== 0) continue;
+    const name = uri.slice(PAGE_URI_PREFIX.length);
+    const reader = resources[uri];
+    if (!name || merged[name] || typeof reader !== "function") continue;
+    merged[name] = { description: entry.description || "", read: reader };
+  }
+  return merged;
+}
 function promptArgFromState(argName, state) {
-  const reader = state && state[argName] || state && state[PROMPT_ARG_ALIASES[argName]];
+  const entry = state && state[argName] || state && state[PROMPT_ARG_ALIASES[argName]];
+  const reader = entry && typeof entry.read === "function" ? entry.read : null;
   if (typeof reader !== "function") return "";
   let value;
   try {
@@ -2893,8 +3248,11 @@ var lexer = _Lexer.lex;
 var DEFAULTS = Object.freeze({
   API_KEY_UUID: "ollama-local",
   ACTIONS_SCHEMA_ID: "ai-actions",
+  PAGE_CARD_ID: "ai-page",
   STATE_GLOBAL: "aiState",
   ACTIONS_GLOBAL: "aiActions",
+  PROMPTS_GLOBAL: "aiPrompts",
+  RESOURCES_GLOBAL: "aiResources",
   REMOTE_TOOLS_SCHEMA_ID: "remote-mcp-tools",
   LLM_PROVIDER: "llm_meta_server",
   MAX_ROUNDS: 3
@@ -2931,9 +3289,13 @@ function readConfig(el) {
     AUTH_URL: str("auth-url", null),
     AUTH_MESSAGE: str("auth-message", "\u30C1\u30E3\u30C3\u30C8\u3092\u5229\u7528\u3059\u308B\u306B\u306FGoogle\u8A8D\u8A3C\u304C\u5FC5\u8981\u3067\u3059\u3002\u521D\u3081\u3066\u306E\u65B9\u306F\u8A8D\u8A3C\u30DA\u30FC\u30B8\u3067hub\u306B\u767B\u9332\u3057\u3001\u3053\u306E\u30DA\u30FC\u30B8\u3067\u3082Google\u8A8D\u8A3C\u3092\u884C\u3063\u3066\u304F\u3060\u3055\u3044\u3002"),
     ACTIONS_SCHEMA_ID: str("actions-schema-id", DEFAULTS.ACTIONS_SCHEMA_ID),
+    PAGE_CARD_ID: str("page-card-id", DEFAULTS.PAGE_CARD_ID),
+    CHAT_TITLE: str("chat-title", "AI assistant"),
     GREETING: str("greeting", null),
     STATE_GLOBAL: str("state-global", DEFAULTS.STATE_GLOBAL),
     ACTIONS_GLOBAL: str("actions-global", DEFAULTS.ACTIONS_GLOBAL),
+    PROMPTS_GLOBAL: str("prompts-global", DEFAULTS.PROMPTS_GLOBAL),
+    RESOURCES_GLOBAL: str("resources-global", DEFAULTS.RESOURCES_GLOBAL),
     REMOTE_TOOLS_SCHEMA_ID: str("remote-tools-schema-id", DEFAULTS.REMOTE_TOOLS_SCHEMA_ID),
     MAX_ROUNDS: int("max-rounds", DEFAULTS.MAX_ROUNDS),
     MAX_EXCHANGES: /^\d+$/.test(raw("max-exchanges") || "") && Number.isSafeInteger(Number(raw("max-exchanges"))) && Number(raw("max-exchanges")) > 0 ? Number(raw("max-exchanges")) : 4,
@@ -3076,12 +3438,28 @@ var conversation_default = `/*
 	white-space: pre;
 }
 .llm-meta-conversation .message-content pre code { background: none; padding: 0; }
+/* The scroller is the WRAPPER, not the table: a table that is itself the
+ * scrolling box gets capped at the bubble width and squeezes its columns
+ * instead of overflowing, and .message's word-wrap then breaks every word
+ * one character per line. The wrapper is capped; the table inside keeps its
+ * natural width and scrolls sideways. */
+.llm-meta-conversation .message-content .lmw-table-scroll {
+	overflow-x: auto;
+	margin: 0.5em 0;
+}
 .llm-meta-conversation .message-content table {
 	border-collapse: collapse;
-	margin: 0.5em 0;
-	display: block;
-	overflow-x: auto;
-	max-width: 100%;
+	/* min-width so a narrow table still fills the bubble, width:max-content so
+	 * a wide one is laid out at its natural size and the wrapper scrolls. */
+	width: max-content;
+	min-width: 100%;
+}
+/* Inside a table, breaking mid-token is what produced the one-letter columns;
+ * cells keep their words whole and the wrapper scrolls instead. */
+.llm-meta-conversation .message-content th,
+.llm-meta-conversation .message-content td {
+	word-wrap: normal;
+	overflow-wrap: normal;
 }
 .llm-meta-conversation .message-content th,
 .llm-meta-conversation .message-content td {
@@ -3228,7 +3606,7 @@ var panel_default = `/* The chat panel's own styles. Extracted from _chat_panel.
 		/* Native drag-to-resize handle appears at bottom-right when
 		 * overflow != visible. overflow:hidden clips at widget edge; the
 		 * inner .lmw-messages has its own scroll so no content is lost. */
-		resize: both;
+		resize: none;
 		overflow: hidden;
 	}
 	#llm-meta-widget-chat.lmw-collapsed { display: none; }
@@ -3289,6 +3667,21 @@ var panel_default = `/* The chat panel's own styles. Extracted from _chat_panel.
 		min-height: 26px;
 	}
 	#llm-meta-widget-chat .lmw-title { font-weight: 600; color: #1f2937; }
+
+	/* Attribution back to the service that answers these chats. The header is
+	 * \`space-between\` with two children, so the title and the link travel
+	 * together in one group \u2014 otherwise the link lands in the middle of the
+	 * bar, visually detached from the title it qualifies. */
+	#llm-meta-widget-chat .lmw-title-group {
+		display: flex; align-items: baseline; gap: 6px; min-width: 0;
+	}
+	/* The wrapper is plain text; only the service NAME is clickable, so the
+	 * link target is the word a reader would aim at. */
+	#llm-meta-widget-chat .lmw-powered {
+		font-size: 11px; color: #6b7280; white-space: nowrap;
+	}
+	#llm-meta-widget-chat .lmw-powered a { color: inherit; text-decoration: underline; }
+	#llm-meta-widget-chat .lmw-powered a:hover { color: #2563eb; }
 
 	/* Level-1 model picker \u2014 compact <select> next to the title.
 	 * Populated by JS on widget open from GET /api/llms (anon path
@@ -3571,6 +3964,16 @@ var panel_default = `/* The chat panel's own styles. Extracted from _chat_panel.
 }
 #llm-meta-widget-chat .lmw-auth-message { margin: 0 0 12px; }
 #llm-meta-widget-chat .lmw-auth-link { color: #1d4ed8; text-decoration: underline; }
+
+/* A visible top-left grip works even when the panel is anchored bottom-right. */
+#llm-meta-widget-chat { min-width: min(24em, calc(100vw - 32px)); min-height: min(16em, calc(100vh - 32px)); }
+#llm-meta-widget-chat .lmw-header { padding-left: 24px; }
+#llm-meta-widget-chat .lmw-resize {
+  position: absolute; top: 4px; left: 4px; width: 24px; height: 24px;
+  padding: 0; border: 0; background: transparent; color: #64748b;
+  cursor: nwse-resize; touch-action: none; font-size: 20px;
+}
+#llm-meta-widget-chat .lmw-resize:focus-visible { outline: 2px solid #2563eb; border-radius: 3px; }
 `;
 
 // app/assets/javascripts/llm_meta_widget/element.js
@@ -3583,8 +3986,12 @@ var MARKUP = `
 </button>
 
 <div id="llm-meta-widget-chat" class="llm-meta-conversation">
-	<div class="lmw-header">
-		<span class="lmw-title">AI assistant</span>
+	<button type="button" class="lmw-resize" aria-label="Resize chat window" title="Drag to resize; arrow keys adjust size">\u2922</button>
+  <div class="lmw-header">
+		<span class="lmw-title-group">
+			<span class="lmw-title">AI assistant</span>
+			<span class="lmw-powered">(powered by <a href="https://chat.aibranch.org/" target="_blank" rel="noopener noreferrer">AIbranch</a>)</span>
+		</span>
 		<div class="lmw-header-right">
 			<button type="button" class="lmw-clear" title="Clear conversation">clear</button>
 			<button type="button" class="lmw-hide" title="Hide">\u2212</button>
@@ -3670,9 +4077,12 @@ function boot(cfg, host) {
   var API_KEY_UUID = cfg.API_KEY_UUID;
   var MODEL = cfg.MODEL;
   var ACTIONS_SCHEMA_ID = cfg.ACTIONS_SCHEMA_ID;
+  var PAGE_CARD_ID = cfg.PAGE_CARD_ID;
   var GREETING = cfg.GREETING;
   var STATE_GLOBAL = cfg.STATE_GLOBAL;
   var ACTIONS_GLOBAL = cfg.ACTIONS_GLOBAL;
+  var PROMPTS_GLOBAL = cfg.PROMPTS_GLOBAL;
+  var RESOURCES_GLOBAL = cfg.RESOURCES_GLOBAL;
   var REMOTE_TOOLS_SCHEMA_ID = cfg.REMOTE_TOOLS_SCHEMA_ID;
   var MAX_ROUNDS = cfg.MAX_ROUNDS;
   var WELL_KNOWN_URLS = cfg.WELL_KNOWN_URLS;
@@ -3684,6 +4094,16 @@ function boot(cfg, host) {
   var root = document.getElementById("llm-meta-widget-chat");
   var toggleBtn = document.getElementById("llm-meta-widget-toggle");
   var historyEl = root.querySelector(".lmw-messages");
+  var SCROLL_PIN_SLACK = 40;
+  function thousands(n) {
+    return (Math.round(n / 1e3) * 1e3).toLocaleString("en-US");
+  }
+  function atBottom() {
+    return historyEl.scrollHeight - historyEl.scrollTop - historyEl.clientHeight <= SCROLL_PIN_SLACK;
+  }
+  function pinToBottom() {
+    historyEl.scrollTop = historyEl.scrollHeight;
+  }
   var formEl = root.querySelector(".lmw-form");
   var inputEl = root.querySelector(".lmw-input");
   var clearBtn = root.querySelector(".lmw-clear");
@@ -3721,6 +4141,9 @@ function boot(cfg, host) {
     if (host.bearerToken) headers.Authorization = "Bearer " + host.bearerToken;
     return headers;
   }
+  root.querySelector(".lmw-title").textContent = cfg.CHAT_TITLE;
+  toggleBtn.setAttribute("aria-label", "Open " + cfg.CHAT_TITLE);
+  toggleBtn.setAttribute("title", "Open " + cfg.CHAT_TITLE);
   function updateAuthUi() {
     var locked = loginRequired();
     authNotice.hidden = !locked;
@@ -3788,6 +4211,49 @@ function boot(cfg, host) {
       });
     }
   }
+  var resizeHandle = root.querySelector(".lmw-resize");
+  var resizeStart = null;
+  function resizePanel(width, height, right, bottom) {
+    var maxWidth = Math.max(1, window.innerWidth - 32);
+    var maxHeight = Math.max(1, window.innerHeight - 32);
+    width = Math.min(maxWidth, Math.max(Math.min(336, maxWidth), width));
+    height = Math.min(maxHeight, Math.max(Math.min(240, maxHeight), height));
+    root.style.width = width + "px";
+    root.style.height = height + "px";
+    root.style.left = Math.max(16, right - width) + "px";
+    root.style.top = Math.max(16, bottom - height) + "px";
+    saveCurrentSize();
+  }
+  resizeHandle.addEventListener("pointerdown", function(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizeStart = { x: event.clientX, y: event.clientY, rect: root.getBoundingClientRect() };
+    resizeHandle.setPointerCapture(event.pointerId);
+  });
+  resizeHandle.addEventListener("pointermove", function(event) {
+    if (!resizeStart) return;
+    var rect = resizeStart.rect;
+    resizePanel(
+      rect.width + resizeStart.x - event.clientX,
+      rect.height + resizeStart.y - event.clientY,
+      rect.right,
+      rect.bottom
+    );
+  });
+  function finishResize() {
+    resizeStart = null;
+    saveCurrentSize();
+  }
+  resizeHandle.addEventListener("pointerup", finishResize);
+  resizeHandle.addEventListener("pointercancel", finishResize);
+  resizeHandle.addEventListener("lostpointercapture", finishResize);
+  resizeHandle.addEventListener("keydown", function(event) {
+    var delta = { ArrowLeft: [32, 0], ArrowRight: [-32, 0], ArrowUp: [0, 32], ArrowDown: [0, -32] }[event.key];
+    if (!delta) return;
+    event.preventDefault();
+    var rect = root.getBoundingClientRect();
+    resizePanel(rect.width + delta[0], rect.height + delta[1], rect.right, rect.bottom);
+  });
   function setOpen(open) {
     if (open) {
       applyStoredSize();
@@ -3851,18 +4317,46 @@ function boot(cfg, host) {
       model: MODEL
     });
   }
+  var lastPersist = 0;
+  function persistSoon() {
+    if (Date.now() - lastPersist < 400) return;
+    lastPersist = Date.now();
+    persistConversation();
+  }
+  var typedCards = document.querySelectorAll('script[type="' + PAGE_CARD_MEDIA_TYPE + '"]');
+  var pageCard;
+  if (typedCards.length) {
+    pageCard = mergeStaticPrimitivesCards(
+      Array.prototype.map.call(typedCards, function(el) {
+        return readStaticPrimitivesCard(el.textContent);
+      })
+    );
+  } else {
+    var pageCardEl = document.getElementById(PAGE_CARD_ID);
+    pageCard = readStaticPrimitivesCard(pageCardEl ? pageCardEl.textContent : null);
+  }
+  var handlers = pageHandlers({
+    card: pageCard,
+    scope: window,
+    legacy: { tools: ACTIONS_GLOBAL, prompts: PROMPTS_GLOBAL, resources: RESOURCES_GLOBAL }
+  });
   var actionsSchemaEl = document.getElementById(ACTIONS_SCHEMA_ID);
-  var localTools = actionsSchemaEl ? JSON.parse(actionsSchemaEl.textContent) : [];
+  var localTools = pageCard.tools.length ? pageCard.tools : actionsSchemaEl ? JSON.parse(actionsSchemaEl.textContent) : [];
   var remoteToolsEl = document.getElementById(REMOTE_TOOLS_SCHEMA_ID);
-  var remoteTools = remoteToolsEl ? JSON.parse(remoteToolsEl.textContent) : [];
+  var baselineRemoteTools = remoteToolsEl ? JSON.parse(remoteToolsEl.textContent) : [];
+  var remoteTools = baselineRemoteTools.slice();
   var hubMcpServers = [];
   var selectedToolIds = /* @__PURE__ */ new Set();
   var initializedToolServers = /* @__PURE__ */ new Set();
+  baselineRemoteTools.forEach(function(t) {
+    selectedToolIds.add(t.id);
+  });
   function anyAllowedByAllowlist(name, allowlist) {
     return allowlist === null || allowlist.indexOf(name) >= 0;
   }
   function refreshRemoteToolsFromPicker() {
     var flat = [];
+    var seen = {};
     hubMcpServers.forEach(function(s) {
       var serverKey = s.uuid || s.name;
       if (!initializedToolServers.has(serverKey)) {
@@ -3875,6 +4369,7 @@ function boot(cfg, host) {
       }
       (s.tools || []).forEach(function(t) {
         if (!selectedToolIds.has(t.id)) return;
+        seen[t.id] = true;
         flat.push({
           id: t.id,
           name: t.name,
@@ -3882,6 +4377,12 @@ function boot(cfg, host) {
           input_schema: t.input_schema
         });
       });
+    });
+    baselineRemoteTools.forEach(function(t) {
+      if (!seen[t.id] && selectedToolIds.has(t.id)) {
+        flat.push(t);
+        seen[t.id] = true;
+      }
     });
     remoteTools = flat;
     if (toolsCountEl) {
@@ -3933,10 +4434,13 @@ function boot(cfg, host) {
       tasks.push(fetch(LLM_BASE + "/api/llms", { headers: hubHeaders() }).then(function(r) {
         return r.ok ? r.json() : { llms: [] };
       }).then(function(payload) {
+        llmsPayload = payload;
+        modelWindow = modelWindowFrom(payload, MODEL);
         var flat = [];
         (payload.llms || []).forEach(function(llm) {
           if (llm.family !== "ollama") return;
           (llm.available_models || []).forEach(function(m) {
+            if (m.supports_tools === false) return;
             if (anyAllowedByAllowlist(m.value, MODEL_ALLOWLIST)) {
               flat.push({ value: m.value, label: m.label });
             }
@@ -4061,6 +4565,7 @@ function boot(cfg, host) {
   if (modelPicker) {
     modelPicker.addEventListener("change", function() {
       MODEL = modelPicker.value;
+      modelWindow = modelWindowFrom(llmsPayload, MODEL);
     });
   }
   if (toolsPicker) {
@@ -4082,12 +4587,36 @@ function boot(cfg, host) {
     }
   }
   var hostWideTools = [];
-  var hostWidePrompts = [];
+  var hostWidePrompts = pageCard.prompts.map(function(p) {
+    return Object.assign({}, p, { source: "page" });
+  });
+  var modelWindow = null;
+  var llmsPayload = null;
   var resourceContext = null;
   var resourcePlan = null;
-  var RESOURCE_BUDGET_BYTES = 8e3;
+  function resourceBudget() {
+    return resourceBudgetBytes(modelWindow);
+  }
+  var pageResourcePlans = null;
+  var pageResourcePlansBudget = null;
+  function pageResourcePlansNow() {
+    var budget = resourceBudget();
+    if (pageResourcePlans === null || budget !== pageResourcePlansBudget) {
+      pageResourcePlansBudget = budget;
+      pageResourcePlans = planPageResources({
+        entries: pageCard.resources,
+        budgetBytes: budget,
+        onSkip: function(plan) {
+          console.info("[llm_meta_widget] not attaching " + plan.uri + " (" + plan.reason + ", size=" + plan.size + ")");
+        }
+      });
+    }
+    return pageResourcePlans;
+  }
+  var pageResourceCache = {};
   restoreConversation();
   updateExchangeUi();
+  var promptsEl = root.querySelector(".lmw-prompts");
   var wellKnownReady = (async function() {
     var urls = WELL_KNOWN_URLS === null ? [window.location.origin + "/.well-known/mcp.json"] : WELL_KNOWN_URLS;
     for (var i = 0; i < urls.length; i++) {
@@ -4105,11 +4634,11 @@ function boot(cfg, host) {
       if (resourcePlan === null) {
         var loaded = await loadHostResource({
           endpoint,
-          budgetBytes: RESOURCE_BUDGET_BYTES,
+          budgetBytes: resourceBudget(),
           list: listMcpResources,
           read: readMcpResource,
           onSkip: function(plan) {
-            console.info("[llm_meta_widget] not attaching " + plan.uri + " (" + plan.reason + ", sizeBytes=" + plan.sizeBytes + ")");
+            console.info("[llm_meta_widget] not attaching " + plan.uri + " (" + plan.reason + ", size=" + plan.size + ")");
           }
         });
         if (loaded && loaded.plan && loaded.plan.fetch) {
@@ -4121,7 +4650,13 @@ function boot(cfg, host) {
     renderPromptButtons();
     renderWelcome();
   })();
-  var promptsEl = root.querySelector(".lmw-prompts");
+  function argState() {
+    return promptArgState({
+      entries: pageCard.resources,
+      resources: handlers.resources,
+      state: window[STATE_GLOBAL] || {}
+    });
+  }
   function renderPromptButtons() {
     if (!promptsEl) return;
     promptsEl.textContent = "";
@@ -4161,7 +4696,7 @@ function boot(cfg, host) {
       });
       if (body.parentNode) body.parentNode.appendChild(row);
     });
-    historyEl.scrollTop = historyEl.scrollHeight;
+    pinToBottom();
     return true;
   }
   function renderWelcome() {
@@ -4173,7 +4708,7 @@ function boot(cfg, host) {
     hello.className = "lmw-welcome-hello";
     hello.textContent = GREETING || "Hi \u2014 I can work this page for you. Tell me what you need in your own words" + (hostWidePrompts.length ? ", or start with one of these:" : ".");
     box.appendChild(hello);
-    var state = window[STATE_GLOBAL] || {};
+    var state = argState();
     hostWidePrompts.forEach(function(prompt) {
       var props = promptButtonProps(prompt);
       var card = document.createElement("div");
@@ -4209,7 +4744,7 @@ function boot(cfg, host) {
     historyEl.appendChild(box);
   }
   async function runPromptTemplate(prompt, button) {
-    var resolved = resolvePromptArguments(prompt, window[STATE_GLOBAL] || {});
+    var resolved = resolvePromptArguments(prompt, argState());
     var args = resolved.args;
     var missing = resolved.missing;
     if (missing.length) {
@@ -4218,7 +4753,7 @@ function boot(cfg, host) {
     }
     button.disabled = true;
     try {
-      var result = await getMcpPrompt({ endpoint: prompt.endpoint, name: prompt.name, args });
+      var result = prompt.source === "page" ? await getPagePrompt({ name: prompt.name, args, prompts: handlers.prompts }) : await getMcpPrompt({ endpoint: prompt.endpoint, name: prompt.name, args });
       var text = promptMessagesToText(result);
       if (!text) {
         appendTurn("error", "The server returned an empty prompt.");
@@ -4236,6 +4771,7 @@ function boot(cfg, host) {
   }
   var pendingTurnLabel = null;
   function appendTurn(role, text, turnLabel) {
+    var following = atBottom();
     var welcome = historyEl.querySelector(".lmw-welcome");
     if (welcome) welcome.remove();
     var div = document.createElement("div");
@@ -4262,7 +4798,7 @@ function boot(cfg, host) {
     div.appendChild(document.createTextNode(" "));
     div.appendChild(body);
     historyEl.appendChild(div);
-    historyEl.scrollTop = historyEl.scrollHeight;
+    if (role === "user" || following) pinToBottom();
     body.roleLabel = label;
     return body;
   }
@@ -4271,6 +4807,17 @@ function boot(cfg, host) {
       el.innerHTML = marked.parse(mdText);
     } catch (e) {
       el.textContent = mdText;
+    }
+    wrapTablesForScrolling(el);
+  }
+  function wrapTablesForScrolling(el) {
+    var tables = el.querySelectorAll("table");
+    for (var i = 0; i < tables.length; i++) {
+      var table = tables[i];
+      var wrap = document.createElement("div");
+      wrap.className = "lmw-table-scroll";
+      table.parentNode.insertBefore(wrap, table);
+      wrap.appendChild(table);
     }
   }
   function roleLabel(role) {
@@ -4317,6 +4864,7 @@ function boot(cfg, host) {
     return liveChips;
   }
   function announceToolCall(toolCall) {
+    var following = atBottom();
     var row = chipRow();
     if (!row) return;
     var chip = document.createElement("span");
@@ -4325,7 +4873,7 @@ function boot(cfg, host) {
     chip.dataset.tool = toolCall.name;
     row.appendChild(chip);
     pendingChips.push(chip);
-    historyEl.scrollTop = historyEl.scrollHeight;
+    if (following) pinToBottom();
   }
   function resolveToolCall(outcome) {
     var idx = pendingChips.findIndex(function(c) {
@@ -4341,6 +4889,7 @@ function boot(cfg, host) {
   var currentThinkingBody = null;
   var activeAssistantBody = null;
   function ensureThinkingBlock() {
+    var following = atBottom();
     if (currentThinkingBody) return currentThinkingBody;
     var details = document.createElement("details");
     details.className = "message-thinking";
@@ -4365,32 +4914,79 @@ function boot(cfg, host) {
     } else {
       historyEl.appendChild(details);
     }
-    historyEl.scrollTop = historyEl.scrollHeight;
+    if (following) pinToBottom();
     currentThinkingBlock = details;
     currentThinkingBody = body;
     return body;
   }
   function collapseThinkingBlock() {
-    if (currentThinkingBlock) {
-      currentThinkingBlock.classList.remove("thinking-active");
-      currentThinkingBlock.open = false;
-      var summary = currentThinkingBlock.querySelector("summary");
-      if (summary) summary.textContent = "\u{1F914} thinking (finished)";
-    }
+    var block2 = currentThinkingBlock;
     currentThinkingBlock = null;
     currentThinkingBody = null;
+    if (!block2) return;
+    block2.classList.remove("thinking-active");
+    var summary = block2.querySelector("summary");
+    if (summary) summary.textContent = "\u{1F914} thinking (finished)";
+    var body = block2.querySelector(".message-thinking-content");
+    if (body) {
+      body.style.overflow = "visible";
+      body.style.maxHeight = "none";
+    }
+    if (typeof requestAnimationFrame !== "function") {
+      block2.open = false;
+      return;
+    }
+    requestAnimationFrame(function() {
+      requestAnimationFrame(function() {
+        block2.open = false;
+      });
+    });
   }
-  function currentPageState() {
-    var reader = window[STATE_GLOBAL] || {};
-    var out = {};
-    Object.keys(reader).forEach(function(k) {
-      try {
-        out[k] = reader[k]();
-      } catch (e) {
-        out[k] = "<error: " + e.message + ">";
+  function stateReaders() {
+    var declared = window[STATE_GLOBAL] || {};
+    var out = [];
+    Object.keys(declared).forEach(function(key) {
+      var entry = declared[key];
+      var hasDescription = entry && typeof entry.description === "string" && entry.description.trim() !== "";
+      var hasRead = entry && typeof entry.read === "function";
+      if (!hasDescription || !hasRead) {
+        console.error(
+          "[llm-meta-widget] " + STATE_GLOBAL + "." + key + ' is not a valid state reader. Expected { description: "what this value is", read: function () { \u2026 } }, got ' + (typeof entry === "function" ? "a bare function (the 0.7 form, removed in 0.8)" : describeValue(entry)) + ". Skipping " + key + "."
+        );
+        return;
       }
+      out.push({ key, description: entry.description, read: entry.read });
     });
     return out;
+  }
+  function describeValue(v) {
+    if (v === null) return "null";
+    if (Array.isArray(v)) return "an array";
+    if (typeof v === "object") {
+      var missing = [];
+      if (typeof v.description !== "string" || v.description.trim() === "") missing.push("description");
+      if (typeof v.read !== "function") missing.push("read");
+      return "an object missing " + missing.join(" and ");
+    }
+    return typeof v;
+  }
+  function currentPageState() {
+    return stateReaders().map(function(r) {
+      var value;
+      try {
+        value = r.read();
+      } catch (e) {
+        value = "<error: " + e.message + ">";
+      }
+      return { key: r.key, description: r.description, value };
+    });
+  }
+  function pageStateLines() {
+    var readers = currentPageState();
+    if (readers.length === 0) return ["(this page declares no state)"];
+    return readers.map(function(r) {
+      return "- " + r.key + " (" + r.description + "): " + JSON.stringify(r.value);
+    });
   }
   function currentSystemPrompt(resourceLines) {
     return [
@@ -4402,9 +4998,8 @@ function boot(cfg, host) {
       "3. After a tool returns a result, use it: either take the next step the task needs, or \u2014 if the task is done \u2014 answer in plain text. Do not stop silently after a tool call.",
       "4. NEVER repeat a call you have already made with the same or similar arguments \u2014 its result is already in the conversation history.",
       "",
-      "Current page state:",
-      JSON.stringify(currentPageState(), null, 2)
-    ].concat(resourceLines || []).join("\n");
+      "Current page state:"
+    ].concat(pageStateLines()).concat(resourceLines || []).join("\n");
   }
   async function resourceLinesForThisTurn() {
     var turn = await resourceLinesForTurn({
@@ -4412,10 +5007,17 @@ function boot(cfg, host) {
       cached: resourceContext,
       endpoint: resourcePlan && resourcePlan.endpoint,
       read: readMcpResource,
-      budgetBytes: RESOURCE_BUDGET_BYTES
+      budgetBytes: resourceBudget()
     });
     resourceContext = turn.cached;
-    return turn.lines;
+    var page = await pageResourceLinesForTurn({
+      plans: pageResourcePlansNow(),
+      resources: handlers.resources,
+      budgetBytes: resourceBudget(),
+      cache: pageResourceCache
+    });
+    pageResourceCache = page.cache;
+    return turn.lines.concat(page.lines);
   }
   var currentAbort = null;
   clearBtn.addEventListener("click", function() {
@@ -4473,6 +5075,9 @@ function boot(cfg, host) {
       var messages = [{ role: "system", content: currentSystemPrompt(resourceLines) }].concat(priorConversation.map(function(t) {
         return { role: t.role, content: t.content };
       })).concat([{ role: "user", content: userText }]);
+      var liveTurn = { role: "assistant", content: "", tools: [] };
+      conversation.push(liveTurn);
+      persistConversation();
       var result = await runChatLoop({
         baseUrl: LLM_BASE,
         toolHubUrl: TOOL_HUB_BASE,
@@ -4483,17 +5088,34 @@ function boot(cfg, host) {
         localTools,
         remoteTools,
         hostWideTools,
-        aiActions: window[ACTIONS_GLOBAL] || {},
+        aiActions: handlers.tools,
         maxRounds: MAX_ROUNDS,
+        contextWindow: modelWindow,
         provider: LLM_PROVIDER === "ollama" ? "ollama" : "hub",
         signal: currentAbort.signal,
+        onContextTruncated: function(list2) {
+          var cut = list2[list2.length - 1] || {};
+          appendTurn("system", "Shortened an oversized " + (cut.name || "tool") + " result to fit the context: " + thousands(cut.fromTokens || 0) + " tokens, where one result may use at most " + thousands(cut.toTokens || 0) + ". Ask again with a narrower question for the complete result.");
+        },
+        onContextEvicted: function(info) {
+          var dropped = info.dropped || [];
+          var names = dropped.map(function(d) {
+            return d.name || "a tool";
+          });
+          var what = names.length === 1 ? "the earliest tool result (" + names[0] + ")" : "the " + names.length + " earliest tool results (" + names.join(", ") + ")";
+          var sizes = info.needed && info.window ? " About " + thousands(info.needed) + " tokens were needed and " + thousands(info.window) + " fit in " + MODEL + "'s context." : "";
+          appendTurn("system", "Dropped " + what + " to make room." + sizes + " Ask again, or narrow the question, for an answer based on complete tool results.");
+        },
         onToolCall: function(toolCall) {
           markWorking(assistantBody.roleLabel, "\u30C4\u30FC\u30EB\u3092\u5B9F\u884C\u3057\u3066\u3044\u307E\u3059\u2026");
           announceToolCall(toolCall);
+          persistConversation();
         },
         onToolDispatched: function(outcome) {
-          resolveToolCall(outcome);
           markWorking(assistantBody.roleLabel, "\u30C4\u30FC\u30EB\u7D50\u679C\u3092\u3082\u3068\u306B\u56DE\u7B54\u3092\u6E96\u5099\u3057\u3066\u3044\u307E\u3059\u2026");
+          resolveToolCall(outcome);
+          liveTurn.tools = liveTurn.tools.concat([outcome.error ? { name: outcome.toolCall.name, error: true } : { name: outcome.toolCall.name }]);
+          persistConversation();
         },
         onPhase: function(name) {
           if (name === "responding") markWorking(assistantBody.roleLabel, "\u56DE\u7B54\u3092\u751F\u6210\u3057\u3066\u3044\u307E\u3059\u2026");
@@ -4506,27 +5128,26 @@ function boot(cfg, host) {
           collapseThinkingBlock();
         },
         onThinkingDelta: function(delta) {
+          var following = atBottom();
           var body = ensureThinkingBlock();
           body.appendChild(document.createTextNode(delta));
           body.scrollTop = body.scrollHeight;
-          historyEl.scrollTop = historyEl.scrollHeight;
+          if (following) pinToBottom();
         },
         onTextDelta: function(delta) {
-          markWorking(assistantBody.roleLabel, "\u56DE\u7B54\u3092\u751F\u6210\u3057\u3066\u3044\u307E\u3059\u2026");
+          var following = atBottom();
+          markDone(assistantBody.roleLabel);
           collapseThinkingBlock();
           assistantMarkdown += delta;
           renderMarkdownInto(assistantBody, assistantMarkdown);
-          historyEl.scrollTop = historyEl.scrollHeight;
+          liveTurn.content = assistantMarkdown;
+          persistSoon();
+          if (following) pinToBottom();
         }
       });
-      conversation.push({
-        role: "assistant",
-        content: result.content,
-        // Kept so a restored transcript still shows what ran — losing
-        // that record is what made a navigating action unbearable.
-        tools: result.dispatched.map(function(d) {
-          return d.error ? { name: d.toolCall.name, error: true } : { name: d.toolCall.name };
-        })
+      liveTurn.content = result.content;
+      liveTurn.tools = result.dispatched.map(function(d) {
+        return d.error ? { name: d.toolCall.name, error: true } : { name: d.toolCall.name };
       });
       persistConversation();
       result.dispatched.forEach(function(d) {
@@ -4543,17 +5164,18 @@ function boot(cfg, host) {
         }).join(", "));
       }
       if (result.stopped_reason && result.stopped_reason !== "duplicate_tool_calls") {
-        appendTurn(
-          "system",
-          "The assistant reached its tool-use limit before finishing. The reply above may be incomplete \u2014 try asking again or rephrasing."
-        );
+        appendTurn("system", limitStopMessage({ code: "max_rounds" }, {
+          lang: host.closest("[lang]")?.lang || document.documentElement.lang || "en",
+          rounds: MAX_ROUNDS
+        }));
       }
     } catch (err) {
       if (cfg.AUTH_REQUIRED && authenticationFailed(err)) host.bearerToken = null;
       if (err.name === "AbortError" || /aborted/i.test(err.message || "")) {
         appendTurn("system", "\u23F9 stopped");
       } else {
-        appendTurn("error", err.message);
+        var limitMessage = limitStopMessage(err, { lang: host.closest("[lang]")?.lang || document.documentElement.lang || "en" });
+        appendTurn(limitMessage ? "system" : "error", limitMessage || err.message);
       }
     } finally {
       markDone(assistantBody.roleLabel);
