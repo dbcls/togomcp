@@ -701,6 +701,11 @@ class TestRouteSuggestions:
 # ---------------------------------------------------------------------------
 
 
+def _lookup_rows(*pairs: tuple[str, str]) -> list[dict]:
+    """`/lookup/id` entries in the 2026-10-21 shape: which dataset, which table."""
+    return [{"dataset": dataset, "table": table} for dataset, table in pairs]
+
+
 class TestIdentifyIdVerify:
     @pytest.mark.asyncio
     async def test_attested_candidates_sort_first(self) -> None:
@@ -709,7 +714,9 @@ class TestIdentifyIdVerify:
         with respx.mock(using="httpx") as router:
             _mock_dataset_config(router)
             router.get(f"{_TOGOID}/lookup/id/672").mock(
-                return_value=httpx.Response(200, json=["ncbigene-uniprot", "hgnc-ncbigene"])
+                return_value=httpx.Response(200, json=_lookup_rows(
+                    ("ncbigene", "ncbigene-uniprot"), ("ncbigene", "hgnc-ncbigene"),
+                ))
             )
             result = json.loads(await identifyId(ids="672", verify=True))
         by_key = {c["dataset"]: c for c in result[0]["candidates"]}
@@ -721,43 +728,57 @@ class TestIdentifyIdVerify:
         assert result[0]["candidates"][-1]["attested"] == "no"
 
     @pytest.mark.asyncio
-    async def test_lookup_uses_the_captured_local_id_not_the_curie(self) -> None:
-        """`/lookup/id/CHEBI:15377` returns `[]`; the tables store `15377`."""
+    async def test_lookup_sends_the_id_as_written(self) -> None:
+        """Since 2026-10-21 TogoID resolves the prefix itself:
+        `/lookup/id/GO:0005515` hits and the bare `0005515` is `[]`."""
         with respx.mock(using="httpx") as router:
             _mock_dataset_config(router)
-            lookup = router.get(f"{_TOGOID}/lookup/id/15377").mock(
-                return_value=httpx.Response(200, json=["chebi-inchi_key"])
+            lookup = router.get(f"{_TOGOID}/lookup/id/CHEBI%3A15377").mock(
+                return_value=httpx.Response(200, json=_lookup_rows(("chebi", "chebi-inchi_key")))
             )
             result = json.loads(await identifyId(ids="CHEBI:15377", verify=True))
         assert lookup.called
         assert result[0]["candidates"][0]["attested"] == "yes"
 
     @pytest.mark.asyncio
-    async def test_a_table_shared_with_another_candidate_is_ambiguous(self) -> None:
-        """Live: `P04637` is in uniprot-insdc_cds, which named insdc_cds as a
-        holder of a UniProt accession."""
+    async def test_the_holding_side_decides_not_the_table_name(self) -> None:
+        """Live: `P04637` is in uniprot-insdc_cds, but on the uniprot side.
+        Under the old string-only shape that half-attested insdc_cds."""
         with respx.mock(using="httpx") as router:
             _mock_dataset_config(router)
             router.get(f"{_TOGOID}/lookup/id/P04637").mock(
-                return_value=httpx.Response(
-                    200, json=["uniprot-insdc_cds", "uniprot-pdb", "hgnc-uniprot"]
-                )
+                return_value=httpx.Response(200, json=_lookup_rows(
+                    ("uniprot", "uniprot-insdc_cds"), ("uniprot", "uniprot-pdb"),
+                    ("uniprot", "hgnc-uniprot"),
+                ))
             )
             result = json.loads(await identifyId(ids="P04637", verify=True))
         by_key = {c["dataset"]: c for c in result[0]["candidates"]}
         assert by_key["uniprot"]["attested"] == "yes"
-        assert by_key["insdc_cds"]["attested"] == "ambiguous"
+        assert by_key["uniprot"]["pairs_with"] == ["hgnc", "insdc_cds", "pdb"]
+        assert by_key["insdc_cds"]["attested"] == "no"
         assert by_key["hgnc_symbol"]["attested"] == "no"
-        assert [c["attested"] for c in result[0]["candidates"]][:2] == ["yes", "ambiguous"]
+        assert result[0]["candidates"][0]["dataset"] == "uniprot"
 
     @pytest.mark.asyncio
-    async def test_one_lookup_per_distinct_local_id(self) -> None:
+    async def test_a_404_means_found_nowhere(self) -> None:
+        with respx.mock(using="httpx") as router:
+            _mock_dataset_config(router)
+            router.get(f"{_TOGOID}/lookup/id/672").mock(
+                return_value=httpx.Response(404, json={"message": "not found"})
+            )
+            result = json.loads(await identifyId(ids="672", verify=True))
+        assert all(c["attested"] == "no" for c in result[0]["candidates"])
+        assert "verify_note" not in result[0]
+
+    @pytest.mark.asyncio
+    async def test_one_lookup_per_distinct_id(self) -> None:
         with respx.mock(using="httpx") as router:
             _mock_dataset_config(router)
             lookup = router.get(f"{_TOGOID}/lookup/id/15377").mock(
                 return_value=httpx.Response(200, json=[])
             )
-            await identifyId(ids=["CHEBI:15377", "15377"], verify=True)
+            await identifyId(ids=["15377", "15377"], verify=True)
         assert lookup.call_count == 1
 
     @pytest.mark.asyncio
@@ -789,10 +810,3 @@ class TestIdentifyIdVerify:
             result = json.loads(await identifyId(ids="672"))
         assert "attested" not in result[0]["candidates"][0]
         assert "verify_note" not in result[0]
-
-    def test_local_id_takes_the_participating_alternation_group(self) -> None:
-        matcher = re.compile(_to_python_regex(_UNIPROT_REGEX))
-        assert togoid._local_id(matcher.fullmatch("Q9NYF8"), "Q9NYF8") == "Q9NYF8"
-        matcher = re.compile(_to_python_regex(_INSDC_CDS_REGEX))
-        hit = matcher.fullmatch("insdc.cds:AEK21611.1")
-        assert togoid._local_id(hit, "insdc.cds:AEK21611.1") == "AEK21611"

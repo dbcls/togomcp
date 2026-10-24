@@ -13,6 +13,24 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.3] - 2026-10-24
+
+A TogoID fix. PATCH: no tool or parameter changed; `togoid_identifyId(verify=True)` returns what it
+already promised again, and its `attested` field no longer takes the value "ambiguous".
+
+### Fixed
+
+- **`togoid_identifyId(verify=True)` said "no" for every candidate.** TogoID reworked `/lookup/id`
+  on 2026-10-21 (togoid/togoid-config#396, closed): each entry is now `{"dataset", "table"}` instead
+  of a bare table name, and it wants the ID as written (`GO:0005515`; the bare `0005515` is now
+  found nowhere). The wrapper read only strings and sent the prefix-stripped accession, so every
+  candidate came back `attested: "no"`, `P04637` → uniprot included, and the ranking it is meant to
+  sharpen fell back to shape alone. It now sends the token unchanged and reads the holding side
+  from `dataset`, which also retires `attested: "ambiguous"`: the old shape could not say which side
+  of `uniprot-insdc_cds` held `P04637`, the new one says uniprot. A 404 (what an unresolvable form
+  gets) counts as found nowhere instead of raising. The docstring no longer claims a full IRI helps;
+  none matches a dataset pattern.
+
 ## [2.27.2] - 2026-10-24
 
 Trial-chat widget update. PATCH: no tool, parameter or return shape changed. The served intro pages
@@ -3536,6 +3554,7 @@ _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
 [Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[2.27.3]: https://github.com/dbcls/togomcp/compare/v2.27.2...v2.27.3
 [2.27.2]: https://github.com/dbcls/togomcp/compare/v2.27.1...v2.27.2
 [2.27.1]: https://github.com/dbcls/togomcp/compare/v2.27.0...v2.27.1
 [2.27.0]: https://github.com/dbcls/togomcp/compare/v2.26.2...v2.27.0
