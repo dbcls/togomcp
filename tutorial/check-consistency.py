@@ -38,6 +38,8 @@ TARGETS = [
     "handbook/99-appendix-local-install-en.md",
     "handson/exercises-en.md", "handson/solutions-en.md", "public/00-intro-en.md",
     "instructor/script-ja.md", "instructor/fallback/transcripts-ja.md",
+    "instructor/fallback/transcripts-en.md", "instructor/fallback/README.md",
+    "instructor/fallback/README-en.md",
     "slides/togomcp-tutorial-ja.html", "slides/togomcp-tutorial-en.html",
 ]
 
@@ -55,7 +57,7 @@ FACTS = [
      ["8-21", "8 月", "8月", "2026-08", "August"]),
     # 1,822 は「3週間前は 1,822 だった」と履歴として意図的に書いてある箇所がある
     ("PDB 手法別の合計",          r"1,851",       r"1,822(?![\d,])|1,832",
-     ["3 週間前", "週間前の測定", "Three weeks earlier", "three weeks before", "8-21", "前日の採取", "8 月", "2026-08", "August"]),
+     ["3 週間前", "週間前の測定", "Three weeks earlier", "three weeks before", "8-21", "前日の採取", "the day before", "8 月", "2026-08", "August"]),
     ("PDB クライオEM の件数",     r"(?<![\d,])25(?![\d,])", None, []),
     ("ライソゾーム内腔酵素",       r"(?<![\d,])52(?![\d,])", None, []),
     ("EC番号重複の COUNT(*)",     r"(?<![\d,])62(?![\d,])", r"(?<![\d,])195(?![\d,])", []),
@@ -74,7 +76,9 @@ FACTS = [
     ("データベース数",            r"(?<![\d,])47(?![\d,])",
      r"約 ?37|~37|37 ?(データベース|databases|DB)|(?<![\d,])45 ?の? ?(データベース|databases|DB|生命科学|life-science)",
      # 「10 エンドポイント」「呼出」はフォールバック記録（8 月の実行ログそのもの）の行
-     ["8 月", "8月", "2026-08", "August", "37 →", "45 →", "10 エンドポイント", "呼出"]),
+     # 英語版フォールバックでは "10 endpoints" と付録の表の " calls / 37"
+     ["8 月", "8月", "2026-08", "August", "37 →", "45 →", "10 エンドポイント", "呼出",
+      "10 endpoints", " calls / 37"]),
 ]
 
 # 定義なしで使ってはいけない用語（編集方針）。

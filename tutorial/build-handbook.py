@@ -9,6 +9,7 @@ Markdown を、外部依存ゼロの単一 HTML にまとめる。
 出力:
   handbook/togomcp-handbook-ja.html        講習会用の手順書（全13章）
   instructor/fallback/fallback-ja.html     講師用のフォールバック（障害時に投影）
+  instructor/fallback/fallback-en.html     同・英語版
   ../togo_mcp/data/docs/tutorial/*.html    ★公開版（サーバが配信する）
                                            リポジトリ外で実行した場合は public/ に出力
 
@@ -104,11 +105,16 @@ LINKMAP["handson/exercises-en.md"] = "#ex"
 LINKMAP["exercises-en.md"] = "#ex"
 LINKMAP["handson/solutions-en.md"] = "#sol"
 LINKMAP["solutions-en.md"] = "#sol"
+LINKMAP["README-en.md#fb"] = "#fb0"
 
 # 講師用フォールバック文書
 FALLBACK_CHAPTERS = [
     ("instructor/fallback/README.md",        "使い方", "障害時の差し替え", "fb0"),
     ("instructor/fallback/transcripts-ja.md", "記録",  "デモ実行記録",     "fb1"),
+]
+FALLBACK_CHAPTERS_EN = [
+    ("instructor/fallback/README-en.md",      "Usage",  "Switching on failure", "fb0"),
+    ("instructor/fallback/transcripts-en.md", "Record", "Demo transcripts",     "fb1"),
 ]
 
 # 公開版（自習用）— 講習会向けの記述を外し、front matter を差し替える
@@ -123,7 +129,12 @@ DOCS = [
     (ROOT / "handbook" / "togomcp-handbook-ja.html",
      "TogoMCP チュートリアル", "手順書 ／ 2026-10 版", CHAPTERS, "workshop", "", "ja"),
     (ROOT / "instructor" / "fallback" / "fallback-ja.html",
-     "フォールバック素材", "講師用 ／ 採取 2026-08-21（一部 2026-10-14 再測定）", FALLBACK_CHAPTERS, "workshop", "", "ja"),
+     "フォールバック素材", "講師用 ／ 採取 2026-08-21（2026-10-20 再測定の注記つき）", FALLBACK_CHAPTERS, "workshop",
+     '<a class="lang" href="fallback-en.html">English</a>', "ja"),
+    (ROOT / "instructor" / "fallback" / "fallback-en.html",
+     "Fallback material", "For instructors / recorded 2026-08-21 (with 2026-10-20 re-measurement notes)",
+     FALLBACK_CHAPTERS_EN, "workshop",
+     '<a class="lang" href="fallback-ja.html">日本語</a>', "en"),
     (SERVE_DIR / "tutorial-ja.html",
      "TogoMCP チュートリアル", "自習用 ／ 2026-10 版", PUBLIC_JA_CHAPTERS, "public",
      '<a class="lang" href="/tutorial">English</a>', "ja"),

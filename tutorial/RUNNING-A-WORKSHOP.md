@@ -87,7 +87,7 @@ M4 の失敗デモが中心で、そこだけは何があっても削らない�
 
 **ネットワーク障害でデモが全滅する事態は現実に起こります。** 2026 年 8 月には rdfportal.org の全 SPARQL エンドポイントが不通になりました。
 
-[`instructor/fallback/fallback-ja.html`](instructor/fallback/fallback-ja.html) に、**全 9 デモの実行記録**が入っています。プロンプト、ツール呼び出しの順序と引数、実行された SPARQL の全文、返ってきた実データ、回答文。
+[`instructor/fallback/fallback-ja.html`](instructor/fallback/fallback-ja.html)（英語版は [`fallback-en.html`](instructor/fallback/fallback-en.html)）に、**全 9 デモの実行記録**が入っています。プロンプト、ツール呼び出しの順序と引数、実行された SPARQL の全文、返ってきた実データ、回答文。
 
 **開演前にブラウザの別タブで開いておいてください。** 障害が起きてから探すのでは間に合いません。
 
