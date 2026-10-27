@@ -13,6 +13,10 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `9b8477a` (#275, Renovate).
+
 ## [2.27.3] - 2026-10-24
 
 A TogoID fix. PATCH: no tool or parameter changed; `togoid_identifyId(verify=True)` returns what it
