@@ -13,6 +13,52 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.4] - 2026-10-28
+
+MIE corrections after upstream reloads. PATCH: no tool, parameter or return shape changed. Six MIE
+files (`clinvar`, `medgen`, `ncbigene`, `pubtator`, `pubmed`, `togovar`) now match what their
+endpoints return, so an agent reading them is no longer steered by figures, coverage estimates and
+co-tenancy claims that the 2026-10 reloads made wrong. Two TogoVar defects found on the way were
+reported upstream (togovar/togovar#529, #530); the MIE works around both.
+
+### Changed
+
+- Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `9b8477a` (#275, Renovate).
+- Tutorial instructor material: an English fallback set (`tutorial/instructor/fallback/`: README,
+  transcripts and built page), and the Japanese transcripts annotated with the 2026-10-20
+  re-measurements. The served tutorial pages change only in a fixed emphasis bug.
+
+### Fixed
+
+- **Six MIE files re-measured after upstream reloads** (#276): `clinvar`, `medgen`, `ncbigene`,
+  `pubtator`, `pubmed`, `togovar`. ClinVar grew 22% (4.37M variants), NCBI Gene 27% (73.4M genes), so
+  every figure in those files was re-run, not only the 12 examples and 6 claims the sweep flagged.
+  Four changes are about meaning, not size. The unpinned ClinVar aggregate still undercounts, but by
+  ×4.8 now, not ×24.8, and the prose now warns that the factor moves between reloads. KRAS somatic
+  impact is no longer sparse (11 of 21 rows). MedGen no longer links BRCA1 to C0346153. TogoVar puts a
+  bare `"."` `dcterms:identifier` on 16.2M variants. Labels that were wrong are corrected too: MedGen's
+  predicate roster gave triple counts as concept counts, ClinVar's `cvo:hgnc_id` is on 31% of gene
+  IRIs (not ~100%), and the PubMed STRSTARTS topic count takes 260s cold, past `run_sparql`'s 90s
+  timeout.
+- **The same six files, finished against the `mie-generator` skill.** The first pass skipped several of the
+  skill's revision steps, and running them found real problems. TogoVar has a new graph,
+  `<…/variant/clinvar>`, that re-declares 4.1M ClinVar variants on the same IRIs. An unpinned
+  four-predicate join on rs671 returns 16 rows instead of 1. That replaces the file's stale `probed_clean`
+  with a `co_hosted` entry and a checked `union_inflation` gotcha (every example already pins its graph).
+  Three coverage figures were never measured and turned out wrong. MedGen's MeSH xref coverage is 7.2%,
+  not "~80%", which limits the MedGen→PubTator bridge, so `xdb_pubtator` now carries a checked trap
+  saying so. PubMed abstracts are on 71.4% of articles, not "~85%". PubTator Disease/Gene annotations
+  carry no `dcterms:source` at all, not "~1.6%". Eight claims that had no check now have one, each
+  measured before it was written. TogoVar's optimizer estimates `tgvo:hgvsc` at ~3,700 triples, so even a one-variant hgvsc
+  query starts from the whole predicate and times out. The new example `variant_hgvsc` shows the fix
+  (`DEFINE sql:select-option "order"`, 0.2s), with a check on that fixed form. All six graph lists and all co-tenancy probes
+  were re-run on 2026-10-27 (60 graphs on the NCBI endpoint, 17 on TogoVar; MeSH gained a `mesh/2026`
+  snapshot).
+- **The weekly MIE drift issue now shows claim drift.** The workflow kept only the last 80 lines of
+  the claims checker's output, which held only the non-gating list of claims with no `check:`. As a
+  result, none of #276's six claim drifts reached the issue. It now quotes each checker's summary
+  block (counts, DRIFT, NET-FAIL).
+
 ## [2.27.3] - 2026-10-24
 
 A TogoID fix. PATCH: no tool or parameter changed; `togoid_identifyId(verify=True)` returns what it
@@ -3553,7 +3599,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.4...HEAD
+[2.27.4]: https://github.com/dbcls/togomcp/compare/v2.27.3...v2.27.4
 [2.27.3]: https://github.com/dbcls/togomcp/compare/v2.27.2...v2.27.3
 [2.27.2]: https://github.com/dbcls/togomcp/compare/v2.27.1...v2.27.2
 [2.27.1]: https://github.com/dbcls/togomcp/compare/v2.27.0...v2.27.1

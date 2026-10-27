@@ -2,6 +2,9 @@
 # Format: togo_mcp/data/docs/MIE_v3_spec.md. Every verified count/result re-run live on the ncbi endpoint 2026-07-22.
 # Byte count vs the v2 file it replaces (spec §5 item 7): v2 togo_mcp/data/mie/pubtator.yaml = 43,700 bytes;
 # this v3 file = 23,596 bytes → 46.0% smaller. See the footer for the exact `wc -c` figures.
+# RE-MEASURED 2026-10-27 (weekly drift sweep #276): the corpus was reloaded (238.2M → 247.1M
+# annotations); the per-type totals, the variant count and the rs1042522 example were re-run. The
+# variant count is no longer "not re-counted — times out": a graph-pinned isBlank COUNT takes 0.3s.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: pubtator
 
@@ -17,11 +20,11 @@ discovery:
   categories: [literature, annotation]
 
 # ── provenance + database-wide truths (get_MIE_file only) ──
-endpoint: https://rdfportal.org/ncbi/sparql   # the NCBI endpoint (58 graphs); pubtator is ONE dataset on it
+endpoint: https://rdfportal.org/ncbi/sparql   # the NCBI endpoint (60 graphs, 2026-10-27); pubtator is ONE dataset on it
 base_uri: http://purl.jp/bio/10/pubtator-central/
 graphs:
   primary: http://rdfportal.org/dataset/pubtator_central   # the ONLY graph carrying oa:Annotation + dcterms:subject + annotation_count
-  co_hosted:                       # same NCBI endpoint; reverse-probed clean (annotations live in ONE graph, no label duplication)
+  co_hosted:                       # same NCBI endpoint; reverse-probed clean 2026-10-27 (?p unbound, all graphs: annotation + article IRIs each in ONE graph)
     pubmed: >
       dataset/pubmed — JOIN PARTNER, not a duplicate. PubTator points at articles via oa:hasTarget →
       rdf.ncbi.nlm.nih.gov/pubmed/* and those article IRIs carry their triples ONLY in dataset/pubmed
@@ -39,34 +42,42 @@ graphs:
       probing 10 mesh IRIs across this endpoint returns only id.nlm.nih.gov/mesh triples, NO pubtator graph.
       Joining needs an IRI rewrite + cross-endpoint SERVICE (gotcha mesh_iri_rewrite, example xdb_mesh_label).
 
-entity_counts:                     # graph-pinned COUNT, re-run live 2026-07-22
-  disease_annotations: 162094545   # dcterms:subject "Disease"  (graph-pinned GROUP BY, <10s)
-  gene_annotations:    72659393    # dcterms:subject "Gene"
-  variant_annotations_note: "~3,473,658 blank-node Variant annotations carry NO dcterms:subject (not re-counted this pass: a full oa:Annotation scan times out; figure from v2 2026-04-22)."
-  total_note: "~238M oa:Annotation total; an UNPINNED COUNT(*) over oa:Annotation TIMES OUT — count per dcterms:subject value, graph-pinned, instead."
+entity_counts:                     # graph-pinned COUNT, re-run live 2026-10-27
+  disease_annotations: 168857629   # dcterms:subject "Disease"  (graph-pinned GROUP BY, <10s)
+  gene_annotations:    74716908    # dcterms:subject "Gene"
+  variant_annotations: 3525732     # blank-node Variant annotations — carry NO dcterms:subject (`?a a oa:Annotation FILTER(isBlank(?a))`, 0.3s)
+  total_annotations:   247100269   # = the three above; an unpinned COUNT(*) over oa:Annotation returns the same in ~1s (gotcha always_limit_or_scope)
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: subject_literal_exact
     say: >
-      dcterms:subject is a typed literal with EXACTLY two capitalized values: "Disease" (162M) and "Gene"
-      (72.6M). "disease"/"gene" (lowercase) or any other string returns 0 rows with no error. Variant
+      dcterms:subject is a typed literal with EXACTLY two capitalized values: "Disease" (169M) and "Gene"
+      (74.7M). "disease"/"gene" (lowercase) or any other string returns 0 rows with no error. Variant
       annotations have NO dcterms:subject at all (see variant_blank_nodes).
+    check:
+      kind: zero_rows
+      date: "2026-10-27"
+      # stored form is "Disease"^^xsd:string; the lowercase value in that same form matches nothing
+      query: |
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/pubtator_central>
+        WHERE { ?a dcterms:subject "disease"^^<http://www.w3.org/2001/XMLSchema#string> }
   - id: always_limit_or_scope
     say: >
-      238M annotations, and a plain COUNT over them is CHEAP: an unpinned `COUNT(*) { ?a a oa:Annotation }`
-      returns 238,227,596 in 1.0s. This entry said that exact query "times out consistently" until
+      247M annotations, and a plain COUNT over them is CHEAP: an unpinned `COUNT(*) { ?a a oa:Annotation }`
+      returns 247,100,269 in 1.1s (2026-10-27). This entry said that exact query "times out consistently" until
       2026-08-26 — it does not, and it never needed a pin to work. Still FROM/GRAPH-pin
       dataset/pubtator_central so a co-tenant cannot answer for you, and still scope or LIMIT any query that
-      RETURNS rows or JOINS annotations to each other — that is where 238M actually costs you (see example
+      RETURNS rows or JOINS annotations to each other — that is where 247M actually costs you (see example
       top_genes_for_disease, where the inner LIMIT turns 15s into 2s). Typed aggregates are free; row
       transport and self-joins are not.
     check:
-      kind: count            # the unpinned 238M-row COUNT the old text called a consistent timeout
-      date: "2026-08-26"
+      kind: count            # the unpinned 247M-row COUNT the old text called a consistent timeout
+      date: "2026-10-27"
       query: |
         PREFIX oa: <http://www.w3.org/ns/oa#>
         SELECT (COUNT(*) AS ?n) WHERE { ?a a oa:Annotation }
-      expect: {value: 238227596, tolerance: 0.05}
+      expect: {value: 247100269, tolerance: 0.05}
   - id: annotation_count_ceiling
     say: >
       pubtator:annotation_count (per-article mention frequency) has a TYPE-SPECIFIC ceiling: Disease max=5,
@@ -92,7 +103,7 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       Variant annotations use BLANK NODE subjects (no dcterms:subject, no annotation_count) — invisible to
       subject="Disease"/"Gene" filters and unretrievable by IRI. Reach them by oa:hasBody prefix
       (identifiers.org/dbsnp/) or by dcterms:source. And dcterms:source VALUES MUST include "PubTator3": it
-      is the majority variant source (e.g. rs1042522: PubTator3=2302 vs dbSNP=173, ClinVar=33). Omitting it
+      is the majority variant source (e.g. rs1042522: PubTator3=2349 vs dbSNP=173, ClinVar=33). Omitting it
       silently drops most variant rows.
   - id: mesh_iri_rewrite
     say: >
@@ -186,7 +197,7 @@ examples:
       ORDER BY DESC(?count)
       LIMIT 20
     verified: {row_count: 2, top_count: 6, date: "2026-07-22"}
-    teaches: "Filter annotation_count AT the ceiling with >= (Gene max=9 → >=6; Disease max=5 → >=4), and ONLY after scoping to a concept IRI. NEVER FILTER(?count > 5) on a Disease query (always empty), and never range-filter unscoped (times out over 238M rows) — gotcha annotation_count_ceiling."
+    teaches: "Filter annotation_count AT the ceiling with >= (Gene max=9 → >=6; Disease max=5 → >=4), and ONLY after scoping to a concept IRI. NEVER FILTER(?count > 5) on a Disease query (always empty), and never range-filter unscoped (times out over 247M rows) — gotcha annotation_count_ceiling."
 
   - id: variant_sources
     intent: blank-node dbSNP variant annotations and their source provenance (the PubTator3-majority trap)
@@ -202,8 +213,8 @@ examples:
         VALUES ?source { "ClinVar" "dbSNP" "dbGAP" "PubTator3" }
       }
       GROUP BY ?source
-    verified: {row_count: 3, has_values: [2302, 173, 33], PubTator3: 2302, dbSNP: 173, ClinVar: 33, date: "2026-07-22"}
-    teaches: "Variant annotations are blank nodes: reach them by oa:hasBody <identifiers.org/dbsnp/rsN>, never by IRI. dcterms:source is their only classifier — and the VALUES list MUST include 'PubTator3', the majority source (91.5% here)."
+    verified: {row_count: 3, has_values: [2349, 173, 33], PubTator3: 2349, dbSNP: 173, ClinVar: 33, date: "2026-10-27"}
+    teaches: "Variant annotations are blank nodes: reach them by oa:hasBody <identifiers.org/dbsnp/rsN>, never by IRI. dcterms:source is their only classifier — and the VALUES list MUST include 'PubTator3', the majority source (91.9% here)."
     traps_avoided:
       - "A VALUES list of { \"ClinVar\" \"dbSNP\" \"dbGAP\" } (no \"PubTator3\") RUNS and returns rows — just the minority. It silently drops the plurality source (gotcha variant_blank_nodes)."
 
@@ -217,10 +228,10 @@ examples:
       FROM <http://rdfportal.org/dataset/pubtator_central>
       WHERE { ?ann dcterms:subject ?type . }
       GROUP BY ?type
-    verified: {row_count: 2, has_values: [162094545, 72659393], Disease: 162094545, Gene: 72659393, date: "2026-07-22"}
+    verified: {row_count: 2, has_values: [168857629, 74716908], Disease: 168857629, Gene: 74716908, date: "2026-10-27"}
     teaches: "A GROUP BY dcterms:subject over the PINNED graph returns the per-type totals in <10s; the same COUNT unpinned (or as a whole-oa:Annotation COUNT(*)) times out. Pin the graph and count by the typed literal."
     traps_avoided:
-      - "This misses the ~3.47M blank-node Variant annotations, which have no dcterms:subject — they are counted only via dcterms:source or oa:hasBody prefix, not here (gotcha variant_blank_nodes)."
+      - "This misses the 3.53M blank-node Variant annotations, which have no dcterms:subject — they are counted only via dcterms:source or oa:hasBody prefix, not here (gotcha variant_blank_nodes)."
 
   - id: top_genes_for_disease
     intent: top genes co-mentioned with a disease, aggregated over a pre-bounded article set (the tractable recipe)
@@ -247,7 +258,7 @@ examples:
     verified: {min_rows: 5, has_values: ["7157", 360], top_gene: "ncbigene/7157 (TP53) = 360", second: "ncbigene/7124 (TNF) = 289", date: "2026-07-22", note: "counts are over the 5000-article sample, not the full corpus"}
     teaches: "Bound the disease's article set with an inner SELECT DISTINCT ?article … LIMIT N BEFORE joining Gene annotations. Without the inner LIMIT this join is timeout-prone even scoped to one disease once its article count exceeds ~10^4–10^5."
     traps_avoided:
-      - say: "The pre-bound cap makes the co-occurrence a RANKING over a sample, not an exact corpus count. Removing the inner LIMIT gives the exact total and costs 14.9s instead of ~2s (measured 2026-08-26) — a real cost but not the timeout this line hedged at, so do remove it when you need the true numbers. This is the one place in this file where 238M rows are genuinely felt: the self-join across annotations, not the count."
+      - say: "The pre-bound cap makes the co-occurrence a RANKING over a sample, not an exact corpus count. Removing the inner LIMIT gives the exact total and costs 14.9s instead of ~2s (measured 2026-08-26) — a real cost but not the timeout this line hedged at, so do remove it when you need the true numbers. This is the one place in this file where 247M rows are genuinely felt: the self-join across annotations, not the count."
         check:
           kind: count       # the LIMIT-free form completes; it is slow, not impossible
           date: "2026-08-26"
@@ -357,9 +368,9 @@ examples:
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
   - "Named-IRI subjects (Disease/Gene) follow http://purl.jp/bio/10/pubtator-central/{Disease|Gene}/######## — but the IRI localname is an opaque annotation number, NOT the concept ID; the concept ID lives on oa:hasBody. Do not parse the subject IRI for a MeSH/gene ID."
-  - "dcterms:source (provenance) is present on only ~1.6% of Disease/Gene annotations but on ALL variant annotations; values are 'PubTator3' | 'ClinVar' | 'dbSNP' | 'dbGAP'. It cannot distinguish the tool that generated the bulk (no-source) Disease/Gene annotations."
+  - "dcterms:source (provenance) is on the blank-node variant annotations ONLY — values 'PubTator3' 2,282,825 · 'ClinVar' 1,243,727 · 'dbSNP' 305,145 · 'dbGAP' 17,457 (2026-10-27). No Disease/Gene annotation carries it (0 rows; the earlier '~1.6%' was a v2 figure that no longer holds), so provenance cannot be filtered for Disease/Gene."
   - "Entity-type coverage is NARROWER than upstream PubTator3: only Disease + Gene (+ dbSNP Variant) are in this RDF. Chemical, Species, and CellLine annotations of the PubTator3 service are NOT converted here — querying for them returns nothing."
-  - "annotation_count is per-article mention frequency, heavily skewed (~89.5% of Disease and ~93.3% of Gene annotations = 1); it is NOT a corpus-wide importance score."
+  - "annotation_count is per-article mention frequency, heavily skewed (= 1 on 90.3% of Disease annotations, 152,473,366 / 168,857,629, and 93.8% of Gene, 70,066,704 / 74,716,908; 2026-10-27); it is NOT a corpus-wide importance score."
 
 # ── id_join_map: how to anchor stably and cross to other resources. ──
 id_join_map:
@@ -380,3 +391,4 @@ id_join_map:
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/pubtator.yaml` = 43700 bytes
 # v3: `wc -c benchmark/studies/redesign/mie_v3/pubtator.yaml` = 23596 bytes → 46.0% smaller than v2.
+# 2026-10-27 re-measure (#276): ~27.4k chars served; examples 64.8% (was 64.4%) — figures replaced, net -129 B.
