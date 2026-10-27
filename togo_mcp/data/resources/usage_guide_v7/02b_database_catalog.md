@@ -66,7 +66,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **pdb** — PDB. 3D structural data for biological macromolecules (~255,508 entries) from X-ray crystallography, cryo-EM, and… _[protein structure, 3d structure, x-ray crystallography, cryo-em, nmr, macromolecule]_
 - **pubcasefinder** — PubCaseFinder RDF. Rare-disease knowledge base behind the PubCaseFinder diagnosis-support service: OMIM and Orphanet diseases li… _[rare disease, phenotype, hpo, disease-phenotype association, gene-disease association, omim]_
 - **pubchem** — PubChem RDF. Chemical compounds + substances with typed molecular descriptors (SMILES, InChI, MW, formula, XLogP3), ontolo… _[compound, chemical, molecule, drug, cid, smiles]_
-- **pubmed** — PubMed. 37M+ MEDLINE citations (articles, reviews) with title/abstract, journal + bibliographic metadata, ordered aut… _[publication, article, review, citation, abstract, author]_
+- **pubmed** — PubMed. 41M+ MEDLINE citations (articles, reviews) with title/abstract, journal + bibliographic metadata, ordered aut… _[publication, article, review, citation, abstract, author]_
 - **pubtator** — PubTator Central RDF. Biomedical entity annotations text-mined from PubMed articles — Disease (MeSH) and Gene (NCBI Gene) mentions… _[annotation, text mining, named entity recognition, literature, pubmed, pmid]_
 - **reactome** — Reactome Pathway Database. Expert-curated biological pathways and reactions in BioPAX Level 3: hierarchical pathways, biochemical reacti… _[pathway, reaction, biopax, signaling, metabolism, protein]_
 - **rhea** — Rhea. Expert-curated, atom-balanced biochemical reactions (18,854 master reactions) with ChEBI-linked participants,… _[biochemical reaction, enzyme, substrate, product, cofactor, ec number]_

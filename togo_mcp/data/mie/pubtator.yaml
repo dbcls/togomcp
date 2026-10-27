@@ -20,11 +20,11 @@ discovery:
   categories: [literature, annotation]
 
 # ── provenance + database-wide truths (get_MIE_file only) ──
-endpoint: https://rdfportal.org/ncbi/sparql   # the NCBI endpoint (58 graphs); pubtator is ONE dataset on it
+endpoint: https://rdfportal.org/ncbi/sparql   # the NCBI endpoint (60 graphs, 2026-10-27); pubtator is ONE dataset on it
 base_uri: http://purl.jp/bio/10/pubtator-central/
 graphs:
   primary: http://rdfportal.org/dataset/pubtator_central   # the ONLY graph carrying oa:Annotation + dcterms:subject + annotation_count
-  co_hosted:                       # same NCBI endpoint; reverse-probed clean (annotations live in ONE graph, no label duplication)
+  co_hosted:                       # same NCBI endpoint; reverse-probed clean 2026-10-27 (?p unbound, all graphs: annotation + article IRIs each in ONE graph)
     pubmed: >
       dataset/pubmed — JOIN PARTNER, not a duplicate. PubTator points at articles via oa:hasTarget →
       rdf.ncbi.nlm.nih.gov/pubmed/* and those article IRIs carry their triples ONLY in dataset/pubmed
@@ -54,6 +54,14 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       dcterms:subject is a typed literal with EXACTLY two capitalized values: "Disease" (169M) and "Gene"
       (74.7M). "disease"/"gene" (lowercase) or any other string returns 0 rows with no error. Variant
       annotations have NO dcterms:subject at all (see variant_blank_nodes).
+    check:
+      kind: zero_rows
+      date: "2026-10-27"
+      # stored form is "Disease"^^xsd:string; the lowercase value in that same form matches nothing
+      query: |
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/pubtator_central>
+        WHERE { ?a dcterms:subject "disease"^^<http://www.w3.org/2001/XMLSchema#string> }
   - id: always_limit_or_scope
     say: >
       247M annotations, and a plain COUNT over them is CHEAP: an unpinned `COUNT(*) { ?a a oa:Annotation }`
@@ -360,9 +368,9 @@ examples:
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
   - "Named-IRI subjects (Disease/Gene) follow http://purl.jp/bio/10/pubtator-central/{Disease|Gene}/######## — but the IRI localname is an opaque annotation number, NOT the concept ID; the concept ID lives on oa:hasBody. Do not parse the subject IRI for a MeSH/gene ID."
-  - "dcterms:source (provenance) is present on only ~1.6% of Disease/Gene annotations but on ALL variant annotations; values are 'PubTator3' | 'ClinVar' | 'dbSNP' | 'dbGAP'. It cannot distinguish the tool that generated the bulk (no-source) Disease/Gene annotations."
+  - "dcterms:source (provenance) is on the blank-node variant annotations ONLY — values 'PubTator3' 2,282,825 · 'ClinVar' 1,243,727 · 'dbSNP' 305,145 · 'dbGAP' 17,457 (2026-10-27). No Disease/Gene annotation carries it (0 rows; the earlier '~1.6%' was a v2 figure that no longer holds), so provenance cannot be filtered for Disease/Gene."
   - "Entity-type coverage is NARROWER than upstream PubTator3: only Disease + Gene (+ dbSNP Variant) are in this RDF. Chemical, Species, and CellLine annotations of the PubTator3 service are NOT converted here — querying for them returns nothing."
-  - "annotation_count is per-article mention frequency, heavily skewed (~89.5% of Disease and ~93.3% of Gene annotations = 1); it is NOT a corpus-wide importance score."
+  - "annotation_count is per-article mention frequency, heavily skewed (= 1 on 90.3% of Disease annotations, 152,473,366 / 168,857,629, and 93.8% of Gene, 70,066,704 / 74,716,908; 2026-10-27); it is NOT a corpus-wide importance score."
 
 # ── id_join_map: how to anchor stably and cross to other resources. ──
 id_join_map:
@@ -383,3 +391,4 @@ id_join_map:
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/pubtator.yaml` = 43700 bytes
 # v3: `wc -c benchmark/studies/redesign/mie_v3/pubtator.yaml` = 23596 bytes → 46.0% smaller than v2.
+# 2026-10-27 re-measure (#276): ~27.4k chars served; examples 64.8% (was 64.4%) — figures replaced, net -129 B.

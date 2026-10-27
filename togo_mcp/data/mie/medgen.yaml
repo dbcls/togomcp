@@ -35,14 +35,14 @@ graphs:
     clinvar:  "JOIN target — variants reference a medgen concept via dct:references→bnode→rdfs:seeAlso, but at the ncbi.nlm.nih.gov (no www) IRI; needs the namespace transform (example xdb_clinvar). Never re-types a medgen concept."
     pubtator_central: "JOIN target — Disease/Gene annotations key on identifiers.org/mesh IRIs; reach via the medgen mgconso→MeSH bridge WITH a second id.nlm.nih.gov→identifiers.org transform (example xdb_pubtator)."
     pubmed:   "JOIN target — article bibo:pmid + dct:title, terminal hop of the PubTator golden path."
-    ncbigene: "JOIN target, NOT inflation — dataset/medgen writes obo:RO_0003302 + rdfs:seeAlso onto the SAME identifiers.org/ncbigene/N IRIs NCBI Gene uses (5,111 carry obo:RO_0003302, of 17,785 such IRIs in dataset/medgen; 2026-10-27), but its predicate set is DISJOINT from dataset/ncbigene's and it adds no rdf:type there (probed 2026-07-17: unpinned = pinned, ×1.0). MedGen is the SOLE source of rdfs:seeAlso on a gene IRI."
+    ncbigene: "JOIN target, NOT inflation — dataset/medgen writes obo:RO_0003302 + rdfs:seeAlso onto the SAME identifiers.org/ncbigene/N IRIs NCBI Gene uses (5,111 carry obo:RO_0003302, of 17,785 such IRIs in dataset/medgen; 2026-10-27), but its predicate set is DISJOINT from dataset/ncbigene's and it adds no rdf:type there (re-probed 2026-10-27, ?p unbound over all 60 graphs: medgen writes only rdfs:seeAlso + obo:RO_0003302 on gene IRIs; `<ncbigene/7157> a ?t ; rdfs:label ?l` = 1 row unpinned, ×1.0; C0023467 / C0677776 resolve in dataset/medgen only). MedGen is the SOLE source of rdfs:seeAlso on a gene IRI."
 
-entity_counts:                     # COUNT(DISTINCT), graph-pinned; verified 2026-10-27 (xref coverage %s: 2026-07-22)
+entity_counts:                     # COUNT(DISTINCT), graph-pinned; verified 2026-10-27
   concepts:              239525    # mo:ConceptID (FROM the medgen graph)
   sty_T033_finding:      108271    # Finding
   sty_T047_disease:      66534     # Disease or Syndrome — the default "how many diseases" answer
   sty_T191_neoplasm:     27508     # Neoplastic Process
-  coverage: "skos:definition ~34.9% (83,491/239,525) · ~90% have ≥1 mgconso xref · MeSH ~80% · MONDO ~70% · SNOMED ~60% · HPO ~40% · OMIM/Orphanet ~20-30%"
+  coverage: "skos:definition 34.9% (83,491/239,525) · ≥1 mgconso xref 97.8% (234,273) — per-vocabulary coverage is in id_join_map.xrefs"
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: direct_relationships
@@ -59,11 +59,25 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
     say: >
       240,617 mo:sty triples cover 239,525 concepts (2026-10-27) — some concepts carry >1 semantic type. COUNT(DISTINCT
       ?concept), never COUNT(*), when counting concepts by mo:sty.
+    check:
+      kind: count
+      date: "2026-10-27"
+      query: |
+        PREFIX mo: <http://med2rdf/ontology/medgen#>
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/medgen> WHERE { ?c a mo:ConceptID ; mo:sty ?s }
+      expect: {value: 240617, tolerance: 0.03}
   - id: concept_uri_namespace
     say: >
       MedGen concept IRIs are http://www.ncbi.nlm.nih.gov/medgen/C… (WITH www.). ClinVar references the same
       concept at http://ncbi.nlm.nih.gov/medgen/C… (WITHOUT www.). Any medgen↔clinvar join needs
       BIND(IRI(REPLACE(STR(?mg), "www.ncbi", "ncbi")) AS ?cv_uri) or it silently returns 0 rows.
+    check:
+      kind: zero_rows
+      date: "2026-10-27"
+      # the www (MedGen) form never appears as a ClinVar seeAlso object; the no-www form has 30,697 for C0023467
+      query: |
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/clinvar>
+        WHERE { ?ref rdfs:seeAlso <http://www.ncbi.nlm.nih.gov/medgen/C0023467> }
 
 # ── examples: verified, executable atoms. ConceptID is the hub: dct:identifier = bare CUI, rdfs:label =
 #    preferred name, mo:sty = UMLS semantic type IRI, direct relationship predicates, mo:mgconso (xrefs),
@@ -129,7 +143,7 @@ examples:
       }
       GROUP BY ?disease_label
     verified: {row_count: 1, has_values: ["Acute myeloid leukemia", 28], disease_label: "Acute myeloid leukemia", n_genes: 28, date: "2026-09-14"}
-    teaches: "mo:disease_has_associated_gene links a disease ConceptID to gene-concept IRIs (28 for AML). To resolve real NCBI Gene IDs + symbols, do NOT SPARQL these objects: pass the DISEASE CUI to togoid_convertId(ids=['C0023467'], route='medgen,ncbigene') → 17 genes (KRAS 3845, NPM1 4869, RUNX1T1 861, …), verified 2026-07-22."
+    teaches: "mo:disease_has_associated_gene links a disease ConceptID to gene-concept IRIs (28 for AML). To resolve real NCBI Gene IDs + symbols, do NOT SPARQL these objects: pass the DISEASE CUI to togoid_convertId(ids=['C0023467'], route='medgen,ncbigene') → 17 genes (KRAS 3845, NPM1 4869, RUNX1T1 861, …), verified 2026-10-27."
     traps_avoided:
       - "The mo:disease_has_associated_gene objects are STUB IRIs (…/medgen/C1333922): ?gene rdfs:label is always empty, and passing the stub CUI to TogoID gives source=0/target=0. Return the IRIs as-is, or route the DISEASE CUI (not the stub) through TogoID. Note the two counts differ (28 stub IRIs vs 17 TogoID genes) — different aggregations."
 
@@ -199,7 +213,14 @@ examples:
     verified: {row_count: 3, has_values: ["NCBI_OMIM", "GENESYMBOL"], date: "2026-07-22", rows: "GENESYMBOL=MYO9A, GENESYMBOL=CMS24, NCBI_OMIM=618198"}
     teaches: "MGSAT attribute blank nodes: rdfs:label = attribute NAME, rdf:value = attribute VALUE. Filter by name with VALUES ?attr_name. Common names: GENESYMBOL, NCBI_OMIM, TERMUI, NCBI_ALTERNATE_ID, NCBI_BOOKSHELF_CITED_PMID, NCBI_GTR_TEST_ID, MIMTYPE, NEOPLASTIC_STATUS."
     traps_avoided:
-      - "mo:atn / mo:atv (old UMLS-style names) DO NOT EXIST — they return 0 rows silently. Use rdfs:label + rdf:value (gotcha mgsat_property_names)."
+      - say: "mo:atn / mo:atv (old UMLS-style names) DO NOT EXIST — they return 0 rows silently. Use rdfs:label + rdf:value (gotcha mgsat_property_names)."
+        check:
+          kind: absent
+          date: "2026-10-27"
+          query: |
+            PREFIX mo: <http://med2rdf/ontology/medgen#>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/medgen>
+            WHERE { { ?s mo:atn ?o } UNION { ?s mo:atv ?o } }
 
   - id: xdb_clinvar                 # ELEVATED cross_db
     intent: "cross-DB: MedGen disease → ClinVar variants + germline significance (namespace-transform join)"
@@ -266,6 +287,16 @@ examples:
     teaches: "MedGen is the bridge in a gene→disease→literature chain. mgconso maps a disease CUI to a MeSH descriptor, which PubTator's Disease annotations use — but PubTator keys on identifiers.org/mesh while MedGen emits id.nlm.nih.gov/mesh, so a SECOND REPLACE transform is mandatory. Co-mention = a Gene annotation and a Disease annotation sharing one oa:hasTarget article."
     traps_avoided:
       - "The mgconso→PubTator MeSH bridge needs REPLACE('id.nlm.nih.gov/mesh/','identifiers.org/mesh/') or the join silently returns 0 — a DIFFERENT namespace mismatch from the medgen↔clinvar www.ncbi one. Two distinct transforms live on this endpoint; do not confuse them."
+      - say: "This bridge needs a MeSH xref, and only 17,157 of 239,525 concepts (7.2%) have one. An empty result for another concept usually means it has no MeSH mapping, not that PubTator has no literature. Check `?bn rdfs:seeAlso ?m FILTER(STRSTARTS(STR(?m), 'http://id.nlm.nih.gov/mesh/'))` first."
+        check:
+          kind: count
+          date: "2026-10-27"
+          query: |
+            PREFIX mo: <http://med2rdf/ontology/medgen#>
+            SELECT (COUNT(DISTINCT ?c) AS ?n) FROM <http://rdfportal.org/dataset/medgen>
+            WHERE { ?c a mo:ConceptID ; mo:mgconso ?bn . ?bn rdfs:seeAlso ?x
+                    FILTER(STRSTARTS(STR(?x), "http://id.nlm.nih.gov/mesh/")) }
+          expect: {value: 17157, tolerance: 0.03}
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
@@ -284,17 +315,20 @@ id_join_map:
     pubtator_central: "mo:mgconso → rdfs:seeAlso id.nlm.nih.gov/mesh/D… then REPLACE→identifiers.org/mesh/ to match PubTator oa:hasBody (example xdb_pubtator)"
     pubmed:   "terminal hop of the PubTator path: ?article bibo:pmid ?pmid ; dct:title ?title"
     ncbigene: "dataset/medgen writes obo:RO_0003302 + rdfs:seeAlso on identifiers.org/ncbigene/N IRIs (disjoint from ncbigene's own predicates — join, not inflation)"
-  xrefs:                          # outbound cross-references via mo:mgconso → rdfs:seeAlso (DISTINCT; coverage of concepts)
-    mesh:     "id.nlm.nih.gov/mesh/D… (~80%)"
-    mondo:    "purl.obolibrary.org/obo/MONDO_… (~70%)"
-    snomedct: "purl.bioontology.org/ontology/SNOMEDCT/… (~60%)"
-    hpo:      "purl.obolibrary.org/obo/HP_… (~40%)"
-    omim:     "identifiers.org/mim/… or purl.bioontology.org/ontology/OMIM/MTHU… (~20-30%)"
-    orphanet: "www.orpha.net/ORDO/Orphanet_… (~20% rare diseases)"
-    ncit:     "ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C… (partial)"
+  xrefs:                          # outbound cross-references via mo:mgconso → rdfs:seeAlso — DISTINCT concepts carrying ≥1, of 239,525 (2026-10-27).
+                                  # The previous figures (MeSH ~80%, MONDO ~70%, HPO ~40%) were never measured and were 5-11x too high.
+    snomedct: "purl.bioontology.org/ontology/SNOMEDCT/… (120,988 = 50.5%)"
+    ncit:     "ncicb.nci.nih.gov/xml/owl/EVS/Thesaurus.owl#C… (58,929 = 24.6%)"
+    omim:     "identifiers.org/mim/… or purl.bioontology.org/ontology/OMIM/MTHU… (55,334 = 23.1%)"
+    mondo:    "purl.obolibrary.org/obo/MONDO_… (23,333 = 9.7%)"
+    hpo:      "purl.obolibrary.org/obo/HP_… (19,643 = 8.2%)"
+    mesh:     "id.nlm.nih.gov/mesh/D… (17,157 = 7.2%) — the PubTator bridge's only entry point (example xdb_pubtator)"
+    orphanet: "www.orpha.net/ORDO/Orphanet_… (9,013 = 3.8%)"
   bridged_via_togoid:             # NOT a direct graph join — use togoid_convertId on the DISEASE CUI
-    - "medgen,ncbigene — pass the DISEASE ConceptID CUI (NOT the mo:disease_has_associated_gene stub CUI, which gives source=0) to togoid_convertId(route='medgen,ncbigene'); C0023467 → 17 NCBI Gene IDs (verified 2026-07-22). A disease-CUI→gene aggregation, unrelated to the intermediate stub CUIs."
+    - "medgen,ncbigene — pass the DISEASE ConceptID CUI (NOT the mo:disease_has_associated_gene stub CUI, which gives source=0) to togoid_convertId(route='medgen,ncbigene'); C0023467 → 17 NCBI Gene IDs (verified 2026-10-27). A disease-CUI→gene aggregation, unrelated to the intermediate stub CUIs."
 
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/medgen.yaml` = 36220 bytes
 # v3: `wc -c benchmark/studies/redesign/mie_v3/medgen.yaml` = 21993 bytes → 39.3% smaller than v2.
+# 2026-10-27 re-measure (#276): ~25.3k chars served; examples 68.3% (was 69.8%) — examples +345 B (one checked
+# trap on xdb_pubtator), header +558 B (exact xref coverage, relabelled predicate roster, checks).

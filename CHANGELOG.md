@@ -29,6 +29,19 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   predicate roster gave triple counts as concept counts, ClinVar's `cvo:hgnc_id` is on 31% of gene
   IRIs (not ~100%), and the PubMed STRSTARTS topic count takes 260s cold, past `run_sparql`'s 90s
   timeout.
+- **The same six files, finished against the `mie-generator` skill.** The first pass skipped several of the
+  skill's revision steps, and running them found real problems. TogoVar has a new graph,
+  `<…/variant/clinvar>`, that re-declares 4.1M ClinVar variants on the same IRIs. An unpinned
+  four-predicate join on rs671 returns 16 rows instead of 1. That replaces the file's stale `probed_clean`
+  with a `co_hosted` entry and a checked `union_inflation` gotcha (every example already pins its graph).
+  Three coverage figures were never measured and turned out wrong. MedGen's MeSH xref coverage is 7.2%,
+  not "~80%", which limits the MedGen→PubTator bridge, so `xdb_pubtator` now carries a checked trap
+  saying so. PubMed abstracts are on 71.4% of articles, not "~85%". PubTator Disease/Gene annotations
+  carry no `dcterms:source` at all, not "~1.6%". Eight claims that had no check now have one, each
+  measured before it was written. The rs671 bnode-duplication check moved to `hgvsp`, because the
+  `hgvsc` join now hits the endpoint's gateway timeout. All six graph lists and all co-tenancy probes
+  were re-run on 2026-10-27 (60 graphs on the NCBI endpoint, 17 on TogoVar; MeSH gained a `mesh/2026`
+  snapshot).
 - **The weekly MIE drift issue now shows claim drift.** The workflow kept only the last 80 lines of
   the claims checker's output, which held only the non-gating list of claims with no `check:`. As a
   result, none of #276's six claim drifts reached the issue. It now quotes each checker's summary

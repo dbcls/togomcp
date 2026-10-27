@@ -36,7 +36,7 @@ graphs:
     pubtator_central: >
       JOIN target — PubTator Gene annotations' oa:hasBody IS the identifiers.org/ncbigene/{id} IRI (direct join),
       but annotations are NOT species-restricted (see id_join_map pubtator note).
-    other: "pubmed, nlm_catalog, and ~13 MeSH graphs also share this endpoint; none re-type or overlap gene IRIs."
+    other: "pubmed, nlm_catalog, 15 MeSH graphs (unversioned + 2015-2026 + vocab + void) and 37 ontology graphs also share this endpoint (60 graphs). Re-probed 2026-10-27 (?p unbound, all graphs, ncbigene/672 + /7157): only dataset/medgen touches a gene IRI — rdfs:seeAlso + obo:RO_0003302 only, none of ncbigene's predicates; `<ncbigene/7157> a ?t ; rdfs:label ?l` = 1 row unpinned."
 
 entity_counts:                     # graph-pinned (FROM the ncbigene graph); verified live 2026-10-27
   total_genes:  73444140           # all organisms — `COUNT(*) { ?g a insdc:Gene }` completes (~single graph, no join)
@@ -77,6 +77,13 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
     say: >
       rdfs:label = the gene SYMBOL ("TP53"), NOT the full name. The full name is dct:description ("tumor protein p53").
       Matching a full gene name against rdfs:label returns 0 rows silently. Symbols are the label; descriptions are free text.
+    check:
+      kind: zero_rows
+      date: "2026-10-27"
+      # plain "TP53" matches 350 labels, so this zero is the full name being absent, not a literal-form miss
+      query: |
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/ncbigene>
+        WHERE { ?g rdfs:label "tumor protein p53" }
   - id: biological_region_dominates
     say: >
       For human, the most common ncbio:typeOfGene is "biological-region" (~128k), NOT "protein-coding" (~20k). A
@@ -243,7 +250,23 @@ examples:
     verified: {row_count: 1, has_values: ["INS", 231], n_variants: 231, date: "2026-10-27", gene_symbol: "INS"}
     teaches: "ClinVar keys genes as http://ncbi.nlm.nih.gov/gene/{id}, NOT the identifiers.org IRI. Take dct:identifier (a PLAIN string despite the ShEx saying xsd:integer — use it directly, no STR()), CONCAT it into the ClinVar URI, then join med2rdf:gene."
     traps_avoided:
-      - "The BIND(CONCAT(...)) MUST sit BETWEEN the two GRAPH clauses. Placed INSIDE a GRAPH block it silently binds nothing and returns 0 rows."
+      - say: "The BIND(CONCAT(...)) MUST sit BETWEEN the two GRAPH clauses. Placed INSIDE a GRAPH block it silently binds nothing and returns 0 rows."
+        check:
+          kind: zero_rows
+          date: "2026-10-27"
+          # the example's own query with the BIND moved INSIDE the clinvar GRAPH block (live: 0; correct form: 231)
+          query: |
+            PREFIX dct: <http://purl.org/dc/terms/>
+            PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+            PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+            PREFIX sio: <http://semanticscience.org/resource/>
+            SELECT (COUNT(DISTINCT ?variant) AS ?n) WHERE {
+              GRAPH <http://rdfportal.org/dataset/ncbigene> { <http://identifiers.org/ncbigene/3630> dct:identifier ?gene_id }
+              GRAPH <http://rdfportal.org/dataset/clinvar> {
+                BIND(IRI(CONCAT("http://ncbi.nlm.nih.gov/gene/", ?gene_id)) AS ?cv_gene_uri)
+                ?allele_bnode med2rdf:gene ?cv_gene_uri .
+                ?classrec sio:SIO_000628 ?allele_bnode .
+                ?variant a cvo:VariationArchiveType ; cvo:record_status "current" ; cvo:classified_record ?classrec . } }
       - "dct:identifier is stored as a plain string ('3630'), not xsd:integer — usable directly in CONCAT; never rely on numeric comparison."
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
@@ -263,7 +286,7 @@ id_join_map:
     clinvar:  "requires namespace conversion: identifiers.org/ncbigene/{id} → http://ncbi.nlm.nih.gov/gene/{id} via BIND+CONCAT, then med2rdf:gene (example xdb_clinvar)."
     pubtator: "PubTator Gene annotation `?ann dcterms:subject \"Gene\" ; oa:hasBody <ncbigene IRI> ; oa:hasTarget <pubmed IRI>` in GRAPH <pubtator_central> — the oa:hasBody IRI IS the ncbigene IRI (direct). WARNING: annotations are NOT species-restricted, so a co-mention join interleaves a symbol's human + model-organism orthologs; add ncbio:taxid to restrict."
   xrefs:                          # outbound references carried on genes
-    ensembl: "insdc:dblink → identifiers.org/ensembl/ENSG… (~20% of human genes)"
+    ensembl: "insdc:dblink → identifiers.org/ensembl/ENSG… (38,517 of 193,953 human genes = 19.9%; 2026-10-27)"
     hgnc:    "insdc:dblink → identifiers.org/hgnc/{id} (~human, official nomenclature)"
     omim:    "insdc:dblink → identifiers.org/mim/{id} (disease/phenotype, ~human)"
     mirbase: "insdc:dblink → identifiers.org/mirbase/{id} (miRNA genes)"
@@ -274,3 +297,4 @@ id_join_map:
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/ncbigene.yaml` = 35209 bytes
 # v3: `wc -c benchmark/studies/redesign/mie_v3/ncbigene.yaml` = 17005 bytes → 51.7% smaller than v2.
+# 2026-10-27 re-measure (#276): ~21.1k chars served; examples 62.0% (was 62.7%) — examples +256 B, header +331 B.

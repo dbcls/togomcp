@@ -2,6 +2,9 @@
 # RE-AUTHORED 2026-10-09 against the restructured endpoint: between 2026-07-22 and 2026-10-05 TogoVar
 # renamed its vocabulary namespace, folded the ClinVar annotation graph into the core graph, and grew
 # the SPARQL variant set from 390,725,782 to 1,227,614,941. Every figure below was re-run on that date.
+# RE-PROBED 2026-10-27 (drift sweep #276): get_graph_list now returns 17 graphs; the new <…/variant/clinvar>
+# re-declares 4.1M ClinVar variants (×2^k unpinned) — `probed_clean` replaced by a co_hosted entry + gotcha
+# union_inflation. entity_counts re-run; a bare "." dcterms:identifier appeared (identifier_is_multi_valued).
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: togovar
 
@@ -24,13 +27,16 @@ graphs:
   supporting:                                   # TogoVar's OWN per-variant annotation layer — SAME variant IRI as subject
     - http://togovar.org/variant/annotation/ensembl   # VEP consequences (per-transcript bnodes), most_severe_consequence, dbSNP + PubMed rdfs:seeAlso
   co_hosted:                                    # embedded reference datasets on the SAME endpoint — cross-GRAPH join targets, no TogoID bridge
-    probed_clean: >
-      2g reverse probe run 2026-10-09 (16 graphs on the endpoint) — no re-declaration found. Legs probed: the
-      variant IRI (rs671) carries rdf:type in <…/variant> ONLY (1 graph; the old ×2 re-typing went away with the
-      <…/variant/annotation/clinvar> graph); hub IRIs obo:SO_0001583, identifiers.org/hgnc/404, Ensembl
-      ENSG00000111275 + ENST00000261733 and ncbi.nlm.nih.gov/gene/217 each have ALL their triples in exactly one
-      graph (so / hgnc / ensembl / ensembl / clinvar). The duplication that DOES exist is inside one graph
-      (gotcha duplicated_bnodes), which a graph pin does not fix.
+    variant/clinvar: >
+      ROW DUPLICATION (kind 1), new since 2026-10-09 — <http://togovar.org/variant/clinvar> RE-DECLARES 4,095,769
+      ClinVar variants on the SAME variant IRIs as the primary graph: rdf:type, dcterms:identifier (the ClinVar
+      VariationID), gvo:pos/ref/alt (+ _vcf twins), faldo:location, gvo:info. Same values, so every unpinned
+      predicate on such a variant matches twice and a join multiplies as the PRODUCT: rs671 type+pos+ref+alt = 16
+      rows unpinned vs 1 pinned. Scope-dependent: of ALDH2's 27,895 variants only 42 are re-declared. Fix: pin
+      <…/variant> (gotcha union_inflation). Re-probed 2026-10-27 over 17 graphs: the hub IRIs obo:SO_0001583,
+      identifiers.org/hgnc/404, Ensembl ENSG00000111275 + ENST00000261733 and ncbi.nlm.nih.gov/gene/217 still
+      each sit in exactly one graph (so / hgnc / ensembl / ensembl / clinvar); <http://togovar.org/DAV/> is a
+      3-triple WebDAV stub. Separately, duplication INSIDE one graph (gotcha duplicated_bnodes) is not fixed by a pin.
     clinvar: >
       JOIN — embedded DBCLS ClinVar RDF (mirrors the standalone `clinvar` DB). Join from the variant's
       ClinVar ALLELEID (gvo:info node) to cvo:allele_id. See example clinvar_significance.
@@ -39,17 +45,17 @@ graphs:
     hgnc: "reference — HGNC gene records; tgvo:hgnc → identifiers.org/hgnc/{n} anchors here."
     other_ontologies: "mondo, medgen, go, mesh, efo, gwas-catalog, pubmed, pubtator, hco — reference graphs; GRAPH-pin explicitly to reach them."
 
-entity_counts:                     # graph-pinned type counts in GRAPH <http://togovar.org/variant>, live 2026-10-09
-  date: "2026-10-09"
-  total_variants: 1227614941       # sum of the 5 gvo classes
-  snv: 1046958793
-  deletion: 90067908
-  insertion: 90567342
+entity_counts:                     # graph-pinned type counts in GRAPH <http://togovar.org/variant>, live 2026-10-27
+  date: "2026-10-27"
+  total_variants: 1228959091       # sum of the 5 gvo classes
+  snv: 1047599809
+  deletion: 90255471
+  insertion: 91081505
   mnv: 12283
-  indel: 8615
-  rest_api_total_variants: 1229026068   # REST togovar_search_variant `total`, same day (NOT a SPARQL count) — the two backends now agree to 0.1%
+  indel: 10023
+  rest_api_total_variants: 1229026068   # REST togovar_search_variant `total`, measured 2026-10-09 (NOT a SPARQL count; not re-run 2026-10-27)
 
-global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-10-09
+global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-10-09; union_inflation + identifier 2026-10-27
   - id: vocabulary_namespace
     say: >
       The TogoVar vocabulary prefix is `PREFIX tgvo: <http://togovar.org/vocabulary/>`. The former namespace
@@ -67,21 +73,44 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       dcterms:identifier, faldo:location, gvo:info) live in <http://togovar.org/variant>; VEP (tgvo:hasConsequence,
       tgvo:most_severe_consequence) and rdfs:seeAlso (dbSNP, PubMed) in <…/variant/annotation/ensembl>; clinical
       significance in the embedded <http://togovar.org/clinvar>. The graph <…/variant/annotation/clinvar> NO LONGER
-      EXISTS — its ClinVar identifiers moved onto the core variant node.
+      EXISTS — its ClinVar identifiers moved onto the core variant node. (A NEW graph, absent 2026-10-09 and
+      found 2026-10-27, <…/variant/clinvar>, repeats the core fields for ClinVar variants — that is duplication, not a home to query
+      instead; see gotcha union_inflation.)
     check:
       kind: absent
       date: "2026-10-09"
       query: |
         SELECT ?s WHERE { GRAPH <http://togovar.org/variant/annotation/clinvar> { ?s ?p ?o } } LIMIT 1
+  - id: union_inflation
+    say: >
+      ALWAYS GRAPH-pin <http://togovar.org/variant> for core variant fields. <…/variant/clinvar> re-declares the
+      same rdf:type / dcterms:identifier / gvo:pos / gvo:ref / gvo:alt / faldo:location / gvo:info on the SAME IRI
+      for 4,095,769 ClinVar variants, so an unpinned query matches each such triple twice, and k joined predicates
+      multiply ×2^k: rs671 `a ?t ; gvo:pos ?p ; gvo:ref ?r ; gvo:alt ?a` returns 16 rows unpinned, 1 pinned
+      (2026-10-27). SELECT DISTINCT hides it only because the values agree — it cannot fix a COUNT(*), and
+      COUNT(DISTINCT ?variant) is the safe count. The multiplier is invisible on non-ClinVar variants (ALDH2: 42 of
+      27,895 re-declared), so a query that looks right on one gene inflates on a clinically annotated one.
+    check:
+      kind: ratio
+      date: "2026-10-27"
+      unpinned: |
+        PREFIX gvo: <http://genome-variation.org/resource#>
+        SELECT (COUNT(*) AS ?n) WHERE {
+          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> a ?t ; gvo:pos ?p ; gvo:ref ?r ; gvo:alt ?a }
+      pinned: |
+        PREFIX gvo: <http://genome-variation.org/resource#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://togovar.org/variant> {
+          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> a ?t ; gvo:pos ?p ; gvo:ref ?r ; gvo:alt ?a } }
+      expect: {ratio: 16, tolerance: 0}
   - id: identifier_is_multi_valued
     say: >
       dcterms:identifier on a variant is NOT "the tgv ID": it carries up to four different strings — the tgv ID
       ("tgv47264307"), a "chr-pos-ref-alt" key ("12-111803962-G-A"), for ClinVar variants the ClinVar
       VariationID ("18390"), and — appeared after 2026-10-09 — a bare "." with no meaning as an identifier
       (16,181,988 variants carry it, measured 2026-10-27; an apparent upstream data defect). rs671 has all four, so an
-      unfiltered `dcterms:identifier ?id` quadruples its rows, and a "." can surface as if it were an ID.
-      Filter the form you want (STRSTARTS(?id, "tgv")) and do NOT assume a tgv ID exists: of the 27,889 variants
-      annotated to ALDH2 only 10,997 have one, and ClinVar-only variants (e.g. CFTR 7:117480132-C-T) have just
+      unfiltered `dcterms:identifier ?id` quadruples its rows (five unpinned — gotcha union_inflation), and a "." can surface as if it were an ID.
+      Filter the form you want (STRSTARTS(?id, "tgv")) and do NOT assume a tgv ID exists: of the 27,895 variants
+      annotated to ALDH2 only 10,997 have one (2026-10-27), and ClinVar-only variants (e.g. CFTR 7:117480132-C-T) have just
       the VariationID.
     check:
       kind: count
@@ -95,24 +124,26 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       expect: {value: 4, tolerance: 0}
   - id: duplicated_bnodes
     say: >
-      Blank-node annotations are stored REPEATEDLY inside one graph: rs671 has 172 tgvo:hasConsequence bnodes for
-      43 distinct transcript-level HGVS strings (×4) and 4 identical faldo:location nodes. The repeat factor
-      varies by variant, so COUNT(?c) or COUNT(*) over consequence bnodes is meaningless and a graph pin does not
+      Blank-node annotations are stored REPEATEDLY inside one graph: rs671 has 215 tgvo:hasConsequence bnodes for
+      43 distinct transcript-level HGVSc strings (×5.0; it was 172 for the same 43, ×4, on 2026-10-09) and 5
+      identical faldo:location nodes. The repeat factor varies by variant AND by reload, so COUNT(?c) or COUNT(*) over consequence bnodes is meaningless and a graph pin does not
       help. Always count COUNT(DISTINCT ?variant) (or DISTINCT a value such as ?hgvsc) and list with SELECT DISTINCT
       over VALUES, never over the bnode itself. On top of that, hasConsequence is one bnode PER TRANSCRIPT, so
       per-transcript fields (hgvsc/hgvsp/transcript) legitimately fan out per variant.
     check:
       kind: ratio
-      date: "2026-10-09"
+      date: "2026-10-27"
+      # Measured on hgvsp (195 bnodes / 39 distinct = ×5.0, the same factor as hgvsc's 215/43). The hgvsc form of
+      # this pair hit the endpoint's 125s gateway timeout 5 times out of 5 on 2026-10-27 while hgvsp answered in 0.2s.
       numerator: |
         PREFIX tgvo: <http://togovar.org/vocabulary/>
         SELECT (COUNT(?c) AS ?n) WHERE { GRAPH <http://togovar.org/variant/annotation/ensembl> {
-          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> tgvo:hasConsequence ?c . ?c tgvo:hgvsc ?h } }
+          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> tgvo:hasConsequence ?c . ?c tgvo:hgvsp ?h } }
       denominator: |
         PREFIX tgvo: <http://togovar.org/vocabulary/>
         SELECT (COUNT(DISTINCT ?h) AS ?n) WHERE { GRAPH <http://togovar.org/variant/annotation/ensembl> {
-          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> tgvo:hasConsequence ?c . ?c tgvo:hgvsc ?h } }
-      expect: {ratio: 4.0, tolerance: 0.05}
+          <http://identifiers.org/hco/12/GRCh38#111803962-G-A> tgvo:hasConsequence ?c . ?c tgvo:hgvsp ?h } }
+      expect: {ratio: 5.0, tolerance: 0.05}
   - id: no_frequencies
     say: >
       Per-population allele frequencies (ToMMo, gnomAD, JGA, GEM-J, NCBN, BBJ) are NOT in this SPARQL endpoint —
@@ -211,7 +242,16 @@ examples:
     verified: {row_count: 1, has_values: ["missense_variant", "http://identifiers.org/hco/12/GRCh38#111803962-G-A"], date: "2026-10-09"}
     teaches: "dbSNP rsIDs are stored as IRIs (rdfs:seeAlso → identifiers.org/dbsnp/rs…) — match the IRI, never a text 'rs…' string. Consequence SO IRIs are opaque; join GRAPH <…/so> for the label. tgvo:most_severe_consequence is ONE SO term per variant."
     traps_avoided:
-      - "rdfs:seeAlso mixes dbSNP IRIs with PubMed IRIs (rdf.ncbi.nlm.nih.gov/pubmed/…; rs671 has 116 of them) — prefix-filter to http://identifiers.org/dbsnp/ when you want only refSNPs. An rsID can also map to several variants (multi-allelic sites: rs334 → T>A and T>G), and only about half of variants have one (13,643 of ALDH2's 27,889)."
+      - say: "rdfs:seeAlso mixes dbSNP IRIs with PubMed IRIs (rdf.ncbi.nlm.nih.gov/pubmed/…; rs671 has 114 of them on 2026-10-27, 116 on 2026-10-09) — prefix-filter to http://identifiers.org/dbsnp/ when you want only refSNPs. An rsID can also map to several variants (multi-allelic sites: rs334 → T>A and T>G), and only about half of variants have one (13,647 of ALDH2's 27,895)."
+        check:
+          kind: count
+          date: "2026-10-27"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://togovar.org/variant/annotation/ensembl> {
+              <http://identifiers.org/hco/12/GRCh38#111803962-G-A> rdfs:seeAlso ?o
+              FILTER(STRSTARTS(STR(?o), "http://rdf.ncbi.nlm.nih.gov/pubmed/")) } }
+          expect: {value: 114, tolerance: 0.05}
 
   - id: gene_variants
     intent: variants affecting a gene via its Ensembl gene IRI + each variant's most-severe consequence
@@ -228,7 +268,7 @@ examples:
         }
       }
       LIMIT 20
-    verified: {min_rows: 20, date: "2026-10-09", note: "the gene has 27,889 distinct variants"}
+    verified: {min_rows: 20, date: "2026-10-27", note: "the gene has 27,895 distinct variants"}
     teaches: "Filter the per-transcript consequence bnode by the Ensembl gene IRI (structured lookup, no gene-name text search); DISTINCT collapses the per-transcript and repeated bnodes. tgvo:hgnc <http://identifiers.org/hgnc/404> on the same bnode is an equivalent anchor. Resolve a gene NAME→HGNC first with togovar_search_gene."
     traps_avoided:
       - "Not every consequence bnode has tgvo:gene: those with tgvo:gene_symbol_source \"EntrezGene\" (RefSeq-side annotation) carry gene_symbol + hgnc but no tgvo:gene/tgvo:transcript IRI (8 of rs671's 172). Anchoring on tgvo:hgnc catches both kinds."
@@ -251,7 +291,7 @@ examples:
       }
       GROUP BY ?soLabel
       ORDER BY DESC(?variants)
-    verified: {row_count: 20, has_values: ["intron_variant", "missense_variant", "stop_gained"], date: "2026-10-09", note: "intron 18,166 · 3'UTR 7,308 · missense 1,067 · synonymous 405 … stop_gained 59; classes sum to the gene's 27,889 variants"}
+    verified: {row_count: 20, has_values: ["intron_variant", "missense_variant", "stop_gained"], date: "2026-10-27", note: "intron 18,172 · 3'UTR 7,308 · missense 1,067 · synonymous 405 … stop_gained 59; classes sum to the gene's 27,895 variants"}
     teaches: "Because most_severe_consequence is single-valued, a GROUP BY on it partitions a gene's variants exactly once each — COUNT(DISTINCT ?variant) per class sums to the gene total. Grouping on the consequence bnode's own rdf:type instead counts per transcript."
 
   - id: enum_sift_deleterious
@@ -323,7 +363,19 @@ examples:
       (SO IRI), a *_prediction literal (see enum_sift_deleterious), or a ClinVar significance literal — NOT a text/name match.
       Anchor on a gene IRI: an unanchored scan faces 1.2 billion variants.
     traps_avoided:
-      - "Count COUNT(DISTINCT ?variant), never the bnodes: this join passes through 1,044,024 consequence bnodes for 27,889 variants (gotcha duplicated_bnodes)."
+      - say: "Count COUNT(DISTINCT ?variant), never the bnodes: this join passes through 1,060,349 consequence bnodes for 27,895 variants (2026-10-27; gotcha duplicated_bnodes)."
+        check:
+          kind: ratio
+          date: "2026-10-27"
+          numerator: |
+            PREFIX tgvo: <http://togovar.org/vocabulary/>
+            SELECT (COUNT(?c) AS ?n) WHERE { GRAPH <http://togovar.org/variant/annotation/ensembl> {
+              ?v tgvo:hasConsequence ?c . ?c tgvo:gene <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000111275> } }
+          denominator: |
+            PREFIX tgvo: <http://togovar.org/vocabulary/>
+            SELECT (COUNT(DISTINCT ?v) AS ?n) WHERE { GRAPH <http://togovar.org/variant/annotation/ensembl> {
+              ?v tgvo:hasConsequence ?c . ?c tgvo:gene <http://rdf.ebi.ac.uk/resource/ensembl/ENSG00000111275> } }
+          expect: {ratio: 38.01, tolerance: 0.05}
       - "Figures here grew about ninefold in the 2026-10 reload (this count was 123 in 2026-07). A number quoted from an earlier TogoVar SPARQL result is not comparable with one measured now."
 
   - id: variant_report
@@ -409,7 +461,7 @@ id_join_map:
     hgnc:              "tgvo:hgnc → identifiers.org/hgnc/{n}; togovar_search_gene('ALDH2') → hgnc_id 404 gives the anchor directly"
     embedded_clinvar:  "gvo:info \"ALLELEID\" rdf:value (integer) → cvo:allele_id (example clinvar_significance)"
   xrefs:                          # stable external IRIs TogoVar exposes as join keys
-    dbsnp:   "rdfs:seeAlso → identifiers.org/dbsnp/rs… (13,643 of ALDH2's 27,889 variants, 48.9%)"
+    dbsnp:   "rdfs:seeAlso → identifiers.org/dbsnp/rs… (13,647 of ALDH2's 27,895 variants, 48.9%; 2026-10-27)"
     pubmed:  "rdfs:seeAlso → rdf.ncbi.nlm.nih.gov/pubmed/{pmid} on the same predicate (50 of ALDH2's variants)"
     clinvar: "VariationID as a dcterms:identifier string + AlleleID via gvo:info; embedded clinvar also carries cvo:accession VCV… "
     ncbi_gene: "embedded-ClinVar med2rdf:gene → ncbi.nlm.nih.gov/gene/{n} (multi-valued)"
@@ -421,3 +473,8 @@ id_join_map:
       Treat togovar_search_gene / togovar_search_disease results as candidates, not guaranteed exact,
       canonical or ancestor-term matches. Confirm gene names/aliases with HGNC and disease IDs with MONDO
       before using them as anchors. alias_of is a gene name, not an approved symbol or a unique identity key.
+
+# ── byte-count footer (spec §5 item 7) ──
+# 2026-10-27 re-probe (#276): ~31.7k chars served by get_MIE_file (~35.6k bytes on disk incl. check: fixtures);
+# examples 57.8% (was 61.9%). spec-§5i HEADER-CORRECTION carve-out: examples +65 B while the header grew
+# +1,770 B (the new variant/clinvar co_hosted entry + gotcha union_inflation). No verified content was cut.

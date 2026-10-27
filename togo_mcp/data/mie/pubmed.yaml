@@ -12,7 +12,7 @@ database: pubmed
 discovery:
   title: PubMed — NCBI biomedical literature
   description: >
-    37M+ MEDLINE citations (articles, reviews) with title/abstract, journal + bibliographic metadata,
+    41M+ MEDLINE citations (articles, reviews) with title/abstract, journal + bibliographic metadata,
     ordered author lists, and MeSH controlled-vocabulary topic/publication-type annotations — the
     literature layer of the NCBI endpoint, co-hosted with PubTator, MeSH, ClinVar, NCBIGene, MedGen.
   keywords: [publication, article, review, citation, abstract, author, journal, doi, pmid, mesh term,
@@ -31,10 +31,10 @@ graphs:
       fabio subject-term IRIs are UNVERSIONED mesh/D… IRIs and resolve to labels/tree numbers ONLY here
       (examples resolve_mesh_labels). Not PubMed's own graph, but the everyday label join is unusable without it.
     mesh_year_snapshots: >
-      <http://id.nlm.nih.gov/mesh/2015> … <http://id.nlm.nih.gov/mesh/2025> — ELEVEN year snapshots. WRONG-GRAPH
-      STUB for PubMed: they namespace IRIs by year (mesh/2025/D000544) and share ZERO IRIs with PubMed's
-      unversioned subject terms — resolving mesh:D000544 in mesh/2025 returns 0 (gotcha mesh_graph_pin, verified
-      2026-07-22). NOT a union-inflation trap (disjoint IRIs); use a year graph only to ask what the vocab looked
+      <http://id.nlm.nih.gov/mesh/2015> … <http://id.nlm.nih.gov/mesh/2026> — TWELVE year snapshots (2026 added by
+      2026-10-27). WRONG-GRAPH STUB for PubMed: they namespace IRIs by year (mesh/2026/D000544) and share ZERO IRIs with PubMed's
+      unversioned subject terms — mesh:D000544 resolves in <…/mesh> only, none of the year graphs (re-probed
+      2026-10-27; gotcha mesh_graph_pin). NOT a union-inflation trap (disjoint IRIs); use a year graph only to ask what the vocab looked
       like in that year, with year-prefixed IRIs.
     pubtator_central: >
       <http://rdfportal.org/dataset/pubtator_central> — CROSS-DB JOIN enabler: references the SAME article IRIs as
@@ -44,20 +44,27 @@ graphs:
       IRIs are http://id.nlm.nih.gov/mesh/… — reconcile the base when filtering MeSH on both sides of a join.
     other_ncbi_datasets: "clinvar, ncbigene, medgen also co-located on this endpoint — reach by GRAPH-pinning; join to PubMed on the shared article IRI or via PubTator annotations."
 
-entity_counts:                     # graph-pinned, COUNT(DISTINCT), live 2026-07-22
+entity_counts:                     # graph-pinned, COUNT(DISTINCT); all re-run live 2026-10-27
   total_articles: 41249539         # COUNT(*) over ?a bibo:pmid ?pmid, graph-pinned — 3.2s, verified 2026-10-27
   total_articles_note: "The corpus total IS one-query countable (seconds) — this entry said it TIMES OUT until 2026-08-26 and carried a rounded ~37M instead. Only the STRSTARTS topic COUNT times out (gotcha count_timeout)."
   reviews_1985: 10774              # rdfs:seeAlso mesh:D016454 (Review) + dct:issued 1985 — a direct-IRI + date-scoped count (see count_reviews_year)
-  complement_system_proteins_articles: 28476   # rdfs:seeAlso mesh:D003165 — selective direct-IRI count
-  coverage: "abstract ~85% (older articles lack it) · doi ~70% (absent pre-2000) · MeSH annotation ~95% of MEDLINE-indexed articles"
+  complement_system_proteins_articles: 28866   # rdfs:seeAlso mesh:D003165 — selective direct-IRI count
+  coverage: "of 41,249,539 articles (2026-10-27): bibo:abstract 71.4% (29,470,152) · prism:doi 78.4% (32,324,288) · fabio:hasPrimarySubjectTerm (MeSH topic) 81.5% (33,605,667)"
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: mesh_graph_pin
     say: >
       Resolve MeSH descriptor labels / tree numbers ONLY in the UNVERSIONED graph <http://id.nlm.nih.gov/mesh>.
-      PubMed's subject-term IRIs are unversioned (mesh/D000544); the 11 year snapshots <…/mesh/2015>..<…/mesh/2025>
-      namespace their IRIs by year (mesh/2025/D000544) and share ZERO IRIs with them — a label join in a mesh/YYYY
+      PubMed's subject-term IRIs are unversioned (mesh/D000544); the 12 year snapshots <…/mesh/2015>..<…/mesh/2026>
+      namespace their IRIs by year (mesh/2026/D000544) and share ZERO IRIs with them — a label join in a mesh/YYYY
       graph returns 0 rows SILENTLY. Use a year graph only for a historical vocabulary snapshot, with year-prefixed IRIs.
+    check:
+      kind: zero_rows
+      date: "2026-10-27"
+      # the same pattern in GRAPH <http://id.nlm.nih.gov/mesh> returns 1
+      query: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://id.nlm.nih.gov/mesh/2026> {
+          <http://id.nlm.nih.gov/mesh/D000544> rdfs:label ?l } }
   - id: count_timeout
     say: >
       ONE thing times out here, not two, and this entry named two until 2026-08-26. What does NOT time out:
@@ -91,6 +98,14 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       The PRISM prefix in the DATA is the misspelling <http://prismstandard.org/namespeces/1.2/basic/> ("namespeces",
       not "namespaces"). Declaring the correct spelling makes every prism:* pattern (publicationName, doi, ISSN, pages)
       return 0 rows with no error. Copy the typo'd namespace exactly.
+    check:
+      kind: zero_rows
+      date: "2026-10-27"
+      # the misspelled "namespeces" prefix gives 5 triples on this article
+      query: |
+        SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/pubmed>
+        WHERE { <http://rdf.ncbi.nlm.nih.gov/pubmed/16847267> ?p ?o
+                FILTER(STRSTARTS(STR(?p), "http://prismstandard.org/namespaces/")) }
 
 # ── examples: verified, executable atoms. Article is the hub (bibo:pmid string key; IRI = pubmed/{pmid}).
 #    Two MeSH annotation predicates: rdfs:seeAlso (plain descriptor — pub types + some topics) and
@@ -114,7 +129,7 @@ examples:
       }
       LIMIT 1
     verified: {min_rows: 1, journal: "Journal of immunology (Baltimore, Md. : 1950)", issued: "1979-08", date: "2026-07-22"}
-    teaches: "Anchor on bibo:pmid (a string literal); the article IRI is http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}. journal is prism:publicationName; abstract (~85%) is OPTIONAL."
+    teaches: "Anchor on bibo:pmid (a string literal); the article IRI is http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}. journal is prism:publicationName; abstract (71.4% of articles) is OPTIONAL."
 
   - id: pubtype_enum
     intent: enumerate articles of a PUBLICATION TYPE via rdfs:seeAlso to a MeSH pub-type descriptor (the pub-type route)
@@ -299,7 +314,7 @@ schema_delta:
   - "Date precision VARIES: dct:issued is xsd:date / xsd:gYearMonth / plain string ('1979-08', '2023-12-31') — never assume a single datatype; STRSTARTS on the STR() is the safe year filter. dct:created is a separate (often finer) date; purl.jp/bio/10/pubmed/dp holds the free-text display date ('1979 Aug')."
   - "MeSH qualifier-IRI format on fabio terms: {D_id}Q{qual}[Q{qual2}] — a descriptor may carry MULTIPLE qualifiers (e.g. mesh/D003176Q000276Q000378). STRSTARTS on the bare D-id captures every variant; exact fabio:hasSubjectTerm mesh:Dxxxxx (no Q) matches ONLY the unqualified assertion (a partial floor)."
   - "Journal metadata beyond prism:publicationName: fabio:hasNLMJournalTitleAbbreviation, fabio:hasNationalLibraryOfMedicineJournalId, fabio:hasPlaceOfPublication, fabio:hasIssnL; prism:ISSN/prism:eISSN, bibo:volume/bibo:issue, prism:startingPage/prism:endingPage. Full journal catalog is the co-hosted <…/dataset/nlm_catalog> graph."
-  - "Identifiers on the article: prism:doi (~70%, absent pre-2000), dct:identifier (= the PMID string), dct:language ('eng'), dct:source (formatted citation string)."
+  - "Identifiers on the article: prism:doi (78.4% of articles), dct:identifier (= the PMID string), dct:language ('eng'), dct:source (formatted citation string)."
 
 # ── id_join_map: how to anchor stably and cross to other resources. ──
 id_join_map:
@@ -313,10 +328,11 @@ id_join_map:
     ncbi_other:       "clinvar, ncbigene, medgen co-located — reach PubMed refs on the shared article IRI (or via PubTator)"
   xrefs:                          # outbound references carried on the article
     mesh:  "rdfs:seeAlso (plain descriptor — pub types + some topics) AND fabio:has(Primary)SubjectTerm (descriptor+qualifier — reliable topic route); base http://id.nlm.nih.gov/mesh/"
-    doi:   "prism:doi (~70%; note the 'namespeces' typo namespace)"
+    doi:   "prism:doi (78.4%; note the 'namespeces' typo namespace)"
   bridged_via_togoid:             # non-co-hosted resources reachable from a PMID
     - "PMID → PMC / DOI / other RDF Portal DBs via togoid_convertId when no same-endpoint graph carries the link."
 
 # ── byte-count footer (spec §5 item 7) ──
 # v2: `wc -c togo_mcp/data/mie/pubmed.yaml` = 37094 bytes
 # v3: `wc -c benchmark/studies/redesign/mie_v3/pubmed.yaml` = 20685 bytes → 44.2% smaller than v2.
+# 2026-10-27 re-measure (#276): ~24.6k chars served; examples 61.1% (was 62.1%) — examples +25 B, header +343 B.
