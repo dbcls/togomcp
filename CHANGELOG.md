@@ -38,8 +38,9 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   not "~80%", which limits the MedGen→PubTator bridge, so `xdb_pubtator` now carries a checked trap
   saying so. PubMed abstracts are on 71.4% of articles, not "~85%". PubTator Disease/Gene annotations
   carry no `dcterms:source` at all, not "~1.6%". Eight claims that had no check now have one, each
-  measured before it was written. The rs671 bnode-duplication check moved to `hgvsp`, because the
-  `hgvsc` join now hits the endpoint's gateway timeout. All six graph lists and all co-tenancy probes
+  measured before it was written. TogoVar's optimizer estimates `tgvo:hgvsc` at ~3,700 triples, so even a one-variant hgvsc
+  query starts from the whole predicate and times out. The new example `variant_hgvsc` shows the fix
+  (`DEFINE sql:select-option "order"`, 0.2s), with a check on that fixed form. All six graph lists and all co-tenancy probes
   were re-run on 2026-10-27 (60 graphs on the NCBI endpoint, 17 on TogoVar; MeSH gained a `mesh/2026`
   snapshot).
 - **The weekly MIE drift issue now shows claim drift.** The workflow kept only the last 80 lines of
