@@ -75,20 +75,24 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
         SELECT ?s WHERE { GRAPH <http://togovar.org/variant/annotation/clinvar> { ?s ?p ?o } } LIMIT 1
   - id: identifier_is_multi_valued
     say: >
-      dcterms:identifier on a variant is NOT "the tgv ID": it carries up to three different strings — the tgv ID
-      ("tgv47264307"), a "chr-pos-ref-alt" key ("12-111803962-G-A") and, for ClinVar variants, the ClinVar
-      VariationID ("18390"). rs671 has all three, so an unfiltered `dcterms:identifier ?id` triples its rows.
+      dcterms:identifier on a variant is NOT "the tgv ID": it carries up to four different strings — the tgv ID
+      ("tgv47264307"), a "chr-pos-ref-alt" key ("12-111803962-G-A"), for ClinVar variants the ClinVar
+      VariationID ("18390"), and — new since 2026-10-09 — a bare "." placeholder (a VCF missing-value marker
+      leaked into the RDF; 16,181,988 variants carry it, measured 2026-10-27). rs671 has all four, so an
+      unfiltered `dcterms:identifier ?id` quadruples its rows, and a "." can surface as if it were an ID.
       Filter the form you want (STRSTARTS(?id, "tgv")) and do NOT assume a tgv ID exists: of the 27,889 variants
       annotated to ALDH2 only 10,997 have one, and ClinVar-only variants (e.g. CFTR 7:117480132-C-T) have just
       the VariationID.
     check:
       kind: count
-      date: "2026-10-09"
+      date: "2026-10-27"
       query: |
         PREFIX dcterms: <http://purl.org/dc/terms/>
         SELECT (COUNT(?id) AS ?n) WHERE { GRAPH <http://togovar.org/variant> {
           <http://identifiers.org/hco/12/GRCh38#111803962-G-A> dcterms:identifier ?id } }
-      expect: {value: 3, tolerance: 0}
+      # 3 → 4 between 2026-10-09 and 10-27: the "." placeholder appeared. If this drifts back to 3,
+      # upstream removed it — delete the "." sentence from `say` rather than just resetting the number.
+      expect: {value: 4, tolerance: 0}
   - id: duplicated_bnodes
     say: >
       Blank-node annotations are stored REPEATEDLY inside one graph: rs671 has 172 tgvo:hasConsequence bnodes for

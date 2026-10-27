@@ -121,15 +121,23 @@ jobs:
           # killed the step — so the issue and report steps below never ran when there
           # was something to report (every drifting sweep from 2026-09-07 to 2026-10-05).
           set +e -uo pipefail
+          # Keep each checker's SUMMARY block (counts, DRIFT, NET-FAIL), not a `tail` of
+          # its output. The per-claim ✓/✗ lines print first and the summary last, and the
+          # gotcha checker ends with the un-checked-claims list (155 entries, warnings
+          # only): `tail -80` showed nothing but that list, so all 6 real claim drifts of
+          # the 2026-10-26 sweep (#276) were missing from the issue.
           {
             echo "## Example queries"
             echo '```'
-            python scripts/check_mie_examples.py 2>&1 | tail -60
+            python scripts/check_mie_examples.py 2>&1 | sed -n '/^MIE EXAMPLE CHECK/,$p'
             echo '```'
             echo "## Falsifiable claims"
             echo '```'
-            python scripts/check_mie_gotchas.py --all 2>&1 | tail -80
+            python scripts/check_mie_gotchas.py --all 2>&1 \
+              | awk '/^UN-CHECKED FALSIFIABLE CLAIMS/{exit} /^MIE GOTCHA CHECK/{on=1} on'
             echo '```'
+            echo '<sub>Un-checked falsifiable claims are warnings, not drift, and are left out;'
+            echo 'list them with `python scripts/check_mie_gotchas.py --all --coverage-only`.</sub>'
           } > report.md
           # Re-run for the exit codes alone; the reports above already hold the detail.
           python scripts/check_mie_examples.py >/dev/null 2>&1 && ex=0 || ex=$?

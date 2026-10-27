@@ -8,9 +8,15 @@
 #     IRIs are re-declared by NOBODY (2g, all legs) and class-anchored joins are ×1.00 pinned-vs-not.
 #     The pin earns its keep for a DIFFERENT reason, now stated and checked (silent aggregate truncation).
 #   - `source_case` claimed filtering one spelling "silently misses ~half". FALSE for MeSH (MESH = 180
-#     rows, 0.02%); TRUE and worse for HP (68.3% missed). Corrected to the measured split.
+#     rows, 0.02%); TRUE and worse for HP (68.3% missed then, 66.4% on 2026-10-27). Corrected to the measured split.
 #   - `gene_bnode` and `included_no_classrec` carried real figures with nothing to re-decide them.
 #   - NEW example `enum_xref_source` — the 153-vocabulary xref enumeration had no first-class route.
+# RE-MEASURED 2026-10-27 after the weekly drift sweep (#276): the ClinVar snapshot was RELOADED
+# (variants 3,588,969 → 4,371,703, +22%), so every figure in this file was re-run and replaced. Two
+# claims changed in SUBSTANCE, not just magnitude: from_clause's unpinned truncation fell from ×24.8
+# to ×4.8 and MedGen's IRI vocabulary no longer tops the unpinned list (1 of the top 8, was 5); and
+# oncogenicity_kras's "somatic impact is sparse" is no longer true for KRAS (11 of 21 rows carry it).
+# Also corrected: cvo:hgnc_id is on 31% of gene IRIs, not ~100%; cvo:omim on 17,482, not ~4,000.
 mie_spec: 3                        # format version — see MIE_v3_spec.md §2
 database: clinvar
 
@@ -20,7 +26,7 @@ discovery:
   description: >
     NCBI's public archive of human genomic variants and their clinically asserted significance
     (pathogenic/benign/VUS across germline, oncogenicity, and somatic branches), with variant→gene
-    links and disease cross-references to MedGen/OMIM/Orphanet/MONDO/MeSH/HPO — ~3.59M variant records.
+    links and disease cross-references to MedGen/OMIM/Orphanet/MONDO/MeSH/HPO — ~4.37M variant records.
   keywords: [variant, mutation, clinical significance, pathogenic, benign, uncertain significance, vus,
              snp, indel, cnv, gene, disease, phenotype, germline, somatic, oncogenicity, hgvs, medgen]
   categories: [variant, disease]
@@ -32,10 +38,11 @@ graphs:
   primary: http://rdfportal.org/dataset/clinvar   # the ONLY graph that types cvo:VariationArchiveType / cvo:Gene / the classification bnodes
   # get_graph_list → 59 graphs, so the 2g re-declaration probe is MANDATORY. It was run, and it is CLEAN:
   probed_clean: >
-    2g reverse probe re-run 2026-08-29 (?p UNBOUND, no type filter) over 7 nodes spanning every leg:
+    2g reverse probe re-run 2026-08-29 (?p UNBOUND, no type filter) over 7 nodes spanning every leg
+    (graph placement of the variant, both gene IRIs and both C0677776 forms re-confirmed 2026-10-27):
     the variant IRI …/clinvar/variation/856461, ClinVar's gene IRI …/gene/672, NCBI Gene's
     identifiers.org/ncbigene/672, BOTH MedGen IRI forms of C0677776, and MeSH descriptors D061325 +
-    D001943. EVERY node resolves in exactly ONE graph — variant 21 triples and gene 1,075 triples in
+    D001943. EVERY node resolves in exactly ONE graph — variant 21 triples and gene 1,170 triples in
     dataset/clinvar and nowhere else; ncbigene/medgen/mesh nodes only in their own graphs. So NO
     co-hosted graph re-types, re-labels or re-declares any ClinVar IRI: row-inflation kind 1 and
     value-conflict kind 2 are BOTH ruled out for ClinVar-minted IRIs, and a class-anchored join
@@ -45,13 +52,13 @@ graphs:
     dataset/medgen: >
       JOIN target — ClinVar's disease TypeXref rdfs:seeAlso points at MedGen concepts, BUT ClinVar writes
       http://ncbi.nlm.nih.gov/medgen/C* (no www) while MedGen types http://www.ncbi.nlm.nih.gov/medgen/C*
-      (WITH www). Measured 2026-08-29: the no-www IRI carries 74,605 seeAlso links inside dataset/clinvar
+      (WITH www). Measured 2026-10-27: the no-www IRI carries 75,482 seeAlso links inside dataset/clinvar
       and ZERO triples in ANY graph as a subject (it is a pure link target that nothing describes); the
-      www IRI carries 413 triples in dataset/medgen and zero in clinvar. Swap www→no-www (example
-      xdb_medgen). No inflation. NOTE medgen also asserts 5 triples on identifiers.org/ncbigene/672.
+      www IRI carries 403 triples in dataset/medgen and zero in clinvar. Swap www→no-www (example
+      xdb_medgen). No inflation. NOTE medgen also asserts 4 triples on identifiers.org/ncbigene/672.
     dataset/ncbigene: >
       JOIN target — ClinVar's gene IRIs are http://ncbi.nlm.nih.gov/gene/{id}; NCBI Gene RDF types
-      http://identifiers.org/ncbigene/{id} (disjoint namespace, confirmed 2026-08-29: 472 triples on the
+      http://identifiers.org/ncbigene/{id} (disjoint namespace, confirmed 2026-10-27: 592 triples on the
       identifiers.org form in dataset/ncbigene, 0 on ClinVar's form). Join on the shared integer gene id.
     dataset/pubtator_central + dataset/pubmed: >
       Literature reach (co-mention → PubMed), but only via a MedGen→MeSH bridge two hops out — a single
@@ -62,38 +69,41 @@ graphs:
       resolve ONLY in id.nlm.nih.gov/mesh, and not in the 12 year graphs either). Reach MeSH through the
       disease TypeXref dct:identifier ("D061325"), not by expecting ClinVar triples on a mesh: IRI.
 
-entity_counts:                     # graph-pinned, COUNT(DISTINCT), all re-run live 2026-08-29 (unchanged since 2026-07-22)
-  classified_variants: 3588257     # cvo:record_type "classified" — HAVE cvo:classified_record
-  included_variants: 712           # cvo:record_type "included" — LACK cvo:classified_record (gotcha included_no_classrec)
-  total_variants: 3588969
-  gene_entities: 92318             # IRI-typed cvo:Gene ONLY — see gene_bnode gotcha
-  gene_bnodes: 4872653             # per-record BLANK nodes ALSO typed cvo:Gene; 92,318 + 4,872,653 = 4,964,971 raw
-  pathogenic_germline: 200004      # DISTINCT variants with germline cvo:description "Pathogenic" (example enum_significance)
+entity_counts:                     # graph-pinned, COUNT(DISTINCT), all re-run live 2026-10-27 (snapshot reloaded; +22% variants)
+  classified_variants: 4370986     # cvo:record_type "classified" — HAVE cvo:classified_record
+  included_variants: 717           # cvo:record_type "included" — LACK cvo:classified_record (gotcha included_no_classrec)
+  total_variants: 4371703
+  gene_entities: 92628             # IRI-typed cvo:Gene ONLY — see gene_bnode gotcha
+  gene_bnodes: 6077027             # per-record BLANK nodes ALSO typed cvo:Gene; 92,628 + 6,077,027 = 6,169,655 raw
+  pathogenic_germline: 207561      # DISTINCT variants with germline cvo:description "Pathogenic" (example enum_significance)
   xref_source_vocabularies: 153    # DISTINCT dct:source values on TypeXref nodes (example enum_xref_source)
-  date: "2026-08-29"
+  date: "2026-10-27"
 
-global_gotchas:                    # the few that bite ANY query on this DB — all re-verified 2026-08-29
+global_gotchas:                    # the few that bite ANY query on this DB — all re-verified 2026-10-27
   - id: from_clause
     say: >
       Always FROM (or GRAPH-pin) <http://rdfportal.org/dataset/clinvar> — but NOT for the reason you
       may expect, and the real reason is nastier. No co-hosted graph re-declares a ClinVar IRI (2g
       probed clean, all legs), so a query anchored on a cvo: class or a ClinVar IRI measures ×1.00
       pinned vs unpinned: `?v a cvo:VariationArchiveType ; rdfs:label ?l ; cvo:variation_type ?t`
-      returns 3,588,969 either way. The danger is patterns anchored on the GENERIC predicates ClinVar
+      returns 4,371,703 either way. The danger is patterns anchored on the GENERIC predicates ClinVar
       shares with its co-tenants (dct:source, dct:identifier, dct:references, rdfs:label): dct:source
-      alone is 72.2M triples in clinvar, 39.0M in pubmed, 3.8M in pubtator_central, 3.5M in medgen.
+      alone is 78.7M triples in clinvar, 41.2M in pubmed, 3.8M in pubtator_central, 3.6M in medgen.
       Unpinned, such an aggregate does TWO wrong things at once and reports neither. (1) It mixes in
       MedGen's IRI-valued vocabulary — `?ref dct:source ?source ; dct:identifier ?id` GROUP BY ?source
-      returns http://med2rdf/ontology/medgen#GTR, #NCI, #OMIM, #MSH, #HPO, terms that do not exist in
-      ClinVar at all, at the TOP of the list. (2) Virtuoso silently TRUNCATES the aggregate: it reports
-      its largest group as 806,529 when the true largest group ("MedGen") is 19,973,218 — a ×24.8
-      UNDER-count, deterministic (identical on repeat runs), delivered ORDER BY DESC with no error and
-      no warning. Pinned, the same query returns complete counts over 153 source vocabularies. Do not
-      read a fast, well-ordered aggregate as a correct one.
+      returns http://med2rdf/ontology/medgen#GTR (5th of the top 8 on 2026-10-27), a term that does not
+      exist in ClinVar at all. (2) Virtuoso silently TRUNCATES the aggregate: it reports "MedGen" as
+      4,924,499 when the true count is 23,738,255 — a ×4.8 UNDER-count, deterministic (identical on
+      repeat runs), delivered ORDER BY DESC with no error and no warning. The FACTOR is not stable
+      across reloads (it was ×24.8 with the IRI terms filling 5 of the top 8 slots before the
+      2026-10 reload), so never treat an unpinned figure as correctable. Pinned, the same query
+      returns complete counts over 153 source vocabularies. Do not read a fast, well-ordered
+      aggregate as a correct one.
     check:
       kind: ratio
-      date: "2026-08-29"
+      date: "2026-10-27"
       # Each leg returns ONE scalar: the largest group the engine reports for the same aggregate.
+      # Drifted 24.76 → 4.82 at the 2026-10 reload; a further move means the truncation changed again.
       numerator: |
         PREFIX dct: <http://purl.org/dc/terms/>
         SELECT ?n FROM <http://rdfportal.org/dataset/clinvar> WHERE {
@@ -106,11 +116,11 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
           { SELECT (COUNT(*) AS ?n) WHERE { ?ref dct:source ?source ; dct:identifier ?id . }
             GROUP BY ?source ORDER BY DESC(?n) LIMIT 1 }
         }
-      expect: {ratio: 24.76, tolerance: 0.25}
+      expect: {ratio: 4.82, tolerance: 0.25}
 
   - id: included_no_classrec
     say: >
-      The 712 cvo:record_type "included" variants have NO cvo:classified_record — not "few", zero: the
+      The 717 cvo:record_type "included" variants have NO cvo:classified_record — not "few", zero: the
       join `?v cvo:record_type "included" ; cvo:classified_record ?cr` returns 0 rows. So ANY
       classification / gene-link / significance traversal silently drops them. Add cvo:record_type
       "classified" whenever you navigate a classified_record bnode, so the exclusion is explicit
@@ -125,17 +135,17 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
 
   - id: gene_bnode
     say: >
-      cvo:Gene is applied to 4,964,971 nodes but only 92,318 are IRI gene entities — the other
-      4,872,653 are per-record BLANK nodes. `COUNT(?g WHERE ?g a cvo:Gene)` over-counts "how many
-      genes" by ×53.8. Count genes with FILTER(isIRI(?g)), or count DISTINCT gene IRIs reached via
+      cvo:Gene is applied to 6,169,655 nodes but only 92,628 are IRI gene entities — the other
+      6,077,027 are per-record BLANK nodes (2026-10-27). `COUNT(?g WHERE ?g a cvo:Gene)` over-counts
+      "how many genes" by ×66.6. Count genes with FILTER(isIRI(?g)), or count DISTINCT gene IRIs reached via
       med2rdf:gene; the IRI is ncbi.nlm.nih.gov/gene/{id}. CRITICAL — do NOT reach for the arithmetic
-      form instead: on this Virtuoso, `SUM(IF(isIRI(?g),1,0))` returns 4,964,971, i.e. it counts every
-      blank node as an IRI, while `FILTER(isIRI(?g))` on the identical data returns 92,318. The tell is
-      that IF() is self-inconsistent — in one query SUM(IF(isIRI)) = 4,964,971 and SUM(IF(isBlank)) =
-      4,872,653, which sum to more than the 4,964,971 rows scanned. Only the FILTER form is correct.
+      form instead: on this Virtuoso, `SUM(IF(isIRI(?g),1,0))` returns 6,169,655, i.e. it counts every
+      blank node as an IRI, while `FILTER(isIRI(?g))` on the identical data returns 92,628. The tell is
+      that IF() is self-inconsistent — in one query SUM(IF(isIRI)) = 6,169,655 and SUM(IF(isBlank)) =
+      6,077,027, which sum to more than the 6,169,655 rows scanned. Only the FILTER form is correct.
     check:
       kind: ratio
-      date: "2026-08-29"
+      date: "2026-10-27"
       # numerator = the broken IF() form; denominator = the correct FILTER form. Same data, same graph.
       numerator: |
         PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
@@ -145,21 +155,21 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
         PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
         SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/clinvar>
         WHERE { ?g a cvo:Gene . FILTER(isIRI(?g)) }
-      expect: {ratio: 53.78, tolerance: 0.05}
+      expect: {ratio: 66.61, tolerance: 0.05}
 
   - id: source_case
     say: >
       dct:source on disease TypeXref nodes has case- and spelling-inconsistent duplicates, but they are
-      NOT equally costly and an earlier version of this file overstated it. Measured 2026-08-29: the
-      MeSH split is negligible — "MeSH" 834,628 vs "MESH" 180 (0.02%), so filtering "MeSH" alone is
-      safe. The PHENOTYPE split is the one that bites: "Human Phenotype Ontology" 722,578 vs "HP"
-      336,084 vs "HPO" 64, so `dct:source "HP"` alone silently returns only 31.7% of phenotype xrefs —
-      it misses 68.3%. Use VALUES ?source { "HP" "Human Phenotype Ontology" "HPO" } for phenotypes. The
+      NOT equally costly and an earlier version of this file overstated it. Measured 2026-10-27: the
+      MeSH split is negligible — "MeSH" 991,449 vs "MESH" 180 (0.02%), so filtering "MeSH" alone is
+      safe. The PHENOTYPE split is the one that bites: "Human Phenotype Ontology" 758,175 vs "HP"
+      384,455 vs "HPO" 64, so `dct:source "HP"` alone silently returns only 33.6% of phenotype xrefs —
+      it misses 66.4%. Use VALUES ?source { "HP" "Human Phenotype Ontology" "HPO" } for phenotypes. The
       general fix is to enumerate the 153 source values first (example enum_xref_source) rather than
       guessing a spelling — the vocabulary is not documented anywhere and not case-normalized.
     check:
       kind: ratio
-      date: "2026-08-29"
+      date: "2026-10-27"
       numerator: |
         PREFIX dct: <http://purl.org/dc/terms/>
         SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/clinvar>
@@ -168,7 +178,7 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
         PREFIX dct: <http://purl.org/dc/terms/>
         SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/clinvar>
         WHERE { ?ref dct:source "HP" . }
-      expect: {ratio: 3.15, tolerance: 0.05}
+      expect: {ratio: 2.97, tolerance: 0.05}
 
 # ── examples: verified, executable atoms. Central entity = cvo:VariationArchiveType (IRI
 #    …/clinvar/variation/{id}). Classification & gene links hang off a cvo:classified_record BLANK node;
@@ -215,7 +225,7 @@ examples:
       }
       LIMIT 10
     verified: {min_rows: 10, date: "2026-08-29", first_row: "variation/856461 NM_007294.4(BRCA1):c.2244dup"}
-    teaches: "Variant→gene is a 2-hop blank-node walk: variant --cvo:classified_record--> ?classrec --sio:SIO_000628--> ?gene_bn --med2rdf:gene--> gene IRI. VALUES on gene IRIs prunes 3.5M variants to the target gene(s) up front."
+    teaches: "Variant→gene is a 2-hop blank-node walk: variant --cvo:classified_record--> ?classrec --sio:SIO_000628--> ?gene_bn --med2rdf:gene--> gene IRI. VALUES on gene IRIs prunes 4.4M variants to the target gene(s) up front."
     traps_avoided:
       - "rdfs:label is HGVS free text, not a gene symbol — never text-match it to find a gene's variants; resolve the gene id first and use the IRI. bif:contains on the label is exploratory only."
 
@@ -239,17 +249,17 @@ examples:
       GROUP BY ?significance
       ORDER BY DESC(?n)
       LIMIT 20
-    verified: {min_rows: 20, has_values: ["Uncertain significance", "Likely benign"], date: "2026-08-29", top: "Uncertain significance 1,821,577; Likely benign 993,150; Benign 213,802; Pathogenic 200,004; Conflicting classifications of pathogenicity 145,497; Likely pathogenic 107,204"}
+    verified: {min_rows: 20, has_values: ["Uncertain significance", "Likely benign"], date: "2026-10-27", top: "Uncertain significance 2,295,578; Likely benign 1,025,033; Benign 212,560; Pathogenic 207,561; Conflicting classifications of pathogenicity 158,493; Likely pathogenic 114,723"}
     teaches: "THE set-level significance enumeration: the controlled value lives on cvo:description of the germline classification bnode, reached variant → classified_record → cvo:classifications → cvo:germline_classification → cvo:description. Pin the exact string (e.g. \"Pathogenic\") to count/list one class; COUNT(DISTINCT ?variant) because a variant can have multiple submissions."
     traps_avoided:
       - "THREE classification BRANCHES exist under cvo:classifications: cvo:germline_classification, cvo:oncogenicity_classification, cvo:somatic_clinical_impact. This query enumerates ONLY germline; a cancer/somatic variant classified 'Oncogenic' has NO germline node and is silently absent (see oncogenicity_kras for the other two branches)."
       - say: |-
-          The vocabulary is NOT just the 5 headline classes — it includes compound values ('Benign/Likely benign', 'Pathogenic/Likely pathogenic'), semicolon-joined values ('Pathogenic; drug response', 'Pathogenic; other') and non-pathogenicity values ('drug response', 'risk factor', 'Affects'). An equality test on "Pathogenic" therefore EXCLUDES the 34,673 'Pathogenic/Likely pathogenic' and the 80 'Pathogenic; other' variants. Decide deliberately between = and a CONTAINS/IN set; do not assume the 5 classes are exhaustive.
+          The vocabulary is NOT just the 5 headline classes — it includes compound values ('Benign/Likely benign', 'Pathogenic/Likely pathogenic'), semicolon-joined values ('Pathogenic; drug response', 'Pathogenic; other') and non-pathogenicity values ('drug response', 'risk factor', 'Affects'). An equality test on "Pathogenic" therefore EXCLUDES the 35,300 'Pathogenic/Likely pathogenic' and the 79 'Pathogenic; other' variants (2026-10-27). Decide deliberately between = and a CONTAINS/IN set; do not assume the 5 classes are exhaustive.
         check:
           kind: count
-          date: '2026-08-29'
+          date: '2026-10-27'
           expect:
-            value: 34673
+            value: 35300
           query: "PREFIX cvo: <http://purl.jp/bio/10/clinvar/>\nSELECT (COUNT(DISTINCT ?variant) AS ?n) FROM <http://rdfportal.org/dataset/clinvar> WHERE {\n  ?variant a cvo:VariationArchiveType ; cvo:record_status \"current\" ; cvo:record_type \"classified\" ; cvo:classified_record ?cr .\n  ?cr cvo:classifications ?cl . ?cl cvo:germline_classification ?g .\n  ?g cvo:description \"Pathogenic/Likely pathogenic\" . }"
   - id: enum_xref_source
     intent: enumerate the controlled vocabulary of disease-xref SOURCES (the set-level xref route)
@@ -264,11 +274,11 @@ examples:
       GROUP BY ?source
       ORDER BY DESC(?n)
       LIMIT 15
-    verified: {min_rows: 15, has_values: ["MedGen", "PubMed"], distinct_sources_total: 153, date: "2026-08-29", top: "MedGen 19,973,218; PubMed 15,835,938; OMIM 11,822,932; MONDO 4,650,710; BookShelf 3,006,575; dbSNP 2,978,968; Genetic Testing Registry (GTR) 2,967,616; ClinGen 2,893,282; Orphanet 2,453,877"}
+    verified: {min_rows: 15, has_values: ["MedGen", "PubMed"], distinct_sources_total: 153, date: "2026-10-27", top: "MedGen 23,738,255; PubMed 18,042,227; OMIM 11,999,276; MONDO 4,816,842; BookShelf 3,083,237; dbSNP 2,980,324; Genetic Testing Registry (GTR) 2,908,212; ClinGen 2,893,276; Orphanet 2,486,548"}
     teaches: "Run this FIRST before filtering on any dct:source value. The source vocabulary is 153 free-text strings with no controlled list published anywhere and no case normalization, so the only safe way to pick a filter value is to read the actual values off the data. It also reveals xref targets not advertised elsewhere in this file (dbSNP, ClinGen, GeneReviews, SNOMED CT)."
     traps_avoided:
       - say: |-
-          Dropping the FROM clause here does not error — it returns a DIFFERENT, wrong list: MedGen's IRI-valued sources (http://med2rdf/ontology/medgen#GTR, #NCI, #OMIM, #MSH, #HPO) occupy 5 of the top 8 slots, and every count is silently truncated (largest group reported as 806,529 against a true 19,973,218). The unpinned form is FASTER and looks tidier. See gotcha from_clause.
+          Dropping the FROM clause here does not error — it returns a DIFFERENT, wrong list: MedGen's IRI-valued sources (http://med2rdf/ontology/medgen#GTR ranks 5th on 2026-10-27; #NCI/#OMIM/#MSH/#HPO also exist) are mixed in, and every count is silently truncated ("MedGen" reported as 4,924,499 against a true 23,738,255). The unpinned form is FASTER and looks tidier. See gotcha from_clause.
         check:
           kind: absent
           date: '2026-08-29'
@@ -303,11 +313,11 @@ examples:
       GROUP BY ?significance
       ORDER BY DESC(?n)
       LIMIT 20
-    verified: {row_count: 12, has_values: ["Uncertain significance", "Likely benign"], date: "2026-08-29", top: "Uncertain significance 1,570; Likely benign 1,309; Conflicting classifications of pathogenicity 155; Benign/Likely benign 120; Benign 107; Pathogenic 80", runtime: "0.3s"}
-    teaches: "The per-gene significance question is the two walks COMPOSED, both hanging off the SAME ?classrec bnode: enter at the gene (med2rdf:gene → sio:SIO_000628 → ?classrec) and read the classification off that same node. Anchoring on the gene IRI first prunes 3.59M variants before the classification join, so the whole query runs in well under a second."
+    verified: {row_count: 12, has_values: ["Uncertain significance", "Likely benign"], date: "2026-10-27", top: "Uncertain significance 1,751; Likely benign 1,388; Conflicting classifications of pathogenicity 216; Benign/Likely benign 124; Benign 103; Pathogenic 75", runtime: "0.2s"}
+    teaches: "The per-gene significance question is the two walks COMPOSED, both hanging off the SAME ?classrec bnode: enter at the gene (med2rdf:gene → sio:SIO_000628 → ?classrec) and read the classification off that same node. Anchoring on the gene IRI first prunes 4.37M variants before the classification join, so the whole query runs in well under a second."
     traps_avoided:
       - say: |-
-          DO NOT reach significance via cvo:TypeAlleleDescr + cvo:clinical_significance — it is a near-empty dead end that returns 0 rows with NO error for almost every gene. Re-verified 2026-08-29: of 26,161 cvo:TypeAlleleDescr nodes only 280 carry cvo:clinical_significance, and those 280 cover EXACTLY two genes — BRCA2 (190) and BRCA1 (90) — so the identical query for EGFR (or any other gene) returns 0. Significance lives on the classification bnode reached through cvo:classified_record, as above. This shape accounted for 340 of 341 zero-row ClinVar queries in the 2026-07-27..29 production logs.
+          DO NOT reach significance via cvo:TypeAlleleDescr + cvo:clinical_significance — it is a near-empty dead end that returns 0 rows with NO error for almost every gene. Re-verified 2026-10-27: of 26,025 cvo:TypeAlleleDescr nodes only 280 carry cvo:clinical_significance, and those 280 cover EXACTLY two genes — BRCA2 (190) and BRCA1 (90) — so the identical query for EGFR (or any other gene) returns 0. Significance lives on the classification bnode reached through cvo:classified_record, as above. This shape accounted for 340 of 341 zero-row ClinVar queries in the 2026-07-27..29 production logs.
         check:
           kind: zero_rows
           date: '2026-08-29'
@@ -330,7 +340,7 @@ examples:
       GROUP BY ?variation_type
       ORDER BY DESC(?count)
       LIMIT 30
-    verified: {row_count: 21, has_values: ["single nucleotide variant", "Deletion"], date: "2026-08-29", top: "single nucleotide variant 3,236,823; Deletion 160,620; Duplication 73,448; Microsatellite 36,328; copy number gain 24,800; copy number loss 22,592"}
+    verified: {row_count: 21, has_values: ["single nucleotide variant", "Deletion"], date: "2026-10-27", top: "single nucleotide variant 3,996,978; Deletion 175,036; Duplication 76,530; Microsatellite 38,071; copy number gain 25,337; copy number loss 23,439"}
     teaches: "cvo:variation_type is a flat literal directly on the variant (no bnode) — the cheapest categorical facet, and the full vocabulary is only 21 values. Because it needs no classification traversal, this aggregation completes without a per-gene pre-filter."
 
   - id: disease_xref_count
@@ -356,14 +366,14 @@ examples:
         ?dis dct:references ?ref .
         ?ref dct:source "MedGen" ; dct:identifier ?cui .
       }
-    verified: {row_count: 1, has_values: [3989, 45], variants: 3989, diseases: 45, date: "2026-09-14"}
+    verified: {row_count: 1, has_values: [4065, 50], variants: 4065, diseases: 50, date: "2026-10-27"}
     teaches: "Disease xrefs live on TypeXref bnodes: med2rdf:disease → dct:references → node with dct:source (\"MedGen\"/\"OMIM\"/\"Orphanet\"/\"MONDO\"/\"MeSH\") + dct:identifier + optional rdfs:seeAlso. Always aggregate with COUNT(DISTINCT ?variant) / COUNT(DISTINCT ?cui)."
     traps_avoided:
       - say: |-
-          The IDENTICAL query with COUNT(*) returns 14,769 — a x3.70 inflation — because med2rdf:disease emits one duplicate bnode PER SCV submission, all pointing to the same disease. DISTINCT on the bnode (?dis) does NOT help (each bnode is already unique); you MUST de-dup on ?variant and on dct:identifier. Re-verified 2026-08-29: 14,769 raw rows vs 3,989 variants / 45 CUIs.
+          The IDENTICAL query with COUNT(*) returns 15,146 — a x3.73 inflation — because med2rdf:disease emits one duplicate bnode PER SCV submission, all pointing to the same disease. DISTINCT on the bnode (?dis) does NOT help (each bnode is already unique); you MUST de-dup on ?variant and on dct:identifier. Re-verified 2026-10-27: 15,146 raw rows vs 4,065 variants / 50 CUIs.
         check:
           kind: ratio
-          date: '2026-08-29'
+          date: '2026-10-27'
           numerator: "PREFIX cvo: <http://purl.jp/bio/10/clinvar/>\nPREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>\nPREFIX sio: <http://semanticscience.org/resource/>\nPREFIX dct: <http://purl.org/dc/terms/>\nSELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/clinvar> WHERE {\n  ?gene_bn med2rdf:gene <http://ncbi.nlm.nih.gov/gene/672> .\n  ?classrec sio:SIO_000628 ?gene_bn .\n  ?variant cvo:record_type \"classified\" ; cvo:classified_record ?classrec ; med2rdf:disease ?dis .\n  ?classrec cvo:classifications ?cls .\n  ?cls cvo:germline_classification/cvo:description \"Pathogenic\" .\n  ?dis dct:references ?ref . ?ref dct:source \"MedGen\" ; dct:identifier ?cui . }"
           denominator: "PREFIX cvo: <http://purl.jp/bio/10/clinvar/>\nPREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>\nPREFIX sio: <http://semanticscience.org/resource/>\nPREFIX dct: <http://purl.org/dc/terms/>\nSELECT (COUNT(DISTINCT ?variant) AS ?n) FROM <http://rdfportal.org/dataset/clinvar> WHERE {\n  ?gene_bn med2rdf:gene <http://ncbi.nlm.nih.gov/gene/672> .\n  ?classrec sio:SIO_000628 ?gene_bn .\n  ?variant cvo:record_type \"classified\" ; cvo:classified_record ?classrec ; med2rdf:disease ?dis .\n  ?classrec cvo:classifications ?cls .\n  ?cls cvo:germline_classification/cvo:description \"Pathogenic\" .\n  ?dis dct:references ?ref . ?ref dct:source \"MedGen\" ; dct:identifier ?cui . }"
           expect:
@@ -393,10 +403,10 @@ examples:
         OPTIONAL { ?classi cvo:somatic_clinical_impact ?sci . ?sci cvo:description ?somatic_impact . }
       }
       LIMIT 50
-    verified: {row_count: 19, has_values: ["Oncogenic", "Tier II - Potential"], date: "2026-08-29", first_row: "KRAS c.183A>C (p.Gln61His) → Oncogenic / Tier II - Potential", note: "only 1 of the 19 carries a somatic_clinical_impact value — hence the OPTIONAL"}
-    teaches: "cvo:oncogenicity_classification (\"Oncogenic\"/\"Likely oncogenic\"/…) and cvo:somatic_clinical_impact (\"Tier I–IV\") are SIBLINGS of cvo:germline_classification under the same cvo:classifications node — each on its own bnode with its own cvo:description. Somatic impact is sparse → OPTIONAL it. This is why a germline-only enumeration undercounts cancer variants."
+    verified: {row_count: 21, has_values: ["Oncogenic", "Likely oncogenic", "Tier I - Strong"], date: "2026-10-27", first_row: "KRAS c.34G>T (p.Gly12Cys) → Oncogenic / Tier I - Strong", note: "11 of the 21 carry a somatic_clinical_impact value (was 1 of 19 before the 2026-10 reload); the other 10 still lack one — hence the OPTIONAL"}
+    teaches: "cvo:oncogenicity_classification (\"Oncogenic\"/\"Likely oncogenic\"/…) and cvo:somatic_clinical_impact (\"Tier I–IV\") are SIBLINGS of cvo:germline_classification under the same cvo:classifications node — each on its own bnode with its own cvo:description. Somatic impact is present on only some rows (11 of 21 for KRAS) → OPTIONAL it. This is why a germline-only enumeration undercounts cancer variants."
     traps_avoided:
-      - "The oncogenicity vocabulary is NOT disjoint from the germline one — the same cvo:description predicate on this branch also yields 'Likely benign' and 'Uncertain significance' (both present among these 19 KRAS rows). So you cannot tell which branch a value came from by inspecting the value; you must read it from the branch predicate you traversed."
+      - "The oncogenicity vocabulary is NOT disjoint from the germline one — the same cvo:description predicate on this branch also yields 'Likely benign' and 'Uncertain significance' (both present among these 21 KRAS rows). So you cannot tell which branch a value came from by inspecting the value; you must read it from the branch predicate you traversed."
 
   - id: xdb_medgen
     intent: "cross-DB: ClinVar variants → MedGen disease-concept label, across the co-hosted NCBI endpoint"
@@ -427,7 +437,7 @@ examples:
     teaches: "MedGen is co-hosted on the ncbi endpoint — a direct two-GRAPH join, no TogoID. Anchor a MedGen ConceptID, convert its www IRI to ClinVar's no-www form with REPLACE, then match on the TypeXref rdfs:seeAlso. Pre-selecting the concept (VALUES) keeps it fast. SELECT DISTINCT is required, not cosmetic: without it the duplicate disease bnodes return each variant twice."
     traps_avoided:
       - say: |-
-          Using the MedGen www IRI directly inside the ClinVar graph returns 0 rows — MedGen = http://www.ncbi.nlm.nih.gov/medgen/, ClinVar seeAlso = http://ncbi.nlm.nih.gov/medgen/. Measured 2026-08-29 for C0677776: the www form matches 0 seeAlso triples in dataset/clinvar, the no-www form matches 74,605. The www→no-www swap is mandatory (co_hosted dataset/medgen).
+          Using the MedGen www IRI directly inside the ClinVar graph returns 0 rows — MedGen = http://www.ncbi.nlm.nih.gov/medgen/, ClinVar seeAlso = http://ncbi.nlm.nih.gov/medgen/. Measured 2026-10-27 for C0677776: the www form matches 0 seeAlso triples in dataset/clinvar, the no-www form matches 75,482. The www→no-www swap is mandatory (co_hosted dataset/medgen).
         check:
           kind: zero_rows
           date: '2026-08-29'
@@ -436,8 +446,8 @@ examples:
             WHERE { ?ref rdfs:seeAlso <http://www.ncbi.nlm.nih.gov/medgen/C0677776> . }'
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
-  - "GENE ENTITY (the 92,318 IRI cvo:Gene, distinct from the 4,872,653 per-record bnodes): the IRI gene carries cvo:symbol, cvo:full_name, cvo:hgnc_id (\"HGNC:1100\", string), cvo:omim (integer, ~4,000 genes), cvo:cytogenetic_location. Reach a gene entity directly at http://ncbi.nlm.nih.gov/gene/{id} — no traversal. It also carries bulk positional data (BRCA1 alone: 528 faldo:location, 264 cvo:haploinsufficiency, 264 cvo:triplosensitivity triples), so SELECT * on a gene IRI is not the cheap lookup it looks like."
-  - "REVIEW STATUS / evidence tier: the germline (and each) classification bnode also carries cvo:review_status — a controlled vocabulary of 11 values (verified 2026-08-29). This is the evidence-quality filter; add it beside cvo:description to keep only high-confidence calls. The distribution is extremely skewed, so the filter changes answers a lot: \"criteria provided, single submitter\" 11,685,046 / \"criteria provided, multiple submitters, no conflicts\" 920,255 / \"no assertion criteria provided\" 791,487 / \"criteria provided, conflicting classifications\" 203,516 / \"reviewed by expert panel\" 59,621 / \"practice guideline\" 7,703 (the two gold-standard tiers are together under 0.5% of assertions)."
+  - "GENE ENTITY (the 92,628 IRI cvo:Gene, distinct from the 6,077,027 per-record bnodes): the IRI gene carries cvo:symbol, cvo:full_name, cvo:hgnc_id (\"HGNC:1100\", string; on 28,660 genes), cvo:omim (integer; 17,482 genes), cvo:cytogenetic_location. Reach a gene entity directly at http://ncbi.nlm.nih.gov/gene/{id} — no traversal. It also carries bulk positional data (BRCA1 alone: 576 faldo:location, 288 cvo:haploinsufficiency, 288 cvo:triplosensitivity triples), so SELECT * on a gene IRI is not the cheap lookup it looks like."
+  - "REVIEW STATUS / evidence tier: the germline (and each) classification bnode also carries cvo:review_status — a controlled vocabulary of 11 values (verified 2026-10-27). This is the evidence-quality filter; add it beside cvo:description to keep only high-confidence calls. The distribution is extremely skewed, so the filter changes answers a lot: \"criteria provided, single submitter\" 13,431,401 / \"criteria provided, multiple submitters, no conflicts\" 1,002,016 / \"no assertion criteria provided\" 869,342 / \"no classification provided\" 583,593 / \"criteria provided, conflicting classifications\" 221,236 / \"reviewed by expert panel\" 65,549 / \"practice guideline\" 7,703 (the two gold-standard tiers are together under 0.5% of assertions)."
   - "DATE TYPING: cvo:date_created / cvo:date_last_updated are xsd:date; dct:created / dct:modified carry the SAME dates but as xsd:string — filter on the cvo: (typed date) ones for range queries."
   - "TEXT SEARCH (exploratory only): rdfs:label = cvo:variation_name = HGVS free text with no controlled vocabulary. Virtuoso bif:contains works (?label bif:contains \"'EGFR'\") but only for discovery — resolve to a gene IRI (variants_by_gene) for any real/count query."
 
@@ -452,14 +462,14 @@ id_join_map:
     pubtator/pubmed: "literature co-mention, reachable only via a MedGen-CUI → MeSH-IRI bridge two hops out; run the discovery step separately (a single 3+ graph join times out)"
   xrefs:                          # outbound, on disease TypeXref nodes (dct:source + dct:identifier [+ rdfs:seeAlso]) or on the Gene entity.
                                   # 153 source vocabularies exist — enumerate them with example enum_xref_source before picking a filter value.
-    omim:     "dct:source \"OMIM\" (11,822,932 xref rows) on a TypeXref; also cvo:omim (integer) directly on the Gene entity"
-    orphanet: "dct:source \"Orphanet\" (2,453,877), dct:identifier the ORPHA number"
-    mondo:    "dct:source \"MONDO\" (4,650,710), dct:identifier \"MONDO:0007254\""
-    mesh:     "dct:source \"MeSH\" (834,628); a \"MESH\" spelling also exists but is only 180 rows (0.02%) — safe to ignore, unlike the HP split below. dct:identifier is the MeSH descriptor id (e.g. \"D061325\")"
-    hpo:      "dct:source is SPLIT three ways and this one DOES matter: \"Human Phenotype Ontology\" 722,578 / \"HP\" 336,084 / \"HPO\" 64 — filtering \"HP\" alone returns 31.7% of the rows (gotcha source_case)"
-    dbsnp:    "dct:source \"dbSNP\" (2,978,968), dct:identifier the rs number without the \"rs\" prefix"
-    clingen:  "dct:source \"ClinGen\" (2,893,282) — variant-level curation, surfaced by enum_xref_source"
-    hgnc:     "cvo:hgnc_id \"HGNC:NNNN\" on the Gene entity (~100% of genes)"
+    omim:     "dct:source \"OMIM\" (11,999,276 xref rows) on a TypeXref; also cvo:omim (integer) directly on the Gene entity"
+    orphanet: "dct:source \"Orphanet\" (2,486,548), dct:identifier the ORPHA number"
+    mondo:    "dct:source \"MONDO\" (4,816,842), dct:identifier \"MONDO:0007254\""
+    mesh:     "dct:source \"MeSH\" (991,449); a \"MESH\" spelling also exists but is only 180 rows (0.02%) — safe to ignore, unlike the HP split below. dct:identifier is the MeSH descriptor id (e.g. \"D061325\")"
+    hpo:      "dct:source is SPLIT three ways and this one DOES matter: \"Human Phenotype Ontology\" 758,175 / \"HP\" 384,455 / \"HPO\" 64 — filtering \"HP\" alone returns 33.6% of the rows (gotcha source_case)"
+    dbsnp:    "dct:source \"dbSNP\" (2,980,324), dct:identifier the rs number without the \"rs\" prefix"
+    clingen:  "dct:source \"ClinGen\" (2,893,276) — variant-level curation, surfaced by enum_xref_source"
+    hgnc:     "cvo:hgnc_id \"HGNC:NNNN\" on the Gene entity (28,660 of 92,628 gene IRIs, 31%; 2026-10-27)"
   bridged_via_togoid:             # for DBs NOT co-hosted on the ncbi endpoint
     - "TogoVar / other RDF Portal DBs: convert the ClinVar variation id or the gene id via togoid_convertId when no same-endpoint graph carries the target. (dbSNP rs numbers are already present natively — see xrefs.dbsnp — so no bridge is needed for those.)"
 

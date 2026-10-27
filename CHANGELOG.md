@@ -17,6 +17,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 - Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `9b8477a` (#275, Renovate).
 
+### Fixed
+
+- **Six MIE files re-measured after upstream reloads** (#276): `clinvar`, `medgen`, `ncbigene`,
+  `pubtator`, `pubmed`, `togovar`. ClinVar grew 22% (4.37M variants), NCBI Gene 27% (73.4M genes), so
+  every figure in those files was re-run, not only the 12 examples and 6 claims the sweep flagged.
+  Four changes are about meaning, not size. The unpinned ClinVar aggregate still undercounts, but by
+  ×4.8 now, not ×24.8, and the prose now warns that the factor moves between reloads. KRAS somatic
+  impact is no longer sparse (11 of 21 rows). MedGen no longer links BRCA1 to C0346153. TogoVar puts a
+  bare `"."` `dcterms:identifier` on 16.2M variants. Labels that were wrong are corrected too: MedGen's
+  predicate roster gave triple counts as concept counts, ClinVar's `cvo:hgnc_id` is on 31% of gene
+  IRIs (not ~100%), and the PubMed STRSTARTS topic count takes 260s cold, past `run_sparql`'s 90s
+  timeout.
+- **The weekly MIE drift issue now shows claim drift.** The workflow kept only the last 80 lines of
+  the claims checker's output, which held only the non-gating list of claims with no `check:`. As a
+  result, none of #276's six claim drifts reached the issue. It now quotes each checker's summary
+  block (counts, DRIFT, NET-FAIL).
+
 ## [2.27.3] - 2026-10-24
 
 A TogoID fix. PATCH: no tool or parameter changed; `togoid_identifyId(verify=True)` returns what it
