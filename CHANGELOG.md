@@ -13,9 +13,20 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.27.4] - 2026-10-28
+
+MIE corrections after upstream reloads. PATCH: no tool, parameter or return shape changed. Six MIE
+files (`clinvar`, `medgen`, `ncbigene`, `pubtator`, `pubmed`, `togovar`) now match what their
+endpoints return, so an agent reading them is no longer steered by figures, coverage estimates and
+co-tenancy claims that the 2026-10 reloads made wrong. Two TogoVar defects found on the way were
+reported upstream (togovar/togovar#529, #530); the MIE works around both.
+
 ### Changed
 
 - Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `9b8477a` (#275, Renovate).
+- Tutorial instructor material: an English fallback set (`tutorial/instructor/fallback/`: README,
+  transcripts and built page), and the Japanese transcripts annotated with the 2026-10-20
+  re-measurements. The served tutorial pages change only in a fixed emphasis bug.
 
 ### Fixed
 
@@ -3588,7 +3599,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.4...HEAD
+[2.27.4]: https://github.com/dbcls/togomcp/compare/v2.27.3...v2.27.4
 [2.27.3]: https://github.com/dbcls/togomcp/compare/v2.27.2...v2.27.3
 [2.27.2]: https://github.com/dbcls/togomcp/compare/v2.27.1...v2.27.2
 [2.27.1]: https://github.com/dbcls/togomcp/compare/v2.27.0...v2.27.1
