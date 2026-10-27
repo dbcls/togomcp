@@ -134,7 +134,7 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       kind: ratio
       date: "2026-10-27"
       # Measured on hgvsp (195 bnodes / 39 distinct = ×5.0, the same factor as hgvsc's 215/43). The hgvsc form of
-      # this pair hit the endpoint's 125s gateway timeout 5 times out of 5 on 2026-10-27 while hgvsp answered in 0.2s.
+      # this pair hit the endpoint's 125s gateway timeout on every try on 2026-10-27 while hgvsp answered in 0.2s.
       numerator: |
         PREFIX tgvo: <http://togovar.org/vocabulary/>
         SELECT (COUNT(?c) AS ?n) WHERE { GRAPH <http://togovar.org/variant/annotation/ensembl> {
@@ -426,7 +426,7 @@ examples:
     verified: {row_count: 43, has_values: ["ENST00000261733.7:c.1510G>A"], date: "2026-10-27", runtime: "0.2s", note: "43 distinct HGVSc over 215 consequence bnodes (gotcha duplicated_bnodes)"}
     teaches: "tgvo:hgvsc (and hgvsp/hgvsg, impact, sift, polyphen, cadd_*, alphamissense) hang off the per-transcript consequence bnode, not the variant. Start from the variant IRI and walk tgvo:hasConsequence; SELECT DISTINCT because the bnodes repeat."
     traps_avoided:
-      - say: "WITHOUT the DEFINE line this query hits the endpoint's 125s gateway timeout (5 of 5 tries, 2026-10-27), and the error looks like a network failure. Virtuoso's explain output shows why: it estimates tgvo:hgvsc at ~3,700 triples graph-wide, so it starts from EVERY hgvsc triple instead of from rs671's 215 bnodes. The identical hgvsp query is planned correctly (0.2s), so the trap is predicate-specific, not general. Rewriting the pattern as FILTER(?p = tgvo:hgvsc) does not help, because the optimizer folds it back into the same plan. Add `DEFINE sql:select-option \"order\"` (before PREFIX) and keep the variant as the first pattern."
+      - say: "WITHOUT the DEFINE line this query hits the endpoint's 125s gateway timeout (re-run without it 2026-10-27: 524 at 126s; 9 of 9 hgvsc-join attempts that day failed), and the error looks like a network failure. Virtuoso's explain output shows why: it estimates tgvo:hgvsc at ~3,700 triples graph-wide, so it starts from EVERY hgvsc triple instead of from rs671's 215 bnodes. The identical hgvsp query is planned correctly (0.2s), so the trap is predicate-specific, not general. Rewriting the pattern as FILTER(?p = tgvo:hgvsc) does not help, because the optimizer folds it back into the same plan. Add `DEFINE sql:select-option \"order\"` (before PREFIX) and keep the variant as the first pattern."
         check:
           # Checks the FIX, which is stable, not the timeout: a 524 is reported as net-fail and never asserts.
           kind: count
