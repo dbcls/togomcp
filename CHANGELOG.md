@@ -13,10 +13,21 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.28.0] - 2026-10-30
+
+<!-- whatsnew: 2026-10-30 | Two new databases: <code>bmrb</code> — NMR chemical shifts, relaxation data and sample conditions for biomolecules and metabolites — and <code>lotus</code> — which organisms a natural product is reported from, with the supporting literature. -->
+
+Two new databases. MINOR: both reach every client at once through the catalog and the free-form
+`database` parameter; no tool, parameter or return shape changed.
+
 ### Added
 
 - **New database: `bmrb`** (Biological Magnetic Resonance Data Bank), on the existing `pdb` endpoint. Agents can now query NMR chemical shifts, relaxation data, sample conditions and metabolite entries, and join them directly to PDB structures.
 - **New database: `lotus`** (natural products occurrences, release v11), on the `primary` endpoint. Agents can now ask which organisms produce a compound and which compounds an organism produces, with the supporting literature, and join to NCBI Taxonomy, MassBank and ChEBI.
+
+### Changed
+
+- **Usage statistics no longer credit `schema:inChIKey`, `schema:molecularFormula` or `schema:smiles` to MassBank alone**, because LOTUS uses them too. A logged query using only those terms is no longer attributed to MassBank by those terms.
 
 ## [2.27.4] - 2026-10-28
 
@@ -3604,7 +3615,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.27.4...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.28.0...HEAD
+[2.28.0]: https://github.com/dbcls/togomcp/compare/v2.27.4...v2.28.0
 [2.27.4]: https://github.com/dbcls/togomcp/compare/v2.27.3...v2.27.4
 [2.27.3]: https://github.com/dbcls/togomcp/compare/v2.27.2...v2.27.3
 [2.27.2]: https://github.com/dbcls/togomcp/compare/v2.27.1...v2.27.2
