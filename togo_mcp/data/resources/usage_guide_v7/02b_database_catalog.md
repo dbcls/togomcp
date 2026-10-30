@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 47 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
+All 49 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -8,24 +8,24 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `swisslipids` `wikipathways`
+- **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
 - **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
 - **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `jogo` `marpolbase` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
-- **literature** — `pubmed` `pubtator`
+- **literature** — `lotus` `pubmed` `pubtator`
 - **materials** — `supercon`
 - **microbe** — `amrportal` `bacdive` `bh26microbes` `mediadive` `nbrc`
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
-- **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `tismed` `uniprot`
+- **protein** — `bmrb` `brenda` `glycosmos` `jpostdb` `oma` `pdb` `tismed` `uniprot`
 - **reaction** — `brenda` `rhea`
 - **sequence** — `ddbj` `ensembl`
-- **structure** — `pdb`
-- **taxonomy** — `bgee` `taxonomy`
+- **structure** — `bmrb` `pdb`
+- **taxonomy** — `bgee` `lotus` `taxonomy`
 - **variant** — `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
 
 **All databases** (alphabetical):
@@ -34,6 +34,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **bacdive** — BacDive. Standardized bacterial + archaeal strain metadata: taxonomy, morphology, physiology, growth/culture condition… _[bacteria, archaea, strain, culture, growth condition, medium]_
 - **bgee** — Bgee. Curated gene-expression calls (present / absent) integrating RNA-Seq, Affymetrix, EST, and in-situ data acros… _[gene expression, tissue, anatomical entity, developmental stage, rna-seq, in situ hybridization]_
 - **bh26microbes** — BH26 Microbes. Experimental BioHackathon 2026 dataset of KofamScan KEGG Orthology (KO) assignments — with HMM score, E-value… _[kegg orthology, ko, kofamscan, functional annotation, hmm profile, prokaryotic genome]_
+- **bmrb** — BMRB. NMR spectroscopy data for biomolecules and metabolites: assigned chemical shifts, relaxation and coupling mea… _[nmr, nuclear magnetic resonance, chemical shift, resonance assignment, relaxation, t1]_
 - **brenda** — BRENDA. Manually curated enzyme data classified by EC number: enzyme instances (one per organism), EC-class definitio… _[enzyme, ec number, enzymatic reaction, substrate, product, inhibitor]_
 - **chebi** — ChEBI. OWL ontology of 224k+ chemical entities (small molecules, ions, radicals, functional groups) with a rdfs:subC… _[chemical entity, small molecule, metabolite, lipid, amino acid, ion]_
 - **chembl** — ChEMBL RDF. Manually curated bioactive molecules with drug-like properties: ~1.9M compounds, 1.9M assays, 21M+ bioactivit… _[compound, bioactive molecule, drug, target, bioactivity, ic50]_
@@ -50,6 +51,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **jogo** — JoGo. Per-gene catalogue of phased human haplotypes (protein, CDS, transcript and gene-body sequence levels) from 2… _[haplotype, phased genome, long-read sequencing, human genetic variation, variant, allele frequency]_
 - **jpostdb** — jPOST. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimenta… _[proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification]_
 - **lipidmaps** — LIPID MAPS Structure Database. Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthan… _[lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol]_
+- **lotus** — LOTUS. Referenced structure–organism occurrences of natural products, linking compounds with their chemical classifi… _[natural product, secondary metabolite, specialized metabolite, phytochemical, chemotaxonomy, source organism]_
 - **marpolbase** — MarpolBase. Genome structural annotation, functional annotation, co-expression, orthogroups and curated gene-literature a… _[plant, liverwort, bryophyte, genome, gene model, genome annotation]_
 - **massbank** — MassBank. Open repository of reference MS/MS mass spectra for small molecules (metabolites, drugs, natural products, en… _[mass spectrometry, mass spectra, ms/ms, tandem ms, metabolomics, metabolite]_
 - **mco** — MCO. Reference ontology of the mouse (Mus musculus) chromosome set — the 22 chromosomes (1-19, X, Y, MT) as owl:Cl… _[mouse chromosome, mus musculus, karyotype, genome build, grcm38, grcm39]_

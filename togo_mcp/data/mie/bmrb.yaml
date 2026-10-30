@@ -1,0 +1,496 @@
+mie_spec: 3
+database: bmrb
+
+discovery:
+  title: BMRB — Biological Magnetic Resonance Data Bank
+  description: >
+    NMR spectroscopy data for biomolecules and metabolites: assigned chemical shifts, relaxation and coupling
+    measurements, sample conditions, spectrometers, and links to PDB, UniProt, PubChem and ChEBI.
+  keywords: [nmr, nuclear magnetic resonance, chemical shift, resonance assignment, relaxation, t1, t2,
+             heteronuclear noe, residual dipolar coupling, coupling constant, order parameter, sample conditions,
+             spectrometer, field strength, metabolite, metabolomics, nmr-star]
+  categories: [structure, protein, compound]
+
+endpoint: https://rdfportal.org/pdb/sparql
+base_uri: http://bmrbpub.pdbj.org/rdf/
+graphs:
+  primary: http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr   # macromolecule entries (bmrNNNNN)
+  supporting:
+    - http://bmrbpub.protein.osaka-u.ac.jp/rdf/bms        # metabolite entries (bmseNNNNNN) — same classes and predicates
+    - http://bmrbpub.protein.osaka-u.ac.jp/schema/mmcif_nmr-star.owl   # OWL schema only, no entry data
+  co_hosted:
+    "rdfportal.org/dataset/pdb": >
+      wwPDB data, and the direct join target for rdf.wwpdb.org/pdb/XXXX IRIs (example xdb_pdb_structure). Uses its own
+      pdbo: namespace, so it adds no n:entry or n:datablock rows. It does add a second rdfs:label to BMRB datablock IRIs
+      ("bmrb:34549") and to shared taxonomy IRIs (gotcha hub_labels).
+    "rdfportal.org/ontology/taxonomy": >
+      Join target for identifiers.org/taxonomy IRIs and the only graph holding real organism names (example
+      xdb_taxonomy_names).
+    "ontology/*, id.nlm.nih.gov/mesh, purl.jp/bio/11/goa": >
+      Reference graphs. PROBED CLEAN 2026-10-30: a reverse probe on datablock, n:entry, n:entity and n:chem_comp IRIs
+      found triples only in rdf/bmr, rdf/bms and the one dataset/pdb label above, and n:entry is typed only in rdf/bmr and rdf/bms.
+
+entity_counts:
+  macromolecule_entries: 16686    # COUNT n:entry pinned to rdf/bmr, 2026-10-30
+  metabolite_entries: 1952        # COUNT n:entry pinned to rdf/bms, 2026-10-30
+  macromolecule_chemical_shifts: 11806602   # n:atom_chem_shift pinned to rdf/bmr, 2026-10-30
+  entities: 21602                 # n:entity pinned to rdf/bmr, 2026-10-30
+
+global_gotchas:
+  - id: pin_the_collection
+    say: >
+      BMR and BMS use the same classes and predicates, so an unpinned `?e a n:entry` silently mixes macromolecules with
+      metabolites: 18,638 rows, ×1.117 of the 16,686 macromolecule entries. The same goes for n:atom_chem_shift and
+      n:citation. FIX: pin GRAPH <.../rdf/bmr> for biomolecules or <.../rdf/bms> for metabolites.
+    check:
+      kind: ratio
+      date: "2026-10-30"
+      unpinned: |
+        PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+        SELECT (COUNT(*) AS ?n) WHERE { ?e a n:entry }
+      pinned: |
+        PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?e a n:entry } }
+      expect: {ratio: 1.117, tolerance: 0.02}
+
+  - id: join_on_of_datablock
+    say: >
+      Every row points to its entry with n:of_datablock. Use that to reach sibling rows. n:reference_to_entry looks like
+      the same link but targets a stub (.../entry/, without the ID) that has no entry attributes, so
+      `?row n:reference_to_entry ?u . ?u n:entry.title ?t` returns 0 rows. Rows have no IRI link to their entity either:
+      match n:of_datablock plus the row's entity_id integer.
+    check:
+      kind: zero_rows
+      date: "2026-10-30"
+      query: |
+        PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+        SELECT ?t WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?s n:reference_to_entry ?u . ?u n:entry.title ?t } } LIMIT 1
+
+  - id: literal_forms
+    say: >
+      Text-like values match only as plain literals: `database_code "SP"` works, `"SP"^^xsd:string` returns 0 rows.
+      Identifiers and many numbers are strings too: `ncbi_taxonomy_id "672"` matches, `672` returns 0 rows. Row keys such
+      as entity.id are integers, so `1` matches and `"1"` does not. Numeric comparisons on string values need a cast.
+    check:
+      kind: zero_rows
+      date: "2026-10-30"
+      query: |
+        PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+        SELECT ?s WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?s n:entity_natural_src.ncbi_taxonomy_id 672 } } LIMIT 1
+
+  - id: placeholder_names
+    say: >
+      n:entity.name is often not a molecule name: 6,162 of 21,602 entities are named "entity", "entity 1", "entity ZN" and
+      so on. Do not find or report molecules by it alone. Use n:entry.title (example text_search_title), n:entity.details,
+      or an accession (example uniprot_to_entries).
+    check:
+      kind: count
+      date: "2026-10-30"
+      query: |
+        PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?s a n:entity ; n:entity.name ?name FILTER(REGEX(?name, "^entity( |$)", "i")) } }
+      expect: {value: 6162, tolerance: 0.02}
+
+  - id: hub_labels
+    say: >
+      rdfs:label on shared and entry IRIs is a placeholder, not a name: taxonomy/9606 has 3 labels across graphs, and those
+      in rdf/bmr and dataset/pdb read "taxonomy:9606". Entry datablocks are labelled "info:bmrb/34549". Take organism names
+      from ontology/taxonomy and titles from n:entry.title.
+    check:
+      kind: count
+      date: "2026-10-30"
+      query: |
+        SELECT (COUNT(*) AS ?n) WHERE { <http://identifiers.org/taxonomy/9606> <http://www.w3.org/2000/01/rdf-schema#label> ?l }
+      expect: {value: 3, tolerance: 0}
+
+examples:
+  - id: entry_overview
+    intent: fetch an entry's title and its molecules from the BMRB ID
+    question: "What is BMRB entry 34549, and what molecule does it contain?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?title ?released ?subtype ?entity_type ?polymer_type ?monomers ?details
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?entry a n:entry ; n:entry.id "34549" ; n:of_datablock ?dbk ;
+                 n:entry.title ?title ; n:entry.original_release_date ?released .
+          OPTIONAL { ?entry n:entry.experimental_method_subtype ?subtype }
+          ?entity a n:entity ; n:of_datablock ?dbk ; n:entity.type ?entity_type .
+          OPTIONAL { ?entity n:entity.polymer_type ?polymer_type }
+          OPTIONAL { ?entity n:entity.number_of_monomers ?monomers }
+          OPTIONAL { ?entity n:entity.details ?details }
+        }
+      }
+    verified: {row_count: 1, has_values: ["polypeptide(L)", "solution"], date: "2026-10-30"}
+    teaches: "Anchor on the datablock IRI (http://bmrbpub.pdbj.org/rdf/bmrNNNNN) or n:entry.id, then reach sibling rows through n:of_datablock."
+
+  - id: residue_chemical_shifts
+    intent: read assigned chemical shifts for one residue
+    question: "What are the chemical shifts of residue 10 in BMRB entry 34549?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?comp ?atom ?val ?err
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?s a n:atom_chem_shift ; n:of_datablock <http://bmrbpub.pdbj.org/rdf/bmr34549> ;
+             n:atom_chem_shift.seq_id 10 ;
+             n:atom_chem_shift.comp_id ?comp ; n:atom_chem_shift.atom_id ?atom ;
+             n:atom_chem_shift.val ?val ; n:atom_chem_shift.val_err ?err .
+        }
+      }
+      ORDER BY ?atom
+    verified: {row_count: 8, has_values: ["SER", "CA"], date: "2026-10-30"}
+    teaches: "Anchor shift rows on n:of_datablock. seq_id is the integer position in the BMRB sequence; auth_seq_id is the author's numbering, stored as a string."
+    traps_avoided:
+      - "atom_chem_shift.val_err is missing on about 15% of rows; wrap it in OPTIONAL when listing every assignment."
+
+  - id: shift_statistics
+    intent: compute typical shifts across the archive with an outlier-safe range
+    question: "What is the typical chemical shift of each backbone atom in alanine?"
+    complexity: aggregation
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?atom (COUNT(*) AS ?n) (AVG(?v) AS ?mean)
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          VALUES ?atom { "CA" "CB" "HA" "N" "H" }
+          ?s n:atom_chem_shift.comp_id "ALA" ; n:atom_chem_shift.atom_id ?atom ; n:atom_chem_shift.val ?v .
+        }
+      }
+      GROUP BY ?atom ORDER BY ?atom
+    verified: {row_count: 5, has_values: ["CA", "HA"], note: "mean CA about 53.1, CB about 19.0, H about 8.20, N about 123.4", date: "2026-10-30"}
+    teaches: "Group shifts by comp_id and atom_id. Pin rdf/bmr so metabolite shifts, which use local comp_ids, stay out."
+    traps_avoided:
+      - say: "Raw values contain deposition errors: 4 ALA CA shifts exceed 100 ppm, and the maximum is 354.7, so MIN/MAX describe bad records, not chemistry. Treat a mean as approximate and filter a plausible range for anything stricter."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?s n:atom_chem_shift.comp_id "ALA" ; n:atom_chem_shift.atom_id "CA" ; n:atom_chem_shift.val ?v FILTER(?v > 100) } }
+          expect: {value: 4, tolerance: 0}
+
+  - id: enum_entries_by_measurement
+    intent: enumerate all entries holding a given kind of measurement
+    question: "How many BMRB entries contain T1 relaxation data?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT (COUNT(DISTINCT ?dbk) AS ?n)
+      WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?dbk n:has_t1Category ?c } }
+    verified: {n: 369, date: "2026-10-30"}
+    teaches: "Each measurement type has a datablock predicate: has_atom_chem_shiftCategory (16,289), has_coupling_constantCategory (384), has_t1Category (369), has_heteronucl_noeCategory (362), has_t2Category (350), has_rdcCategory (155), has_order_paramCategory (126). Row classes have the same stem (n:t1, with n:t1.val)."
+    traps_avoided:
+      - say: "n:datum.type summarises what an entry declares and does not always match its rows: \"T1 relaxation values\" gives 372 entries against 369 with T1 rows. Use datum.type for types with no row class, such as \"pKa values\" or \"binding constants\"."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(DISTINCT ?dbk) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?d a n:datum ; n:of_datablock ?dbk ; n:datum.type "T1 relaxation values" } }
+          expect: {value: 372, tolerance: 0.02}
+
+  - id: enum_entries_by_organism
+    intent: enumerate entries by NCBI taxonomy ID
+    question: "How many BMRB entries contain a molecule from human?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT (COUNT(DISTINCT ?dbk) AS ?n)
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?s a n:entity_natural_src ; n:of_datablock ?dbk ; n:entity_natural_src.ncbi_taxonomy_id "9606" .
+        }
+      }
+    verified: {n: 5544, date: "2026-10-30"}
+    teaches: "Filter on the taxonomy ID string, not an organism name. COUNT(DISTINCT n:of_datablock) counts entries, because one entry can have several source rows."
+    traps_avoided:
+      - say: "ncbi_taxonomy_id also holds the text \"na\" (1,247 entries, the second most common value), so do not cast it to a number or treat it as a real taxon."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(DISTINCT ?dbk) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?s a n:entity_natural_src ; n:of_datablock ?dbk ; n:entity_natural_src.ncbi_taxonomy_id "na" } }
+          expect: {value: 1247, tolerance: 0.02}
+
+  - id: enum_by_field_strength
+    intent: filter on a number stored as a string
+    question: "How many BMRB entries used a spectrometer of at least 900 MHz?"
+    complexity: intermediate
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT (COUNT(DISTINCT ?dbk) AS ?n)
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?s a n:nmr_spectrometer ; n:of_datablock ?dbk ; n:nmr_spectrometer.field_strength ?f .
+          FILTER(xsd:decimal(STR(?f)) >= 900)
+        }
+      }
+    verified: {n: 1722, date: "2026-10-30"}
+    teaches: "Cast string-valued numbers with xsd:decimal(STR(?x)) before comparing them. The same applies to sample_condition_variable.val and citation.year."
+    traps_avoided:
+      - say: "Without the cast, `FILTER(?f >= 900)` runs without error but finds only 389 entries, 23% of the real answer."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(DISTINCT ?dbk) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?s a n:nmr_spectrometer ; n:of_datablock ?dbk ; n:nmr_spectrometer.field_strength ?f FILTER(?f >= 900) } }
+          expect: {value: 389, tolerance: 0.02}
+
+  - id: sample_conditions
+    intent: read the experimental conditions of an entry
+    question: "What pH and temperature were used for BMRB entry 34549?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?type ?val ?units
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?s a n:sample_condition_variable ; n:of_datablock <http://bmrbpub.pdbj.org/rdf/bmr34549> ;
+             n:sample_condition_variable.type ?type ; n:sample_condition_variable.val ?val .
+          OPTIONAL { ?s n:sample_condition_variable.val_units ?units }
+        }
+      }
+      ORDER BY ?type
+    verified: {row_count: 4, has_values: ["pH", "temperature"], date: "2026-10-30"}
+    teaches: "Conditions are typed rows: pressure, temperature, pH, and ionic strength. An entry with several condition lists has one row per list, told apart by sample_condition_list_id."
+    traps_avoided:
+      - "Check val_units before comparing conditions across entries: ionic strength appears in both mM and M, pressure in atm, bar and Pa, and pH also appears as \"pH*\" and \"pD\"."
+
+  - id: uniprot_to_entries
+    intent: find entries for a protein by UniProt accession
+    question: "Which BMRB entries are linked to UniProt P0DP23 (calmodulin-1)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT DISTINCT ?dbk ?title ?supplied ?identity
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?l a n:entity_db_link ; n:of_datablock ?dbk ;
+             n:entity_db_link.database_code "SP" ; n:entity_db_link.accession_code "P0DP23" ;
+             n:entity_db_link.author_supplied ?supplied .
+          OPTIONAL { ?l n:entity_db_link.seq_identity ?identity }
+          ?e a n:entry ; n:of_datablock ?dbk ; n:entry.title ?title .
+        }
+      }
+      ORDER BY ?dbk
+    verified: {row_count: 6, has_values: ["bmr15624"], date: "2026-10-30"}
+    teaches: "database_code \"SP\" is Swiss-Prot, and accession_code holds the bare accession. Other codes: PDB, GB, BMRB, REF, DBJ, EMBL, PRF, PIR."
+    traps_avoided:
+      - say: "Most entity_db_link rows are sequence-similarity hits, not statements about the deposited molecule. Of 14,811 SP links only 1,514 have author_supplied \"yes\"; the rest carry BLAST fields such as seq_identity. Read author_supplied and seq_identity before calling a link an identity."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?l a n:entity_db_link ; n:entity_db_link.database_code "SP" ; n:entity_db_link.author_supplied "yes" } }
+          expect: {value: 1514, tolerance: 0.02}
+      - "Each link has two rdfs:seeAlso IRIs (identifiers.org and purl.uniprot.org), so joining rdfs:seeAlso doubles rows. Filter one namespace with STRSTARTS, or use accession_code."
+
+  - id: text_search_title
+    intent: find entries by free text in the title
+    question: "Which BMRB entries study calmodulin?"
+    complexity: intermediate
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?dbk ?title
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?e a n:entry ; n:of_datablock ?dbk ; n:entry.title ?title .
+          ?title bif:contains "'calmodulin'" .
+        }
+      }
+      ORDER BY ?dbk
+      LIMIT 20
+    verified: {min_rows: 20, date: "2026-10-30"}
+    teaches: "bif:contains on n:entry.title is the discovery route when you have no accession: BMRB has no protein-name vocabulary, and entity.name is unreliable (gotcha placeholder_names). Use it to find candidates, not to give a complete count."
+
+  - id: enum_enzyme_by_ec
+    intent: enumerate entries by EC number
+    question: "How many BMRB entries contain lysozyme (EC 3.2.1.17)?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT (COUNT(DISTINCT ?dbk) AS ?n)
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?e a n:entity ; n:of_datablock ?dbk ; n:entity.ec_number "3.2.1.17" .
+        }
+      }
+    verified: {n: 49, date: "2026-10-30"}
+    teaches: "entity.ec_number is a sparse plain string (620 of 21,602 entities), so a zero means not annotated rather than not in the archive. Cross-check with an accession or title search."
+
+  - id: pdb_link_count
+    intent: count entries with a corresponding PDB structure across both link routes
+    question: "How many BMRB entries have a corresponding PDB structure?"
+    complexity: aggregation
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT (COUNT(DISTINCT ?dbk) AS ?n)
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          { ?e a n:entry ; n:of_datablock ?dbk ; n:entry.assigned_pdb_id ?id }
+          UNION
+          { ?r a n:related_entries ; n:of_datablock ?dbk ; n:related_entries.database_name "PDB" }
+        }
+      }
+    verified: {n: 8843, date: "2026-10-30"}
+    teaches: "Use both routes: entry.assigned_pdb_id (7,077 entries) and related_entries with database_name \"PDB\" (7,296). Entry 34549 is reachable only through related_entries (PDB 7A05)."
+    traps_avoided:
+      - say: "Do not count entity_db_link code \"PDB\" (8,062 entries) as the entry's own structure: only 3,649 of its links have author_supplied \"yes\", and the rest are similarity hits to other PDB entries."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(DISTINCT ?dbk) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?l a n:entity_db_link ; n:of_datablock ?dbk ; n:entity_db_link.database_code "PDB" } }
+          expect: {value: 8062, tolerance: 0.02}
+
+  - id: xdb_pdb_structure
+    intent: "cross-DB: BMRB entry -> PDB structure title and method"
+    question: "What PDB structures and methods correspond to BMRB entries 10011 and 10040?"
+    complexity: cross_db
+    endpoint_name: pdb
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+      SELECT ?id ?pdbid ?title ?method
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          VALUES ?id { "10011" "10040" }
+          ?e a n:entry ; n:entry.id ?id ; n:entry.assigned_pdb_id ?pdbid ; rdfs:seeAlso ?pdb .
+          FILTER(STRSTARTS(STR(?pdb), "http://rdf.wwpdb.org/pdb/"))
+        }
+        GRAPH <http://rdfportal.org/dataset/pdb> {
+          ?pdb pdbo:has_structCategory/pdbo:has_struct/pdbo:struct.title ?title .
+          OPTIONAL { ?pdb pdbo:has_exptlCategory/pdbo:has_exptl/pdbo:exptl.method ?method }
+        }
+      }
+      ORDER BY ?id
+    verified: {row_count: 2, has_values: ["2COM", "1WGR", "SOLUTION NMR"], date: "2026-10-30"}
+    teaches: "rdfs:seeAlso on n:entry and n:related_entries gives the shared http://rdf.wwpdb.org/pdb/XXXX IRI. Filter it, because the identifiers.org/pdb/XXXX twin is not the datablock IRI in dataset/pdb. Query with database=bmrb or pdb: both use this endpoint."
+    traps_avoided:
+      - say: "Twelve assigned PDB IDs have no datablock in dataset/pdb: 7,065 of 7,077 entries join, so a small shortfall is expected."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            PREFIX pdbo: <http://rdf.wwpdb.org/schema/pdbx-with-vrptx-v50.owl#>
+            SELECT (COUNT(DISTINCT ?bmrb) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> { ?bmrb a n:entry ; rdfs:seeAlso ?pdb . FILTER(STRSTARTS(STR(?pdb), "http://rdf.wwpdb.org/pdb/")) } GRAPH <http://rdfportal.org/dataset/pdb> { ?pdb a pdbo:datablock } }
+          expect: {value: 7065, tolerance: 0.02}
+
+  - id: xdb_taxonomy_names
+    intent: "cross-DB: resolve source organisms to names through the co-hosted taxonomy graph"
+    question: "Which organisms contribute the most BMRB entries?"
+    complexity: cross_db
+    endpoint_name: pdb
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?tax ?name (COUNT(DISTINCT ?dbk) AS ?entries)
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bmr> {
+          ?s a n:entity_natural_src ; n:of_datablock ?dbk ; rdfs:seeAlso ?tax .
+          FILTER(STRSTARTS(STR(?tax), "http://identifiers.org/taxonomy/"))
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> { ?tax rdfs:label ?name }
+      }
+      GROUP BY ?tax ?name
+      ORDER BY DESC(?entries)
+      LIMIT 5
+    verified: {min_rows: 5, has_values: ["Homo sapiens"], date: "2026-10-30"}
+    teaches: "Natural-source rows give two rdfs:seeAlso taxonomy IRIs. Filter the identifiers.org form, then pin the label to ontology/taxonomy (see gotcha hub_labels)."
+
+  - id: metabolite_lookup
+    intent: find a metabolite entry in the BMS collection
+    question: "Which BMRB metabolite entries describe L-alanine, and what is its InChI?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?dbk ?name ?formula ?inchi
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bms> {
+          ?c a n:chem_comp ; n:of_datablock ?dbk ; n:chem_comp.name "L-Alanine" ;
+             n:chem_comp.name ?name ; n:chem_comp.formula ?formula ; n:chem_comp.inchi_code ?inchi .
+        }
+      }
+      ORDER BY ?dbk
+    verified: {row_count: 2, has_values: ["bmse000028", "bmse000994"], date: "2026-10-30"}
+    teaches: "Metabolites live in rdf/bms as n:chem_comp rows with name, formula and InChI. Use n:chem_comp_common_name.name for synonyms. One compound can have several entries, so count compounds by InChI rather than entries."
+    traps_avoided:
+      - "chem_comp.formula is space-separated (\"C3 H7 N O2\"), so match it in that form or use chem_comp.inchi_code."
+
+  - id: metabolite_shifts
+    intent: read metabolite chemical shifts
+    question: "What are the chemical shifts of L-alanine in entry bmse000028?"
+    complexity: basic
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT ?atom ?type ?val
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bms> {
+          ?s a n:atom_chem_shift ; n:of_datablock <http://bmrbpub.pdbj.org/rdf/bmse000028> ;
+             n:atom_chem_shift.atom_id ?atom ; n:atom_chem_shift.atom_type ?type ; n:atom_chem_shift.val ?val .
+        }
+      }
+      ORDER BY ?type ?atom
+    verified: {row_count: 7, has_values: ["C2", "H10"], date: "2026-10-30"}
+    teaches: "BMS shifts use the same row class as BMR, but atom names are local to the entry (C1, H10) and comp_id is a local index such as \"1\", not a residue code. They cannot be compared by name across compounds."
+
+  - id: enum_metabolite_xref
+    intent: enumerate metabolites with a cross-reference, handling inconsistent database codes
+    question: "How many BMRB metabolite entries are linked to ChEBI?"
+    complexity: intermediate
+    sparql: |
+      PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+      SELECT (COUNT(DISTINCT ?dbk) AS ?n)
+      WHERE {
+        GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bms> {
+          ?l a n:chem_comp_db_link ; n:of_datablock ?dbk ; n:chem_comp_db_link.database_code ?c .
+          FILTER(LCASE(STR(?c)) = "chebi")
+        }
+      }
+    verified: {n: 818, date: "2026-10-30"}
+    teaches: "chem_comp_db_link.database_code is uncontrolled, so normalize it with LCASE. Join outward using accession_code (ChEBI, KEGG, CAS) with no IRI to follow."
+    traps_avoided:
+      - say: "An exact match sees only part of the set: \"CHEBI\" finds 448 entries and \"ChEBI\" 370. \"CAS\" and \"CAS Registry\" split the same way."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(DISTINCT ?dbk) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bms> { ?l a n:chem_comp_db_link ; n:of_datablock ?dbk ; n:chem_comp_db_link.database_code "CHEBI" } }
+          expect: {value: 448, tolerance: 0.02}
+      - say: "PubChem links mix two ID types, 6,597 SIDs and 1,504 CIDs. Read accession_code_type (\"sid\" or \"cid\") before using accession_code as a compound ID."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX n: <http://bmrbpub.pdbj.org/schema/mmcif_nmr-star.owl#>
+            SELECT (COUNT(DISTINCT ?l) AS ?n) WHERE { GRAPH <http://bmrbpub.protein.osaka-u.ac.jp/rdf/bms> { ?l a n:chem_comp_db_link ; n:chem_comp_db_link.database_code "PubChem" ; n:chem_comp_db_link.accession_code_type "sid" } }
+          expect: {value: 6597, tolerance: 0.02}
+
+schema_delta:
+  - "Datablock metadata: dc:title, dcterms:identifier, dcterms:references (the entry DOI), and rdfs:seeAlso (NMR-STAR file and BMRBj page). A BMRB ID is also in n:datablockName."
+  - "n:citation carries citation.title, citation.pubmed_id, citation.doi and citation.year (string). Its rdfs:seeAlso includes http://rdf.ncbi.nlm.nih.gov/pubmed/<PMID>."
+  - "n:sample_component: mol_common_name, concentration_val (string), concentration_val_units, isotopic_labeling such as \"[U-15N]\"."
+  - "n:entry.assigned_pdb_deposition_code is unusable: 1,684 of 1,693 values are scraped HTML (\"<!DOCTYPE html ...\")."
+
+id_join_map:
+  stable_anchor: "Datablock IRI http://bmrbpub.pdbj.org/rdf/bmr<ID> or bmse<ID>; the same ID is the string n:entry.id. Row IRIs embed commas, so build them only by querying."
+  same_endpoint_joins:
+    pdb: "rdfs:seeAlso <http://rdf.wwpdb.org/pdb/XXXX> on n:entry and n:related_entries -> dataset/pdb (example xdb_pdb_structure)"
+    pdb_to_bmrb: "reverse direction: in dataset/pdb, a pdbx_database_related row has pdbo:link_to_bmrb <http://bmrbpub.pdbj.org/rdf/bmrNNNNN>"
+    taxonomy: "rdfs:seeAlso <http://identifiers.org/taxonomy/N> on n:entity_natural_src -> ontology/taxonomy (example xdb_taxonomy_names)"
+  xrefs:
+    uniprot: "entity_db_link code \"SP\" with accession_code, or rdfs:seeAlso http://purl.uniprot.org/uniprot/ID; mostly similarity hits"
+    refseq_genbank: "entity_db_link codes \"REF\", \"GB\", \"DBJ\", \"EMBL\"; seeAlso under identifiers.org/refseq, identifiers.org/ncbiprotein or ncbi.nlm.nih.gov/protein"
+    ec: "entity.ec_number, or rdfs:seeAlso http://purl.uniprot.org/enzyme/N.N.N.N"
+    pubmed: "n:citation rdfs:seeAlso http://rdf.ncbi.nlm.nih.gov/pubmed/PMID"
+    pubchem: "chem_comp_db_link code \"PubChem\" with accession_code_type \"sid\" or \"cid\"; seeAlso http://rdf.ncbi.nlm.nih.gov/pubchem/substance/SIDn or compound/CIDn"
+    chebi_kegg_cas: "chem_comp_db_link accession_code only, with no IRI (example enum_metabolite_xref)"

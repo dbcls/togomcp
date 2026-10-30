@@ -1,0 +1,425 @@
+mie_spec: 3
+database: lotus
+
+discovery:
+  title: LOTUS — natural products occurrences
+  description: >
+    Referenced structure–organism occurrences of natural products, linking compounds with their chemical
+    classifications to the source taxa and the literature that reports them.
+  keywords: [natural product, secondary metabolite, specialized metabolite, phytochemical, chemotaxonomy, source organism,
+             medicinal plant, alkaloid, terpenoid, flavonoid, polyketide, npclassifier, classyfire, inchikey,
+             structure-organism pair]
+  categories: [compound, taxonomy, literature]
+
+endpoint: https://rdfportal.org/primary/sparql
+graphs:
+  primary: http://rdfportal.org/dataset/lotus   # holds the data, its vocabulary, and the release metadata
+  co_hosted:
+    "rdfportal.org/ontology/taxonomy": >
+      Join target for identifiers.org/taxonomy IRIs: names and the rdfs:subClassOf hierarchy (example xdb_taxonomy_subtree).
+    "rdfportal.org/dataset/microbedbjp": >
+      Re-declares the same taxonomy IRIs with a copy of their labels and hierarchy, which inflates an unpinned taxonomy
+      join ×1.95 (gotcha pin_taxonomy_join).
+    "rdfportal.org/dataset/massbank": >
+      Join target by InChIKey, but MassBank stores the key as an IRI (example xdb_massbank_spectra).
+    "rdfportal.org/dataset/togoid/relation/*": >
+      Join target for ChEBI and other IDs through identifiers.org/inchikey IRIs (example xdb_chebi).
+    probed_clean: >
+      2g probe run 2026-10-30, all predicates unbound: 6 compound, taxon, reference, journal and occurrence IRIs have
+      triples only in dataset/lotus. schema:MolecularEntity, dwc:Taxon and dcterms:BibliographicResource are typed only there.
+
+entity_counts:                    # each COUNT(DISTINCT) pinned to dataset/lotus, 2026-10-30
+  occurrences: 672413             # one structure + organism + reference triple
+  structures: 227256
+  taxa: 37486
+  references: 91426
+  coverage: "PubChem CID 222,926 structures (98.1%); NPClassifier pathway 220,625 (97.1%); compound label 220,269 (96.9%); NCBI taxon 29,245 taxa (78.0%); PMID 43,077 references (47.1%)"
+
+global_gotchas:
+  - id: literal_forms
+    say: >
+      Text values are plain literals: `lotus:npclassifierPathway "Alkaloids"` matches, while the ^^xsd:string form returns
+      0 rows. The same holds for schema:inChIKey and the dwc: ranks.
+    check:
+      kind: zero_rows
+      date: "2026-10-30"
+      query: |
+        PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+        SELECT ?s WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?s lotus:npclassifierPathway "Alkaloids"^^xsd:string } } LIMIT 1
+
+  - id: wikidata_iris_are_shared
+    say: >
+      Compounds, taxa, references and journals all use http://www.wikidata.org/entity/Q… IRIs, so an untyped pattern mixes
+      them: rdfs:label has 349,020 values across the graph. Type the subject or reach it through an occurrence. Journal IRIs
+      from dcterms:isPartOf have no label here. This is a frozen CSV conversion, not live Wikidata, so Wikidata properties
+      such as wdt:P703 are not available.
+    check:
+      kind: count
+      date: "2026-10-30"
+      query: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?s rdfs:label ?l } }
+      expect: {value: 349020, tolerance: 0.02}
+
+  - id: pin_taxonomy_join
+    say: >
+      Pin ontology/taxonomy when following an identifiers.org/taxonomy link. Left unpinned, microbedbjp supplies a second copy
+      of each label: 339 rows against 174 for one plant family (×1.95), with no error. Do the same for rdfs:subClassOf.
+    check:
+      kind: ratio
+      date: "2026-10-30"
+      unpinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?t a <http://rs.tdwg.org/dwc/terms/Taxon> ; <http://rs.tdwg.org/dwc/terms/family> "Papaveraceae" ; rdfs:seeAlso ?x . FILTER(STRSTARTS(STR(?x),"http://identifiers.org/taxonomy/")) } ?x rdfs:label ?l }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?t a <http://rs.tdwg.org/dwc/terms/Taxon> ; <http://rs.tdwg.org/dwc/terms/family> "Papaveraceae" ; rdfs:seeAlso ?x . FILTER(STRSTARTS(STR(?x),"http://identifiers.org/taxonomy/")) } GRAPH <http://rdfportal.org/ontology/taxonomy> { ?x rdfs:label ?l } }
+      expect: {ratio: 1.95, tolerance: 0.05}
+
+examples:
+  - id: structure_by_inchikey
+    intent: fetch a compound's identifiers and classifications from its InChIKey
+    question: "What does LOTUS record about the compound with InChIKey RYYVLZVUVIJVGH-UHFFFAOYSA-N?"
+    complexity: basic
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      PREFIX schema: <https://schema.org/>
+      SELECT ?m ?label ?formula ?mass ?xlogp ?cf_class ?np_pathway ?pubchem
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?m a schema:MolecularEntity ; schema:inChIKey "RYYVLZVUVIJVGH-UHFFFAOYSA-N" ;
+             schema:molecularFormula ?formula ; lotus:exactMass ?mass .
+          OPTIONAL { ?m rdfs:label ?label }
+          OPTIONAL { ?m lotus:xlogp ?xlogp }
+          OPTIONAL { ?m lotus:classyfireClass ?cf_class }
+          OPTIONAL { ?m lotus:npclassifierPathway ?np_pathway }
+          OPTIONAL { ?m rdfs:seeAlso ?pubchem }
+        }
+      }
+    verified: {row_count: 1, has_values: ["Caffeine", "C8H10N4O2"], date: "2026-10-30"}
+    teaches: "The InChIKey is the best compound anchor. Keep classifications in OPTIONAL, because each is missing on some structures, and expect extra rows from npclassifierPathway on co-classified compounds."
+
+  - id: organisms_of_compound
+    intent: list source organisms for a compound, including its stereoisomers
+    question: "Which organisms is morphine reported from, and under which stereoisomer?"
+    complexity: intermediate
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX dwc: <http://rs.tdwg.org/dwc/terms/>
+      SELECT DISTINCT ?key ?organism
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?m a schema:MolecularEntity ; schema:inChIKey ?key .
+          FILTER(STRSTARTS(?key, "BQJCRHHNABKAKU-"))
+          ?occ lotus:structure ?m ; lotus:organism ?t .
+          ?t dwc:scientificName ?organism .
+        }
+      }
+      ORDER BY ?key ?organism
+    verified: {row_count: 15, has_values: ["BQJCRHHNABKAKU-KBQPJGBKSA-N", "Papaver somniferum"], date: "2026-10-30"}
+    teaches: "The first 14 characters of an InChIKey identify connectivity. Use STRSTARTS on that block when stereochemistry is unknown, and the full key when it matters."
+    traps_avoided:
+      - say: "Stereoisomers are separate structures: the full morphine key finds 1, while its connectivity block finds 3."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            SELECT (COUNT(DISTINCT ?m) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?m a <https://schema.org/MolecularEntity> ; <https://schema.org/inChIKey> ?k FILTER(STRSTARTS(?k,"BQJCRHHNABKAKU-")) } }
+          expect: {value: 3, tolerance: 0}
+      - "Occurrence reports are not curated biosynthesis claims. Morphine here includes Mytilus edulis, so check the reference before calling a compound native to an organism."
+
+  - id: compounds_of_organism
+    intent: count an organism's compounds without inflation from repeated reports
+    question: "How many different compounds are reported from Papaver somniferum?"
+    complexity: aggregation
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      PREFIX dwc: <http://rs.tdwg.org/dwc/terms/>
+      SELECT (COUNT(DISTINCT ?m) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?t a dwc:Taxon ; dwc:scientificName "Papaver somniferum" .
+          ?occ lotus:organism ?t ; lotus:structure ?m .
+        }
+      }
+    verified: {n: 108, date: "2026-10-30"}
+    teaches: "Reach compounds from a taxon through an lotus:Occurrence, and count DISTINCT structures."
+    traps_avoided:
+      - say: "An occurrence is one structure + organism + reference, so a pair reported by several papers repeats. COUNT(?occ) gives 298 for this species, not 108."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+            SELECT (COUNT(DISTINCT ?occ) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?t <http://rs.tdwg.org/dwc/terms/scientificName> "Papaver somniferum" . ?occ lotus:organism ?t } }
+          expect: {value: 298, tolerance: 0.02}
+
+  - id: enum_by_npclassifier_pathway
+    intent: enumerate compounds by NPClassifier biosynthetic pathway
+    question: "How many alkaloids are in LOTUS?"
+    complexity: basic
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      SELECT (COUNT(DISTINCT ?m) AS ?n)
+      WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?m lotus:npclassifierPathway "Alkaloids" } }
+    verified: {n: 30894, date: "2026-10-30"}
+    teaches: "Pathway values are exactly: Terpenoids, Shikimates and Phenylpropanoids, Polyketides, Alkaloids, Amino acids and Peptides, Fatty acids, Carbohydrates. Below them are lotus:npclassifierSuperclass and lotus:npclassifierClass."
+    traps_avoided:
+      - say: "The classification is multi-valued: 13,487 structures have 2 or 3 pathways, so summing per-pathway counts (234,246) overstates the 220,625 classified structures."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+            SELECT (COUNT(DISTINCT ?m) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?m lotus:npclassifierPathway ?p } }
+          expect: {value: 220625, tolerance: 0.02}
+
+  - id: enum_by_classyfire
+    intent: enumerate compounds by ClassyFire class, and see that it is a separate scheme
+    question: "How many flavonoids does ClassyFire identify in LOTUS?"
+    complexity: basic
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      SELECT (COUNT(DISTINCT ?m) AS ?n)
+      WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?m lotus:classyfireClass "Flavonoids" } }
+    verified: {n: 12086, date: "2026-10-30"}
+    teaches: "ClassyFire levels are lotus:classyfireKingdom, classyfireSuperclass, classyfireClass and classyfireDirectParent, plus lotus:chemontId."
+    traps_avoided:
+      - say: "ClassyFire and NPClassifier are different schemes, so the same word gives different sets: NPClassifier superclass \"Flavonoids\" returns 14,754 and ClassyFire class returns 12,086. Say which scheme an answer used."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+            SELECT (COUNT(DISTINCT ?m) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?m lotus:npclassifierSuperclass "Flavonoids" } }
+          expect: {value: 14754, tolerance: 0.02}
+
+  - id: enum_chemical_class_in_taxon
+    intent: intersect a chemical class with a taxonomic rank
+    question: "How many alkaloids are reported from the poppy family (Papaveraceae)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      PREFIX dwc: <http://rs.tdwg.org/dwc/terms/>
+      SELECT (COUNT(DISTINCT ?m) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?t dwc:family "Papaveraceae" .
+          ?occ lotus:organism ?t ; lotus:structure ?m .
+          ?m lotus:npclassifierPathway "Alkaloids" .
+        }
+      }
+    verified: {n: 868, date: "2026-10-30"}
+    teaches: "Ranks are direct literals on the taxon (dwc:kingdom, phylum, class, order, family, tribe, genus), so a clade query needs no hierarchy walk when the rank is known."
+    traps_avoided:
+      - say: "Rank fields are incomplete (dwc:family on 35,592 of 37,486 taxa), so a rank filter misses unassigned taxa."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            SELECT (COUNT(DISTINCT ?t) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?t a <http://rs.tdwg.org/dwc/terms/Taxon> ; <http://rs.tdwg.org/dwc/terms/family> ?f } }
+          expect: {value: 35592, tolerance: 0.02}
+
+  - id: enum_taxa_by_kingdom
+    intent: enumerate taxa using the vocabulary LOTUS actually stores
+    question: "How many plant taxa are in LOTUS?"
+    complexity: basic
+    sparql: |
+      PREFIX dwc: <http://rs.tdwg.org/dwc/terms/>
+      SELECT (COUNT(DISTINCT ?t) AS ?n)
+      WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?t a dwc:Taxon ; dwc:kingdom "Archaeplastida" } }
+    verified: {n: 27946, date: "2026-10-30"}
+    teaches: "dwc:kingdom has three values: Archaeplastida (plants and algae), Fungi, and Metazoa. For prokaryotes use lotus:taxonDomain (Eukaryota, Bacteria, Archaea)."
+    traps_avoided:
+      - say: "`dwc:kingdom \"Plantae\"` returns 0 rows, and \"Bacteria\" is a taxonDomain value (1,552 taxa), not a kingdom."
+        check:
+          kind: zero_rows
+          date: "2026-10-30"
+          query: |
+            SELECT ?t WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?t <http://rs.tdwg.org/dwc/terms/kingdom> "Plantae" } } LIMIT 1
+
+  - id: mass_window
+    intent: find candidate structures by exact mass
+    question: "Which natural products have a monoisotopic mass between 285.1 and 285.2 Da?"
+    complexity: intermediate
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      PREFIX schema: <https://schema.org/>
+      SELECT ?m ?label ?key ?mass
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?m a schema:MolecularEntity ; lotus:exactMass ?mass ; schema:inChIKey ?key .
+          OPTIONAL { ?m rdfs:label ?label }
+          FILTER(?mass >= 285.1 && ?mass <= 285.2)
+        }
+      }
+      ORDER BY ?mass ?key
+      LIMIT 10
+    verified: {min_rows: 10, date: "2026-10-30"}
+    teaches: "lotus:exactMass and lotus:xlogp are numeric, so compare them without a cast. This is neutral monoisotopic mass: remove an adduct before searching from an m/z value."
+    traps_avoided:
+      - "rdfs:label is sometimes a systematic name and is missing on 3.1% of structures, so wrap it in OPTIONAL and identify results by InChIKey."
+
+  - id: evidence_for_occurrence
+    intent: retrieve the literature behind a structure-organism pair
+    question: "Which papers report caffeine in Coffea arabica?"
+    complexity: intermediate
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      PREFIX schema: <https://schema.org/>
+      PREFIX dwc: <http://rs.tdwg.org/dwc/terms/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      PREFIX bibo: <http://purl.org/ontology/bibo/>
+      SELECT ?ref ?title ?doi ?pmid (MIN(?date) AS ?issued)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?m schema:inChIKey "RYYVLZVUVIJVGH-UHFFFAOYSA-N" .
+          ?t a dwc:Taxon ; dwc:scientificName "Coffea arabica" .
+          ?occ lotus:structure ?m ; lotus:organism ?t ; dcterms:references ?ref .
+          OPTIONAL { ?ref dcterms:title ?title }
+          OPTIONAL { ?ref bibo:doi ?doi }
+          OPTIONAL { ?ref bibo:pmid ?pmid }
+          OPTIONAL { ?ref dcterms:issued ?date }
+        }
+      }
+      GROUP BY ?ref ?title ?doi ?pmid
+      ORDER BY ?ref
+    verified: {row_count: 33, has_values: ["10.1021/JF981209N"], date: "2026-10-30"}
+    teaches: "An occurrence's dcterms:references points to a typed reference. Every part of its metadata can be missing, so use OPTIONAL, and aggregate the date."
+    traps_avoided:
+      - say: "dcterms:issued repeats on 2,115 references, up to 8 dates on one, so selecting it directly duplicates rows. Use MIN(), or SAMPLE() if any date will do."
+        check:
+          kind: count
+          date: "2026-10-30"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE { { SELECT ?s (COUNT(?o) AS ?nv) WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?s a <http://purl.org/dc/terms/BibliographicResource> ; <http://purl.org/dc/terms/issued> ?o } } GROUP BY ?s } FILTER(?nv > 1) }
+          expect: {value: 2115, tolerance: 0.02}
+
+  - id: enum_manually_validated
+    intent: restrict to manually validated occurrences
+    question: "How many LOTUS occurrences were manually validated?"
+    complexity: basic
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      SELECT (COUNT(DISTINCT ?occ) AS ?n)
+      WHERE { GRAPH <http://rdfportal.org/dataset/lotus> { ?occ a lotus:Occurrence ; lotus:manuallyValidated true } }
+    verified: {n: 178, date: "2026-10-30"}
+    teaches: "The flag is only ever true (178 of 672,413). Absence means unchecked, not rejected, so never filter on `false` or read a missing flag as an error."
+
+  - id: release_version
+    intent: identify the data release to cite
+    question: "Which LOTUS release does this graph contain?"
+    complexity: basic
+    sparql: |
+      PREFIX pav: <http://purl.org/pav/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?version ?issued ?source
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          <http://rdfportal.org/dataset/lotus> pav:version ?version ; dcterms:issued ?issued ; dcterms:source ?source .
+        }
+      }
+    verified: {row_count: 1, has_values: ["v11"], date: "2026-10-30"}
+    teaches: "The dataset node carries the frozen release and its Zenodo DOI, which an answer should cite. Newer Wikidata edits are not included."
+
+  - id: compound_name_search
+    intent: go from a compound name to a structure when no key is known
+    question: "What is the InChIKey for caffeine in LOTUS?"
+    complexity: intermediate
+    sparql: |
+      PREFIX schema: <https://schema.org/>
+      SELECT ?m ?label ?key
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?m a schema:MolecularEntity ; rdfs:label ?label ; schema:inChIKey ?key .
+          ?label bif:contains "'caffeine'" .
+        }
+      }
+      LIMIT 10
+    verified: {row_count: 1, has_values: ["RYYVLZVUVIJVGH-UHFFFAOYSA-N"], date: "2026-10-30"}
+    teaches: "Compound names have no controlled vocabulary here, so bif:contains on the typed compound's rdfs:label is the discovery route. Switch to the InChIKey as soon as you have it."
+
+  - id: xdb_taxonomy_subtree
+    intent: "cross-DB: use the NCBI hierarchy to query a clade with no rank literal"
+    question: "How many compounds are reported from taxa under the genus Papaver?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX lotus: <http://purl.jp/bio/lotus/ontology/>
+      PREFIX dwc: <http://rs.tdwg.org/dwc/terms/>
+      SELECT ?clade (COUNT(DISTINCT ?t) AS ?taxa) (COUNT(DISTINCT ?m) AS ?structures)
+      WHERE {
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {
+          <http://identifiers.org/taxonomy/3468> rdfs:label ?clade .
+          ?ncbi rdfs:subClassOf* <http://identifiers.org/taxonomy/3468> .
+        }
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?t a dwc:Taxon ; rdfs:seeAlso ?ncbi .
+          ?occ lotus:organism ?t ; lotus:structure ?m .
+        }
+      }
+      GROUP BY ?clade
+    verified: {row_count: 1, has_values: ["Papaver", 30, 310], date: "2026-10-30"}
+    teaches: "rdfs:seeAlso on a taxon includes the identifiers.org/taxonomy IRI that ontology/taxonomy uses, so the join needs no string work. It reaches only taxa with an NCBI ID (78.0%)."
+
+  - id: xdb_massbank_spectra
+    intent: "cross-DB: find mass spectra for a LOTUS compound"
+    question: "How many MassBank spectra exist for caffeine?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX schema: <https://schema.org/>
+      SELECT ?m (COUNT(DISTINCT ?compound) AS ?n)
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?m a schema:MolecularEntity ; schema:inChIKey ?key .
+          FILTER(?key = "RYYVLZVUVIJVGH-UHFFFAOYSA-N")
+          BIND(IRI(CONCAT("http://identifiers.org/inchikey/", ?key)) AS ?key_iri)
+        }
+        GRAPH <http://rdfportal.org/dataset/massbank> { ?compound schema:inChIKey ?key_iri }
+      }
+      GROUP BY ?m
+    verified: {row_count: 1, has_values: [95], date: "2026-10-30"}
+    teaches: "Convert the InChIKey with BIND(IRI(CONCAT(...))) to cross to MassBank. Anchor on chosen compounds rather than joining the whole graph."
+    traps_avoided:
+      - say: "LOTUS stores the InChIKey as a literal and MassBank as an IRI, even with the same predicate, so sharing ?key directly returns 0 rows."
+        check:
+          kind: zero_rows
+          date: "2026-10-30"
+          query: |
+            SELECT ?c WHERE { GRAPH <http://rdfportal.org/dataset/massbank> { ?c <https://schema.org/inChIKey> "RYYVLZVUVIJVGH-UHFFFAOYSA-N" } } LIMIT 1
+
+  - id: xdb_chebi
+    intent: "cross-DB: map a LOTUS compound to ChEBI through the co-hosted TogoID relation graph"
+    question: "What is the ChEBI ID for LOTUS's aspirin record?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX schema: <https://schema.org/>
+      SELECT ?key ?chebi
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/lotus> {
+          ?m schema:inChIKey ?key .
+          FILTER(?key = "BSYNRYMUTXBXSQ-UHFFFAOYSA-N")
+          BIND(IRI(CONCAT("http://identifiers.org/inchikey/", ?key)) AS ?key_iri)
+        }
+        GRAPH <http://rdfportal.org/dataset/togoid/relation/chebi-inchi_key> { ?chebi ?rel ?key_iri }
+      }
+    verified: {row_count: 1, has_values: ["CHEBI_15365"], date: "2026-10-30"}
+    teaches: "TogoID relation graphs on this endpoint bridge an InChIKey to other IDs. The same pattern works with pubchem_compound-inchi_key, chembl_compound-inchi_key and hmdb-inchi_key."
+
+schema_delta:
+  - "Compound structure fields: schema:smiles, schema:inChI, schema:iupacName, lotus:smiles2D, lotus:stereocenterCount, lotus:unspecifiedStereocenterCount."
+  - "Taxon extras: lotus:taxonSpecies, lotus:taxonVarietas. Taxon rdfs:seeAlso also holds GBIF and Open Tree of Life links."
+  - "The lotus: vocabulary is in the same graph: ask `?p rdfs:comment ?c` for what a property means."
+
+id_join_map:
+  stable_anchor: "schema:inChIKey for compounds; dwc:scientificName or the identifiers.org/taxonomy link for taxa. Occurrence IRIs are http://rdfportal.org/dataset/lotus/occurrence/<structure>_<organism>_<reference> using Wikidata QIDs."
+  same_endpoint_joins:
+    taxonomy: "dwc:Taxon rdfs:seeAlso <http://identifiers.org/taxonomy/N> (example xdb_taxonomy_subtree)"
+    massbank: "InChIKey literal converted to <http://identifiers.org/inchikey/KEY> (example xdb_massbank_spectra)"
+    togoid_relations: "same converted IRI into dataset/togoid/relation/*-inchi_key (example xdb_chebi)"
+  xrefs:
+    pubchem: "MolecularEntity rdfs:seeAlso <http://rdf.ncbi.nlm.nih.gov/pubchem/compound/CIDn>, 98.1% of structures; the same IRI exists on the pubchem endpoint"
+    pubmed: "BibliographicResource rdfs:seeAlso <http://rdf.ncbi.nlm.nih.gov/pubmed/PMID> and bibo:pmid, 47.1% of references"
+    doi: "bibo:doi literal and rdfs:seeAlso <https://doi.org/...>"
+    gbif_ott: "Taxon rdfs:seeAlso <https://www.gbif.org/species/N> and <https://tree.opentreeoflife.org/taxonomy/browse?id=N>"
+    wikidata: "Compound, taxon and reference IRIs are Wikidata entities, usable on any endpoint with Wikidata QIDs"

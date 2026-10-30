@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 47 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 49 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -10,24 +10,24 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **compound** — `chebi` `chembl` `idsm` `lipidmaps` `massbank` `pubchem` `swisslipids` `wikipathways`
+- **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
 - **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
 - **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
 - **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `jogo` `marpolbase` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
-- **literature** — `pubmed` `pubtator`
+- **literature** — `lotus` `pubmed` `pubtator`
 - **materials** — `supercon`
 - **microbe** — `amrportal` `bacdive` `bh26microbes` `mediadive` `nbrc`
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
-- **protein** — `brenda` `glycosmos` `jpostdb` `oma` `pdb` `tismed` `uniprot`
+- **protein** — `bmrb` `brenda` `glycosmos` `jpostdb` `oma` `pdb` `tismed` `uniprot`
 - **reaction** — `brenda` `rhea`
 - **sequence** — `ddbj` `ensembl`
-- **structure** — `pdb`
-- **taxonomy** — `bgee` `taxonomy`
+- **structure** — `bmrb` `pdb`
+- **taxonomy** — `bgee` `lotus` `taxonomy`
 - **variant** — `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
 
 **All databases** (alphabetical):
@@ -40,6 +40,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: gene expression, tissue, anatomical entity, developmental stage, rna-seq, in situ hybridization, cross-species, expression call, absence call, confidence, uberon, cell type, orthology, taxon
 - **bh26microbes** — BH26 Microbes (KofamScan KEGG Orthology annotations). Experimental BioHackathon 2026 dataset of KofamScan KEGG Orthology (KO) assignments — with HMM score, E-value, threshold and significance per hit — for ~57.6 million RefSeq proteins across 23,434 pro… _(categories: annotation, genomics, microbe)_  
   keywords: kegg orthology, ko, kofamscan, functional annotation, hmm profile, prokaryotic genome, bacteria, refseq protein, genome assembly, gene content, metabolic potential, comparative genomics
+- **bmrb** — BMRB — Biological Magnetic Resonance Data Bank. NMR spectroscopy data for biomolecules and metabolites: assigned chemical shifts, relaxation and coupling measurements, sample conditions, spectrometers, and links to PDB, UniProt, PubChem and ChEBI. _(categories: compound, protein, structure)_  
+  keywords: nmr, nuclear magnetic resonance, chemical shift, resonance assignment, relaxation, t1, t2, heteronuclear noe, residual dipolar coupling, coupling constant, order parameter, sample conditions, spectrometer, field strength, metabolite, metabolomics, nmr-star
 - **brenda** — BRENDA (Braunschweig Enzyme Database). Manually curated enzyme data classified by EC number: enzyme instances (one per organism), EC-class definitions, inhibitors/activators/cofactors, substrates/products, reactions, tissue and subcellula… _(categories: enzymology, protein, reaction)_  
   keywords: enzyme, ec number, enzymatic reaction, substrate, product, inhibitor, activator, cofactor, biochemistry, catalysis, inchi, inchikey, tissue expression, subcellular localization
 - **chebi** — ChEBI — Chemical Entities of Biological Interest. OWL ontology of 224k+ chemical entities (small molecules, ions, radicals, functional groups) with a rdfs:subClassOf class hierarchy, molecular properties (formula/mass/InChI/SMILES/charge) in the che… _(categories: compound, ontology)_  
@@ -72,6 +74,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification, post-translational modification, ptm, unimod, psi-ms, reanalysis, proteome, shotgun proteomics
 - **lipidmaps** — LIPID MAPS Structure Database (LMSD). Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthand notation, organised under the eight-category LIPID MAPS classification hierarchy. _(categories: compound, ontology)_  
   keywords: lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol, metabolite, molecular formula, monoisotopic mass, inchikey, shorthand notation, mass spectrometry
+- **lotus** — LOTUS — natural products occurrences. Referenced structure–organism occurrences of natural products, linking compounds with their chemical classifications to the source taxa and the literature that reports them. _(categories: compound, literature, taxonomy)_  
+  keywords: natural product, secondary metabolite, specialized metabolite, phytochemical, chemotaxonomy, source organism, medicinal plant, alkaloid, terpenoid, flavonoid, polyketide, npclassifier, classyfire, inchikey, structure-organism pair
 - **marpolbase** — MarpolBase (Marchantia polymorpha). Genome structural annotation, functional annotation, co-expression, orthogroups and curated gene-literature assertions for the liverwort Marchantia polymorpha (MpTak_v7.1). _(categories: annotation, gene, genomics)_  
   keywords: plant, liverwort, bryophyte, genome, gene model, genome annotation, functional annotation, gene expression, co-expression, orthology, gene symbol, literature curation
 - **massbank** — MassBank — reference mass spectra for small molecules. Open repository of reference MS/MS mass spectra for small molecules (metabolites, drugs, natural products, environmental chemicals): each record links a measured peak list + analytical/instrument met… _(categories: compound)_  
