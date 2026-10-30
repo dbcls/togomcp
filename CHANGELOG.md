@@ -13,6 +13,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **New database: `bmrb`** (Biological Magnetic Resonance Data Bank), on the existing `pdb` endpoint. Agents can now query NMR chemical shifts, relaxation data, sample conditions and metabolite entries, and join them directly to PDB structures.
+- **New database: `lotus`** (natural products occurrences, release v11), on the `primary` endpoint. Agents can now ask which organisms produce a compound and which compounds an organism produces, with the supporting literature, and join to NCBI Taxonomy, MassBank and ChEBI.
+
 ## [2.27.4] - 2026-10-28
 
 MIE corrections after upstream reloads. PATCH: no tool, parameter or return shape changed. Six MIE

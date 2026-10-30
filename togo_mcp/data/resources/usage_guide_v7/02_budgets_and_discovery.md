@@ -70,12 +70,12 @@ is the bold row label.
 
 | Endpoint | n | `database` keys |
 |---|---:|---|
-| **primary** | 20 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `hco` `mco` `ontology` `fantabio` `pubcasefinder` `jogo` `tismed` |
+| **primary** | 21 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `hco` `mco` `ontology` `fantabio` `pubcasefinder` `jogo` `tismed` `lotus` |
 | **ebi** | 6 | `chembl` `chebi` `reactome` `ensembl` `amrportal` `gwascatalog` |
 | **ncbi** | 5 | `clinvar` `pubmed` `pubtator` `ncbigene` `medgen` |
 | **sib** | 4 | `uniprot` `rhea` `bgee` **`oma`** |
 | **pubchem** | 1 | `pubchem` |
-| **pdb** | 1 | `pdb` |
+| **pdb** | 2 | `pdb` `bmrb` |
 | **ddbj** | 1 | `ddbj` |
 | **glycosmos** | 1 | `glycosmos` |
 | **nims** | 1 | `supercon` ← key ≠ endpoint name |

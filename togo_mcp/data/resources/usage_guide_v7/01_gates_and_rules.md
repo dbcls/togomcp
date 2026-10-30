@@ -62,7 +62,7 @@ synthesize from partial data.
 | 3–4                    | 16.55     |
 | 8+                     | 16.43     |
 
-**3. Pin every graph in every SPARQL query.** Endpoints are shared (`primary` hosts 18
+**3. Pin every graph in every SPARQL query.** Endpoints are shared (`primary` hosts 21
 databases; `sib` hosts UniProt *and* OMA) and an unpinned query reads all of them —
 returning a plausible, correctly-shaped, wrong number with **no error**. `SELECT
 DISTINCT` is not a substitute. See 🕸️ CO-TENANCY. **One exception:** `lipidmaps` has no

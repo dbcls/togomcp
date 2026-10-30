@@ -177,10 +177,8 @@ _AMBIGUOUS_PREFIX_QNAMES: dict[str, dict[str, frozenset[str]]] = {
             "hasSequenceAccession", "hasTestAbility", "hasTestType", "isHumanPathogen",
             "isMotile", "isTypeStrain",
         }),
-        "massbank": frozenset({
-            "ChemicalSubstance", "chemicalsubstance", "inChIKey", "molecularFormula",
-            "name", "smiles",
-        }),
+        "lotus": frozenset({"MolecularEntity", "inChI", "iupacName"}),
+        "massbank": frozenset({"ChemicalSubstance", "chemicalsubstance", "name"}),
         "mediadive": frozenset({
             "Equipment", "GasComponent", "Ingredient", "Medium", "Modification",
             "OperationalStep", "SolutionRecipe", "belongsTaxGroup", "growthPH",

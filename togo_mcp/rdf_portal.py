@@ -126,7 +126,7 @@ async def togomcp_usage_guide() -> str:
     Why the other tools depend on it (measured on the TogoMCP benchmark): answers
     with ≥3 consecutive run_sparql calls score ~1.1 points lower, and SPARQL
     written before the MIE schema was read accounts for ~95% of silent SPARQL
-    failures. Most RDF Portal endpoints host MANY databases (primary: 20, ebi: 6,
+    failures. Most RDF Portal endpoints host MANY databases (primary: 21, ebi: 6,
     ncbi: 5, sib: 4) and every endpoint hosts many GRAPHS; an unpinned query reads
     all of them, so a co-hosted graph can supply a predicate that looks native and
     return a plausible, correctly-shaped, wrong number with no error. The guide's
