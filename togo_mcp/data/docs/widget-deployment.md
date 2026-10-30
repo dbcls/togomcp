@@ -74,7 +74,7 @@ Model metadata is fetched even when the model picker is hidden, so tool-result
 trimming and history eviction can use the model's context window. Discovery uses
 `cache: no-store` to avoid treating a conditional 304 response as an empty list.
 The page model remains gpt-oss-120b, admitted by the free-access policy in the
-merged llm_meta_server PR #193. Server-side quotas still apply.
+merged [llm_meta_server PR #193](https://github.com/jdkim/llm_meta_server/pull/193). Server-side quotas still apply.
 
 ## Limit-stop messages
 
