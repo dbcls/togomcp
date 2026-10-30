@@ -13,6 +13,29 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.28.1] - 2026-10-31
+
+Trial-chat widget update. PATCH: no tool, parameter or return shape changed. The served intro pages
+and their bundled widget script are the only runtime artifacts that differ from 2.28.0.
+
+### Fixed
+
+- **The trial chat now knows its model's context window** (#278, by @yayamamo; bundle built from
+  yayamamo/llm_meta_widget 5b2c61d, which merges upstream llm_meta_widget 0.15.2). The pages hide the
+  model picker, and hiding it also skipped the `/api/llms` request, so the widget never learned the
+  window of `gpt-oss-120b` and did not trim oversized tool results or evict old history against it.
+  It now fetches the metadata either way, which matters because long TogoMCP results can otherwise
+  overrun a conversation.
+- **A 304 can no longer look like an empty model or tool list.** Discovery requests use
+  `cache: no-store`, since a conditional-cache response was being read as "nothing available".
+
+### Changed
+
+- The model (`gpt-oss-120b`) and the 10-round / 4-question limits are unchanged. The script URL now
+  carries `?v=5b2c61d`, so a returning visitor does not keep the old bundle.
+- `widget-deployment.md` replaces the guidance for the closed llm_meta_server #192 with the merged
+  #193 free-access policy, under which `gpt-oss-120b` is admitted; server-side quotas still apply.
+
 ## [2.28.0] - 2026-10-30
 
 <!-- whatsnew: 2026-10-30 | Two new databases: <code>bmrb</code> — NMR chemical shifts, relaxation data and sample conditions for biomolecules and metabolites — and <code>lotus</code> — which organisms a natural product is reported from, with the supporting literature. -->
@@ -3615,7 +3638,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.28.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.28.1...HEAD
+[2.28.1]: https://github.com/dbcls/togomcp/compare/v2.28.0...v2.28.1
 [2.28.0]: https://github.com/dbcls/togomcp/compare/v2.27.4...v2.28.0
 [2.27.4]: https://github.com/dbcls/togomcp/compare/v2.27.3...v2.27.4
 [2.27.3]: https://github.com/dbcls/togomcp/compare/v2.27.2...v2.27.3
