@@ -743,46 +743,77 @@ function modelWindowFrom(payload, modelId) {
   return null;
 }
 var PAGE_GLOBAL_TRANSPORT = "page-global";
-function declaredPageGlobal(card) {
-  for (const remote of card && card.remotes || []) {
-    if (!remote || remote.type !== PAGE_GLOBAL_TRANSPORT) continue;
-    if (typeof remote.global === "string" && remote.global.trim() !== "") return remote.global.trim();
+function declaredPageGlobal(card, warn = console.warn) {
+  const declared = card && card.transports || [];
+  for (const transport of declared) {
+    if (!transport || transport.type !== PAGE_GLOBAL_TRANSPORT) continue;
+    if (typeof transport.global === "string" && transport.global.trim() !== "") {
+      return transport.global.trim();
+    }
+  }
+  if (declared.length) {
+    warn("[llm-meta-widget] page card declares transports " + JSON.stringify(declared.map((t) => t && t.type)) + ", none of which this widget supports; not dispatching to the page");
+    return null;
+  }
+  if ((card && card.remotes || []).some((r) => r && r.type === PAGE_GLOBAL_TRANSPORT)) {
+    warn(`[llm-meta-widget] page card declares its transport in top-level "remotes", which is no longer read. Move it to _meta["${STATIC_PRIMITIVES_META}"].transports`);
   }
   return null;
 }
 function pageHandlers({ card, scope = {}, legacy = {}, warn = console.warn } = {}) {
-  const name = declaredPageGlobal(card);
-  const declared = name ? scope[name] : null;
-  if (name && !declared) {
-    warn(`[llm-meta-widget] the page card declares global "${name}", but window.${name} is not defined \u2014 is the script that defines it loaded, and did it run?`);
-  }
+  const name = declaredPageGlobal(card, warn);
   const isMap = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+  const said = /* @__PURE__ */ new Set();
+  const sayOnce = (key, message) => {
+    if (said.has(key)) return;
+    said.add(key);
+    warn(message);
+  };
   const pick = (kind, legacyName) => {
+    const declared = name ? scope[name] : null;
+    if (name && !declared) {
+      sayOnce(
+        "missing",
+        `[llm-meta-widget] the page card declares global "${name}", but window.${name} is not defined \u2014 is the script that defines it loaded, and did it run?`
+      );
+    }
     const fromGlobal = declared ? declared[kind] : void 0;
     if (isMap(fromGlobal)) return fromGlobal;
     if (declared && fromGlobal !== void 0 && !isMap(fromGlobal)) {
-      warn(`[llm-meta-widget] window.${name}.${kind} is ${Array.isArray(fromGlobal) ? "an array" : typeof fromGlobal}; it must be an object keyed by ${kind === "resources" ? "uri" : "name"}`);
+      sayOnce(
+        `shape:${kind}`,
+        `[llm-meta-widget] window.${name}.${kind} is ${Array.isArray(fromGlobal) ? "an array" : typeof fromGlobal}; it must be an object keyed by ${kind === "resources" ? "uri" : "name"}`
+      );
     }
     return legacyName && scope[legacyName] || {};
   };
   return {
     global: name,
-    tools: pick("tools", legacy.tools),
-    prompts: pick("prompts", legacy.prompts),
-    resources: pick("resources", legacy.resources)
+    get tools() {
+      return pick("tools", legacy.tools);
+    },
+    get prompts() {
+      return pick("prompts", legacy.prompts);
+    },
+    get resources() {
+      return pick("resources", legacy.resources);
+    }
   };
 }
 function mergeStaticPrimitivesCards(cards, warn = console.warn) {
-  const merged = { remotes: [], tools: [], prompts: [], resources: [] };
+  const merged = { transports: [], remotes: [], tools: [], prompts: [], resources: [] };
   for (const card of cards || []) {
-    for (const remote of card && card.remotes || []) {
-      const clash = merged.remotes.find((r) => r.type === remote.type && r.global !== remote.global);
-      if (clash) {
-        warn(`[llm-meta-widget] two blocks declare different ${remote.type} globals ("${clash.global}" and "${remote.global}"); using "${clash.global}"`);
-        continue;
-      }
-      if (!merged.remotes.some((r) => r.type === remote.type && r.global === remote.global)) {
-        merged.remotes.push(remote);
+    for (const kind of ["transports", "remotes"]) {
+      for (const entry of card && card[kind] || []) {
+        if (!entry || typeof entry.type !== "string") continue;
+        const clash = merged[kind].find((r) => r.type === entry.type && r.global !== entry.global);
+        if (clash) {
+          warn(`[llm-meta-widget] the ${entry.type} transport is declared more than once, with different globals ("${clash.global}" and "${entry.global}"); using "${clash.global}". One block may declare it twice, or two blocks may disagree`);
+          continue;
+        }
+        if (!merged[kind].some((r) => r.type === entry.type && r.global === entry.global)) {
+          merged[kind].push(entry);
+        }
       }
     }
   }
@@ -803,7 +834,7 @@ function mergeStaticPrimitivesCards(cards, warn = console.warn) {
   return merged;
 }
 function readStaticPrimitivesCard(text, warn = console.warn) {
-  const empty = { remotes: [], tools: [], prompts: [], resources: [] };
+  const empty = { transports: [], remotes: [], tools: [], prompts: [], resources: [] };
   if (typeof text !== "string" || text.trim() === "") return empty;
   let doc;
   try {
@@ -823,7 +854,12 @@ function readStaticPrimitivesCard(text, warn = console.warn) {
     return ok;
   });
   return {
-    // The whole card's transport, so what it declares survives the parse.
+    // Where a page says how to reach its handlers. Since SEP d44bd25a this is
+    // `transports` inside the extension data, because the Server Card's
+    // `Remote.type` enum is streamable-http|sse and `page-global` was never a
+    // valid value there. Top-level `remotes` is what 0.11.1-0.12.2 read, and is
+    // still accepted for one release — see declaredPageGlobal.
+    transports: Array.isArray(ext.transports) ? ext.transports : [],
     remotes: Array.isArray(doc.remotes) ? doc.remotes : [],
     tools: named(ext.tools, "tool"),
     prompts: named(ext.prompts, "prompt"),
@@ -4095,6 +4131,19 @@ function boot(cfg, host) {
   var toggleBtn = document.getElementById("llm-meta-widget-toggle");
   var historyEl = root.querySelector(".lmw-messages");
   var SCROLL_PIN_SLACK = 40;
+  var skippedResources = [];
+  var announcedSkips = false;
+  function kb(bytes) {
+    return Math.round((bytes || 0) / 1024) + " KB";
+  }
+  function noteSkippedResource(plan, budget, origin) {
+    if (plan.reason !== "over-budget") return;
+    var name = plan.name || plan.uri;
+    skippedResources = skippedResources.filter(function(s) {
+      return s.name !== name;
+    });
+    skippedResources.push({ name, size: plan.size, budget, origin });
+  }
   function thousands(n) {
     return (Math.round(n / 1e3) * 1e3).toLocaleString("en-US");
   }
@@ -4333,7 +4382,9 @@ function boot(cfg, host) {
     );
   } else {
     var pageCardEl = document.getElementById(PAGE_CARD_ID);
-    pageCard = readStaticPrimitivesCard(pageCardEl ? pageCardEl.textContent : null);
+    pageCard = mergeStaticPrimitivesCards(
+      [readStaticPrimitivesCard(pageCardEl ? pageCardEl.textContent : null)]
+    );
   }
   var handlers = pageHandlers({
     card: pageCard,
@@ -4430,12 +4481,16 @@ function boot(cfg, host) {
         });
         if (flat.length > 1) modelPicker.style.display = "";
       }));
-    } else if (ENABLE_MODEL_PICKER && modelPicker) {
-      tasks.push(fetch(LLM_BASE + "/api/llms", { headers: hubHeaders() }).then(function(r) {
-        return r.ok ? r.json() : { llms: [] };
+    }
+    if (LLM_PROVIDER !== "ollama") {
+      tasks.push(fetch(LLM_BASE + "/api/llms", { headers: hubHeaders(), cache: "no-store" }).then(function(r) {
+        if (r.ok) return r.json();
+        console.warn("[llm-meta-widget] /api/llms answered " + r.status + "; the model context window is unknown, so reference data is budgeted at the floor and oversized tool results are not trimmed");
+        return { llms: [] };
       }).then(function(payload) {
         llmsPayload = payload;
         modelWindow = modelWindowFrom(payload, MODEL);
+        if (!(ENABLE_MODEL_PICKER && modelPicker)) return;
         var flat = [];
         (payload.llms || []).forEach(function(llm) {
           if (llm.family !== "ollama") return;
@@ -4465,8 +4520,10 @@ function boot(cfg, host) {
       }));
     }
     if (ENABLE_TOOL_PICKER && toolsListEl) {
-      tasks.push(fetch(TOOL_HUB_BASE + "/api/mcp_servers", { headers: hubHeaders() }).then(function(r) {
-        return r.ok ? r.json() : { mcp_servers: [] };
+      tasks.push(fetch(TOOL_HUB_BASE + "/api/mcp_servers", { headers: hubHeaders(), cache: "no-store" }).then(function(r) {
+        if (r.ok) return r.json();
+        console.warn("[llm-meta-widget] /api/mcp_servers answered " + r.status + "; hub-registered tools will be listed as unavailable");
+        return { mcp_servers: [] };
       }).then(function(payload) {
         hubMcpServers = (payload.mcp_servers || []).filter(function(s) {
           return anyAllowedByAllowlist(s.name, HUB_TOOLS_ALLOWLIST);
@@ -4591,6 +4648,7 @@ function boot(cfg, host) {
     return Object.assign({}, p, { source: "page" });
   });
   var modelWindow = null;
+  var warnedNoWindow = false;
   var llmsPayload = null;
   var resourceContext = null;
   var resourcePlan = null;
@@ -4603,11 +4661,16 @@ function boot(cfg, host) {
     var budget = resourceBudget();
     if (pageResourcePlans === null || budget !== pageResourcePlansBudget) {
       pageResourcePlansBudget = budget;
+      skippedResources = skippedResources.filter(function(s) {
+        return s.origin !== "page";
+      });
+      announcedSkips = false;
       pageResourcePlans = planPageResources({
         entries: pageCard.resources,
         budgetBytes: budget,
         onSkip: function(plan) {
           console.info("[llm_meta_widget] not attaching " + plan.uri + " (" + plan.reason + ", size=" + plan.size + ")");
+          noteSkippedResource(plan, resourceBudget(), "page");
         }
       });
     }
@@ -4639,6 +4702,7 @@ function boot(cfg, host) {
           read: readMcpResource,
           onSkip: function(plan) {
             console.info("[llm_meta_widget] not attaching " + plan.uri + " (" + plan.reason + ", size=" + plan.size + ")");
+            noteSkippedResource(plan, resourceBudget(), "host");
           }
         });
         if (loaded && loaded.plan && loaded.plan.fetch) {
@@ -5053,6 +5117,18 @@ function boot(cfg, host) {
     persistConversation();
     inputEl.value = "";
     appendTurn("user", userText, pendingTurnLabel);
+    if (!modelWindow && !warnedNoWindow) {
+      warnedNoWindow = true;
+      console.warn("[llm-meta-widget] no context window known for " + MODEL + "; reference data is budgeted at the floor and oversized tool results are not trimmed");
+    }
+    pageResourcePlansNow();
+    if (skippedResources.length && !announcedSkips) {
+      announcedSkips = true;
+      var skipped = skippedResources[0];
+      var others = skippedResources.length - 1;
+      var alsoText = others > 0 ? " and " + others + " other reference" + (others > 1 ? "s" : "") : "";
+      appendTurn("system", "Did not attach the " + skipped.name + " reference" + alsoText + " (" + kb(skipped.size) + ", and a " + MODEL + " turn allows " + kb(skipped.budget) + " for reference data), so the answer may be less precise. A model with a larger context window would make room.");
+    }
     pendingTurnLabel = null;
     if (currentAbort) {
       try {
