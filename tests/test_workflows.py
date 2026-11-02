@@ -20,7 +20,7 @@ from togo_mcp import skills as sk
 
 REPO = Path(__file__).resolve().parent.parent
 PUBLIC = REPO / "togo_mcp" / "data" / "skills" / "public"
-EXPECTED = {"prism", "research-article-analysis", "disease-analysis"}
+EXPECTED = {"prism", "research-article-analysis", "disease-analysis", "query-provenance"}
 INTERNAL = ("mie-generator", "qa-generator", "intro-page-updater")
 
 
@@ -199,6 +199,22 @@ class TestGetWorkflow:
             return {t.name for t in await client.list_tools()}
 
         assert "get_workflow" in _run(calls, local=local)
+
+    def test_workflows_named_in_description_exist(self) -> None:
+        # The description routes "save the queries for a paper" to query-provenance by
+        # NAME, because it is the one text still in view when that request arrives (the
+        # guide was read at the start). A fixed string cannot follow a rename, so pin it.
+        import re
+
+        from togo_mcp.rdf_portal import WORKFLOWS
+
+        async def calls(client):
+            tools = await client.list_tools()
+            return next(t for t in tools if t.name == "get_workflow").description
+
+        named = set(re.findall(r'name="([a-z0-9-]+)"', _run(calls))) - {"usage-guide"}
+        assert named, "the description no longer routes to any workflow by name"
+        assert named <= set(WORKFLOWS), named - set(WORKFLOWS)
 
 
 # --- Usage Guide ------------------------------------------------------------

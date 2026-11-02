@@ -797,7 +797,8 @@ def workflow_catalog_section() -> str:
     lines += [f"- {s.name}: {s.catalog}" for s in WORKFLOWS.values()]
     lines += [
         "",
-        "Use a workflow only when the question matches; single-fact lookups do not need one.",
+        "Use a workflow when the question, or a request about the results (saving them, "
+        "reproducing them, writing them up), matches; single-fact lookups do not need one.",
     ]
     return "\n".join(lines)
 
@@ -884,7 +885,10 @@ def _workflow_header(s: _skills.Skill) -> str:
     name="get_workflow",
     description=(
         "Retrieve a TogoMCP workflow: a multi-step analysis protocol that drives the "
-        "TogoMCP tools. Call with no arguments to list available workflows. Call with "
+        "TogoMCP tools. Not only for analysis questions: when the user asks to save, "
+        "cite or reproduce results (e.g. \"save the queries for a paper\"), call it with "
+        'name="query-provenance" BEFORE writing anything out. '
+        "Call with no arguments to list available workflows. Call with "
         "`name` to get its SKILL.md. Relative links inside it (e.g. references/x.md) are "
         'fetched with get_workflow(name, path="references/x.md"). Read-only. RETURNS a '
         "text listing, or a short header (files + sizes, digest) followed by the raw "
@@ -939,3 +943,37 @@ async def get_workflow(
             f"Error: {exc}. Files in {skill.name!r}: {files}. "
             "Do not retry with the same value."
         )
+
+
+# The USER-side entry to query-provenance. Neither the server instructions nor
+# get_workflow's description reaches the model on Claude Desktop: its bridge drops
+# server instructions and defers every tool, so before a call the model sees tool
+# NAMES only (confirmed by asking the model, 2026-11-03). "Save the queries for a
+# paper" then went to the host's own file tool. A prompt is chosen by the user from
+# the client's prompt menu, so it does not depend on the model noticing anything —
+# and chosen at the start, it gets the prospective mode, which is the better one.
+# The text names every tool it needs, because a deferred tool is found by name.
+@mcp.prompt(
+    name="record_for_paper",
+    title="Record this investigation for a paper",
+    description=(
+        "Start (or finish) an investigation whose results will go into a paper: the "
+        "exact queries behind each finding are recorded, re-run to confirm, and "
+        "packaged with a draft Methods paragraph."
+    ),
+)
+def record_for_paper(question: str = "") -> str:
+    ask = f"\n\nThe question:\n{question.strip()}" if question.strip() else ""
+    return (
+        "I will use the results of this investigation in a paper, so other people must "
+        "be able to reproduce them.\n\n"
+        'Before anything else, call get_workflow(name="query-provenance") and follow it. '
+        "If no TogoMCP query has been run in this conversation yet, use its prospective "
+        "mode: record each call in the query ledger as you make it. If queries were "
+        "already run, use its retrospective mode for those, and record new calls as you "
+        "go.\n\n"
+        "Then work as usual: call TogoMCP_Usage_Guide before the first query, and "
+        "get_MIE_file for each database before querying it. At the end, give me "
+        "ledger.yaml, PROVENANCE.md and METHODS.md as the workflow describes."
+        + ask
+    )
