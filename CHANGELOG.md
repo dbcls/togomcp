@@ -13,6 +13,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.0] - 2026-11-03
+
+Reproducible results for papers. MINOR: a new workflow (`query-provenance`) and the server's first MCP
+prompt (`record_for_paper`) are added; no tool was added, removed or renamed, and no parameter or
+return shape changed. Two texts a model reads changed: `get_workflow`'s description, and new server
+`instructions`. Clients with a cached tool list lose nothing. The re-run script for readers,
+`scripts/togomcp_reproduce.py`, is pinned to this tag.
+
 <!-- whatsnew: 2026-11-03 | New workflow <code>query-provenance</code> (via <code>get_workflow</code>): it records the exact queries behind each finding, re-runs them to confirm the results still hold, and packages them with a draft Methods paragraph for a paper. -->
 
 ### Added
@@ -3691,7 +3699,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.28.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.0...HEAD
+[2.29.0]: https://github.com/dbcls/togomcp/compare/v2.28.1...v2.29.0
 [2.28.1]: https://github.com/dbcls/togomcp/compare/v2.28.0...v2.28.1
 [2.28.0]: https://github.com/dbcls/togomcp/compare/v2.27.4...v2.28.0
 [2.27.4]: https://github.com/dbcls/togomcp/compare/v2.27.3...v2.27.4
