@@ -13,6 +13,67 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.0] - 2026-11-03
+
+Reproducible results for papers. MINOR: a new workflow (`query-provenance`) and the server's first MCP
+prompt (`record_for_paper`) are added; no tool was added, removed or renamed, and no parameter or
+return shape changed. Two texts a model reads changed: `get_workflow`'s description, and new server
+`instructions`. Clients with a cached tool list lose nothing. The re-run script for readers,
+`scripts/togomcp_reproduce.py`, is pinned to this tag.
+
+<!-- whatsnew: 2026-11-03 | New workflow <code>query-provenance</code> (via <code>get_workflow</code>): it records the exact queries behind each finding, re-runs them to confirm the results still hold, and packages them with a draft Methods paragraph for a paper. -->
+
+### Added
+
+- **`query-provenance` workflow** (served by `get_workflow` and as `skill://`). Users asked how to put
+  TogoMCP results in a paper so that others can reproduce them. A prompt cannot serve that purpose,
+  because an LLM does not take the same path twice; the tool calls themselves can. The workflow records
+  each call that supports a claim, copied exactly as sent, into a `ledger.yaml`. It then re-runs those
+  calls by calling the same tools again, and writes `PROVENANCE.md` and a draft `METHODS.md`. The
+  in-session check needs no code execution, so it works on claude.ai and Claude Desktop. Values a
+  session cannot observe (the server version, result hashes) are left `null` rather than guessed. A
+  real end-to-end run is in `references/worked-example.md`. No server code changed; a client with
+  `get_workflow` in its tool list sees the workflow without re-scanning.
+- **`scripts/togomcp_reproduce.py`**, the re-run script for a paper's readers (`uv run <url>
+  ledger.yaml`). It sends `run_sparql` calls straight to the recorded endpoint, bypassing TogoMCP, so
+  they still reproduce if the server changes or goes away. Other tools are replayed over MCP, and the
+  server's version is reported. The exit code distinguishes a mismatch (1), an unreachable endpoint (2)
+  and an unreadable ledger (3). The workflow ships a copy pinned to this release's tag;
+  `scripts/generate_reproduce_reference.py` keeps that copy and its URL in step, and
+  `tests/test_reproduce_reference_in_sync.py` guards the two.
+
+### Changed
+
+- **`get_workflow`'s description now routes "save the queries for a paper" to `query-provenance`.**
+  In a Claude Desktop trial the workflow was served and listed in the guide, yet the request did not
+  reach it. A save-it-for-a-paper request usually comes at the END of an investigation, when the Usage
+  Guide (read at the start) is far back and the tool descriptions are the only text still in view.
+  The Workflows section's closing line also limited workflows to "when the question matches", which
+  a request about the results is not. That line now covers requests about the results as well. A test
+  pins every workflow the description names to the registry, so a rename cannot leave it pointing
+  nowhere. This is a description change only (PATCH); clients with a cached tool list keep the old
+  text and lose nothing.
+- **The server now sends MCP `instructions`** (two sentences): call `TogoMCP_Usage_Guide` before the
+  first query, and call `get_workflow(name="query-provenance")` before writing any file when results
+  are to be saved, cited or reproduced. The description change above was not enough. In a second
+  Claude Desktop trial the model never called the Usage Guide, and it answered "save the queries for
+  a paper" with its own file tool. Afterwards it could quote `get_workflow`'s description, but a tool
+  description is consulted only once that tool is a candidate, and here it never was. Hosts such as
+  Claude Desktop and claude.ai keep server instructions in the system prompt for the whole
+  conversation. The instructions are also re-sent on every connection, so they reach clients holding
+  a stale tool list. `tests/test_server_instructions.py` pins the names they cite to the live registry
+  and caps their length, because every user pays for them in every conversation.
+- **Neither of the two changes above reaches Claude Desktop, so the user starts the workflow.** Asked
+  directly, the Claude Desktop model reported that it had received no server instructions, and that
+  every TogoMCP tool was deferred: before a call it sees tool *names* only, not descriptions. Two
+  user-side routes now exist. The first is a new MCP prompt, **`record_for_paper`** ("Record this
+  investigation for a paper", optional `question` argument), which the user picks from the client's
+  prompt menu. Its text names each tool it needs, so a deferred tool can be found by name. Chosen at
+  the start of an investigation, it also gets prospective recording, the better mode. The second is
+  guidance in the README and on the intro page (Publications section): if results are for a paper,
+  say so at the start. Prompts are not tools: the tool list is unchanged. `tests/test_prompts.py` pins
+  the names the prompt uses.
+
 ## [2.28.1] - 2026-10-31
 
 Trial-chat widget update. PATCH: no tool, parameter or return shape changed. The served intro pages
@@ -3638,7 +3699,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.28.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.0...HEAD
+[2.29.0]: https://github.com/dbcls/togomcp/compare/v2.28.1...v2.29.0
 [2.28.1]: https://github.com/dbcls/togomcp/compare/v2.28.0...v2.28.1
 [2.28.0]: https://github.com/dbcls/togomcp/compare/v2.27.4...v2.28.0
 [2.27.4]: https://github.com/dbcls/togomcp/compare/v2.27.3...v2.27.4

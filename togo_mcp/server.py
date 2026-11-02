@@ -727,7 +727,26 @@ try:
 except PackageNotFoundError:  # not installed as a distribution (source-tree run)
     _TOGOMCP_VERSION = "0+unknown"
 
-mcp = FastMCP("TogoMCP: RDF Portal MCP Server", version=_TOGOMCP_VERSION)
+# Server instructions: sent in the `initialize` result, which Claude Desktop and
+# claude.ai place in the system prompt — the only text of ours that stays in view for
+# the whole conversation. A tool description is consulted only once that tool is
+# already a candidate, which is too late for both cases below (Claude Desktop trial,
+# 2026-11-03): the Usage Guide was never called, and "save the queries for a paper"
+# went straight to the host's own file tool while get_workflow's description — which
+# the model could quote afterwards — said to fetch query-provenance first. Re-sent on
+# every connection, so it also reaches clients holding a stale tool list. Every user
+# pays for this text in every conversation: keep it to these two rules.
+# tests/test_server_instructions.py pins the names it uses to the live registry.
+SERVER_INSTRUCTIONS = (
+    "Call TogoMCP_Usage_Guide before the first query. "
+    "If the user wants results saved, cited or reproduced (for example \"save the "
+    'queries for a paper"), call get_workflow(name="query-provenance") before '
+    "writing any file."
+)
+
+mcp = FastMCP(
+    "TogoMCP: RDF Portal MCP Server", version=_TOGOMCP_VERSION, instructions=SERVER_INSTRUCTIONS
+)
 
 # Every tool this server exposes is a query, search, or ID conversion — nothing
 # writes to any database. Say so in the protocol rather than only in prose: a

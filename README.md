@@ -256,6 +256,24 @@ Once connected, you can ask your AI assistant things like:
 - *"Search PubMed for recent papers on CRISPR base editing."*
 - *"What pathways involve the TP53 gene in Reactome?"*
 
+### Results for a paper
+
+If you will use the results in a paper, say so **at the start** of the investigation (e.g. *"I will use
+this in a paper; record the queries"*), or choose the MCP prompt **Record this investigation for a
+paper** (`record_for_paper`) from your client's prompt menu. The assistant then follows the
+`query-provenance` workflow: it records the exact tool calls behind each finding in a `ledger.yaml`,
+re-runs them to confirm the results, and writes `PROVENANCE.md` and a draft `METHODS.md`. Anyone can
+re-run a ledger later with [`scripts/togomcp_reproduce.py`](scripts/togomcp_reproduce.py), which sends
+the SPARQL queries straight to the endpoints:
+
+```bash
+uv run scripts/togomcp_reproduce.py ledger.yaml
+```
+
+Saying it only at the end also works, but in a long conversation the exact text of early queries may
+no longer be recoverable. Some clients, Claude Desktop among them, do not pass the server's guidance to
+the model before its first tool call, so they will not start this workflow unless you ask.
+
 ---
 
 ## Directory Structure
