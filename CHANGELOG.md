@@ -17,6 +17,10 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 - Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `bf889bd` (#281, Renovate).
   Merged to main after the v2.29.0 tag, so production built from main already runs on it.
+- README and intro page: if the `record_for_paper` prompt is not in the client's menu, disconnect and
+  reconnect TogoMCP. After the 2.29.0 deploy, Claude Desktop kept the prompt list it had cached before
+  the server restart (empty, since this is the first prompt), and showed the prompt only after the
+  connector was reconnected.
 
 ## [2.29.0] - 2026-11-03
 
