@@ -272,7 +272,9 @@ uv run scripts/togomcp_reproduce.py ledger.yaml
 
 Saying it only at the end also works, but in a long conversation the exact text of early queries may
 no longer be recoverable. Some clients, Claude Desktop among them, do not pass the server's guidance to
-the model before its first tool call, so they will not start this workflow unless you ask.
+the model before its first tool call, so they will not start this workflow unless you ask. If the
+prompt is not in the menu, disconnect and reconnect TogoMCP: clients keep the prompt list from when
+they first connected.
 
 ---
 

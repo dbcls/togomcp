@@ -21,6 +21,21 @@ _SYSTEM_GRAPH_PATTERNS = (
 )
 
 
+# run_sparql's `database` parameter leads with the MIE dependency, because a parameter
+# description is read at the moment the agent fills the field in, before the query is
+# sent. The graph-pin rule on `sparql_query` works from that position: unpinned queries
+# stay at ~0-6% even when the guide is skipped. The same rule stated only in the tool
+# description did not: without the guide, 21% of SPARQL calls had the MIE read
+# (production log, 2026-07..10). Worded as a fact, not an order: Connectors Directory
+# review rejects descriptions that steer the model (tests/test_tool_descriptions.py).
+# get_MIE_file shares DATABASE_DESCRIPTION, so the prefix is run_sparql's alone.
+RUN_SPARQL_DATABASE_DESCRIPTION = (
+    "Results depend on this database's MIE file (get_MIE_file with the same value): "
+    "its graph pins, literal types and traps are what a query written without it gets "
+    "silently wrong. " + DATABASE_DESCRIPTION
+)
+
+
 def _is_system_graph(graph: str) -> bool:
     """True if the graph URI is a known Virtuoso/OpenLink internal graph."""
     g = graph.lower()
@@ -185,7 +200,6 @@ async def get_sparql_endpoints() -> dict[str, Any]:
     # Field descriptions); the docstring deliberately holds no second copy to drift from.
     description=(
         "Run a read-only SPARQL query on an RDF database. "
-        f"{ENDPOINT_HOSTING_SUMMARY} "
         "Correct results depend on get_MIE_file(database), read once per database before "
         "its first query: it carries the graph pins, literal types and join paths for that "
         "database's endpoint, each live-verified. A query written without them does not fail; "
@@ -193,6 +207,10 @@ async def get_sparql_endpoints() -> dict[str, Any]:
         "no error, no warning. Unpinned queries on these endpoints have been measured "
         "returning x2.84, x6.29 and x45,848 the correct row count, all in under 4 seconds, so "
         "speed and a clean result are not evidence of correctness; the graph pin is. "
+        "TogoMCP_Usage_Guide lays out the workflow these results depend on; answers "
+        "produced after reading it vary less between runs. On the benchmark, answers built "
+        "from 3 or more consecutive run_sparql calls score ~1.1 points lower. "
+        f"{ENDPOINT_HOSTING_SUMMARY} "
         f"`database` is required (valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) and selects "
         "the endpoint for a single-database query. For a cross-database query on a shared "
         "endpoint, pass a member database plus endpoint_name (valid values: "
@@ -229,7 +247,7 @@ async def run_sparql(
         ),
     ] = "",
     database: Annotated[
-        str, Field(description=DATABASE_DESCRIPTION)
+        str, Field(description=RUN_SPARQL_DATABASE_DESCRIPTION)
     ],
     endpoint_name: Annotated[
         str,
@@ -573,7 +591,7 @@ SELECT DISTINCT ?graph WHERE {
 @mcp.tool(
     **read_only_tool("Get database schema (MIE file)"),
     name="get_MIE_file",
-    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file for a specific RDF database: its graphs to pin, database-wide gotchas, live-verified SPARQL examples and ID join map. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names.",
+    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file for a specific RDF database: its graphs to pin, database-wide gotchas, live-verified SPARQL examples and ID join map. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names. Part of the workflow in TogoMCP_Usage_Guide, which says which databases a question needs.",
 )
 async def get_MIE_file(
     database: Annotated[
@@ -885,10 +903,10 @@ def _workflow_header(s: _skills.Skill) -> str:
     name="get_workflow",
     description=(
         "Retrieve a TogoMCP workflow: a multi-step analysis protocol that drives the "
-        "TogoMCP tools. Not only for analysis questions: when the user asks to save, "
-        "cite or reproduce results (e.g. \"save the queries for a paper\"), call it with "
-        'name="query-provenance" BEFORE writing anything out. '
-        "Call with no arguments to list available workflows. Call with "
+        "TogoMCP tools. Workflows also cover requests about results, not only analysis "
+        'questions: name="query-provenance" records, re-runs and packages the exact '
+        "queries behind a result, for saving, citing or reproducing it (e.g. for a "
+        "paper). Call with no arguments to list available workflows. Call with "
         "`name` to get its SKILL.md. Relative links inside it (e.g. references/x.md) are "
         'fetched with get_workflow(name, path="references/x.md"). Read-only. RETURNS a '
         "text listing, or a short header (files + sizes, digest) followed by the raw "

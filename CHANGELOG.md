@@ -13,6 +13,53 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.1] - 2026-11-03
+
+Description and documentation changes. PATCH: no tool, parameter or return shape changed. What a
+model reads changed: `run_sparql` states its MIE dependency on its `database` parameter and points
+to the Usage Guide, and two descriptions that issued orders now state facts. Two canary A/Bs
+(Sonnet 5.5, 10 questions × 3, with and without server instructions) found no harm: means flat
+within CI, no MIE re-reads (1.00 per database), cost unchanged. They could not show a benefit,
+because Claude Code loads every tool schema up front and so reads the MIE 81% of the time even
+without the guide, against 21% in production. The effect is to be measured in production with
+`scripts/analyze_guide_mie_usage.py` (October baseline for Anthropic/ClaudeAI: 0.26 MIE calls and
+0.06 guide calls per SPARQL call).
+
+### Changed
+
+- **`run_sparql` now states its MIE dependency where the query is written.** The `database`
+  parameter description now opens with "Results depend on this database's MIE file (get_MIE_file
+  with the same value)…". The tool description now leads with the dependency, ahead of the list
+  of external endpoints. Production logs (July to October) showed that without the Usage Guide only
+  21% of SPARQL calls had read that database's MIE, against 97% with it. The same rule stated only
+  in the tool description was evidently not getting through. Since October, Claude Desktop,
+  claude.ai and Claude Code send calls without a session, so the server cannot remind per
+  conversation. The schema is the one place that reaches them. The graph-pin rule on `sparql_query`
+  already works from that position: unpinned queries stay at about 0 to 6%. Worded as a fact, per
+  the Connectors Directory rules.
+- **`run_sparql` and `get_MIE_file` now point to the Usage Guide.** In Claude Desktop the guide tool is
+  deferred and its description never loads unless the model looks for it, but `run_sparql` is loaded
+  by every SPARQL session. Its description now says the guide lays out the workflow its results
+  depend on, and that answers produced after reading it vary less between runs. The benchmark shows
+  this: loss rate 1.6% vs 4.8%, per-question std 0.46 vs 0.58. It also carries the query-budget fact
+  that was only in the guide's own description: on the benchmark, answers built from 3 or more
+  consecutive `run_sparql` calls score ~1.1 points lower. `get_MIE_file` says it is part of the
+  guide's workflow. This placement was suggested by a Claude Desktop model's own feedback, but it
+  proposed "call it first", which is an order; the text here states facts. `run_sparql` is now 2,774
+  characters, under the 2,800 ceiling.
+- **Two descriptions reworded from orders to facts.** `get_workflow` said "call it with
+  name="query-provenance" BEFORE writing anything out" (added in 2.29.0). `togoid_getAllRelation`
+  said "Call this EARLY … BEFORE attempting SPARQL joins". Directory review treats descriptions
+  that steer the model as prompt injection, but the existing test did not catch these wordings.
+  It now rejects all-caps `BEFORE` and "call it with".
+
+- Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `bf889bd` (#281, Renovate).
+  Merged to main after the v2.29.0 tag, so production built from main already runs on it.
+- README and intro page: if the `record_for_paper` prompt is not in the client's menu, disconnect and
+  reconnect TogoMCP. After the 2.29.0 deploy, Claude Desktop kept the prompt list it had cached before
+  the server restart (empty, since this is the first prompt), and showed the prompt only after the
+  connector was reconnected.
+
 ## [2.29.0] - 2026-11-03
 
 Reproducible results for papers. MINOR: a new workflow (`query-provenance`) and the server's first MCP
@@ -3699,7 +3746,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.1...HEAD
+[2.29.1]: https://github.com/dbcls/togomcp/compare/v2.29.0...v2.29.1
 [2.29.0]: https://github.com/dbcls/togomcp/compare/v2.28.1...v2.29.0
 [2.28.1]: https://github.com/dbcls/togomcp/compare/v2.28.0...v2.28.1
 [2.28.0]: https://github.com/dbcls/togomcp/compare/v2.27.4...v2.28.0
