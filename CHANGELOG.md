@@ -13,6 +13,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `bf889bd` (#281, Renovate).
+  Merged to main after the v2.29.0 tag, so production built from main already runs on it.
+
 ## [2.29.0] - 2026-11-03
 
 Reproducible results for papers. MINOR: a new workflow (`query-provenance`) and the server's first MCP
