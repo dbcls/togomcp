@@ -113,6 +113,10 @@ def test_run_sparql_mandates_the_mie_file_in_what_clients_receive(assembled_tool
         "the description must say correct results DEPEND on the MIE file — stated as a "
         "fact (directory review rejects 'CALL ... FIRST' imperatives), but still stated"
     )
+    assert lowered.index("depend on get_mie_file") < 200, (
+        "the MIE dependency must lead the description, ahead of the endpoint list — "
+        "buried after it, the rule went unread (21% MIE reads without the guide)"
+    )
     assert "wrong answer" in lowered, (
         "the description must say skipping the MIE yields a WRONG ANSWER, not a "
         "failure — an agent watching for an error will trust a clean wrong result"
@@ -320,6 +324,10 @@ _DIRECTIVE_PATTERNS = (
     r"\bCALL\b[^.]*\bFIRST\b", r"\bALWAYS\b", r"\bMANDATORY\b", r"\bMUST\b",
     r"\bDO NOT\b", r"\bNEVER\b", r"\bCHECK FOR\b", r"\bREAD THEM\b", r"every turn",
     r"must not be reported",
+    # 2.29.0 shipped "...call it with name=\"query-provenance\" BEFORE writing anything
+    # out" in get_workflow's description: an order routing user requests to the tool,
+    # which none of the patterns above caught.
+    r"\bBEFORE\b", r"\bcall it with\b",
 )
 # Longest served description allowed. run_sparql is ~2,550 by itself because it
 # lists the live database/endpoint registry; the rest were trimmed to fit in 2.27.
@@ -350,3 +358,17 @@ def test_tool_descriptions_stay_under_the_length_ceiling(assembled_tools) -> Non
         f"descriptions over {_MAX_DESCRIPTION_CHARS} characters: {long}. Move history "
         "and implementation notes into code comments."
     )
+
+
+def test_run_sparql_database_parameter_states_the_mie_dependency(assembled_tools) -> None:
+    # The field the agent fills in first carries the rule, as `sparql_query` carries
+    # the pin rule. get_MIE_file shares the base text and must NOT get the prefix
+    # (it would tell the MIE tool that its results depend on itself).
+    import re as _re
+
+    by = {t.name: t for t in assembled_tools}
+    run = by["run_sparql"].parameters["properties"]["database"]["description"]
+    mie = by["get_MIE_file"].parameters["properties"]["database"]["description"]
+    assert run.startswith("Results depend on this database's MIE file (get_MIE_file"), run[:80]
+    assert "get_MIE_file" not in mie, mie[:80]
+    assert not [p for p in _DIRECTIVE_PATTERNS if _re.search(p, run)], "directive wording"

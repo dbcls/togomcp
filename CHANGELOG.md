@@ -15,6 +15,22 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Changed
 
+- **`run_sparql` now states its MIE dependency where the query is written.** The `database`
+  parameter description now opens with "Results depend on this database's MIE file (get_MIE_file
+  with the same value)…". The tool description now leads with the dependency, ahead of the list
+  of external endpoints. Production logs (July to October) showed that without the Usage Guide only
+  21% of SPARQL calls had read that database's MIE, against 97% with it. The same rule stated only
+  in the tool description was evidently not getting through. Since October, Claude Desktop,
+  claude.ai and Claude Code send calls without a session, so the server cannot remind per
+  conversation. The schema is the one place that reaches them. The graph-pin rule on `sparql_query`
+  already works from that position: unpinned queries stay at about 0 to 6%. Worded as a fact, per
+  the Connectors Directory rules.
+- **Two descriptions reworded from orders to facts.** `get_workflow` said "call it with
+  name="query-provenance" BEFORE writing anything out" (added in 2.29.0). `togoid_getAllRelation`
+  said "Call this EARLY … BEFORE attempting SPARQL joins". Directory review treats descriptions
+  that steer the model as prompt injection, but the existing test did not catch these wordings.
+  It now rejects all-caps `BEFORE` and "call it with".
+
 - Docker base image `astral/uv:python3.12-trixie-slim` re-pinned to digest `bf889bd` (#281, Renovate).
   Merged to main after the v2.29.0 tag, so production built from main already runs on it.
 - README and intro page: if the `record_for_paper` prompt is not in the client's menu, disconnect and

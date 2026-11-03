@@ -339,12 +339,12 @@ def _format_route_suggestions(routes: list[dict]) -> str:
 async def getAllRelation() -> dict:
     """Discover all available ID conversion routes between databases.
 
-    ⚡ PLANNING TOOL — Call this EARLY when a question involves 2+ databases
-    that are on DIFFERENT SPARQL endpoints and you need to map IDs between them.
+    A planning tool for questions that involve 2+ databases on DIFFERENT SPARQL
+    endpoints, where IDs have to be mapped between them.
 
-    Returns a map of all source→target database pairs that TogoID can convert.
-    Use this to plan your cross-database strategy BEFORE attempting SPARQL joins
-    or manual ID lookups.
+    Returns a map of all source→target database pairs that TogoID can convert,
+    so a cross-database route can be checked before writing SPARQL joins or
+    looking IDs up by hand.
 
     Common conversion routes include:
         - ncbigene ↔ uniprot (Gene IDs to/from protein accessions)
