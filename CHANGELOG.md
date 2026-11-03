@@ -13,6 +13,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.1] - 2026-11-03
+
+Description and documentation changes. PATCH: no tool, parameter or return shape changed. What a
+model reads changed: `run_sparql` states its MIE dependency on its `database` parameter and points
+to the Usage Guide, and two descriptions that issued orders now state facts. Two canary A/Bs
+(Sonnet 5.5, 10 questions × 3, with and without server instructions) found no harm: means flat
+within CI, no MIE re-reads (1.00 per database), cost unchanged. They could not show a benefit,
+because Claude Code loads every tool schema up front and so reads the MIE 81% of the time even
+without the guide, against 21% in production. The effect is to be measured in production with
+`scripts/analyze_guide_mie_usage.py` (October baseline for Anthropic/ClaudeAI: 0.26 MIE calls and
+0.06 guide calls per SPARQL call).
+
 ### Changed
 
 - **`run_sparql` now states its MIE dependency where the query is written.** The `database`
@@ -3734,7 +3746,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.1...HEAD
+[2.29.1]: https://github.com/dbcls/togomcp/compare/v2.29.0...v2.29.1
 [2.29.0]: https://github.com/dbcls/togomcp/compare/v2.28.1...v2.29.0
 [2.28.1]: https://github.com/dbcls/togomcp/compare/v2.28.0...v2.28.1
 [2.28.0]: https://github.com/dbcls/togomcp/compare/v2.27.4...v2.28.0
