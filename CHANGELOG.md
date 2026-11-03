@@ -25,6 +25,16 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   conversation. The schema is the one place that reaches them. The graph-pin rule on `sparql_query`
   already works from that position: unpinned queries stay at about 0 to 6%. Worded as a fact, per
   the Connectors Directory rules.
+- **`run_sparql` and `get_MIE_file` now point to the Usage Guide.** In Claude Desktop the guide tool is
+  deferred and its description never loads unless the model looks for it, but `run_sparql` is loaded
+  by every SPARQL session. Its description now says the guide lays out the workflow its results
+  depend on, and that answers produced after reading it vary less between runs. The benchmark shows
+  this: loss rate 1.6% vs 4.8%, per-question std 0.46 vs 0.58. It also carries the query-budget fact
+  that was only in the guide's own description: on the benchmark, answers built from 3 or more
+  consecutive `run_sparql` calls score ~1.1 points lower. `get_MIE_file` says it is part of the
+  guide's workflow. This placement was suggested by a Claude Desktop model's own feedback, but it
+  proposed "call it first", which is an order; the text here states facts. `run_sparql` is now 2,774
+  characters, under the 2,800 ceiling.
 - **Two descriptions reworded from orders to facts.** `get_workflow` said "call it with
   name="query-provenance" BEFORE writing anything out" (added in 2.29.0). `togoid_getAllRelation`
   said "Call this EARLY … BEFORE attempting SPARQL joins". Directory review treats descriptions

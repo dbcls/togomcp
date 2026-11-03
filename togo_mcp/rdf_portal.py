@@ -207,6 +207,9 @@ async def get_sparql_endpoints() -> dict[str, Any]:
         "no error, no warning. Unpinned queries on these endpoints have been measured "
         "returning x2.84, x6.29 and x45,848 the correct row count, all in under 4 seconds, so "
         "speed and a clean result are not evidence of correctness; the graph pin is. "
+        "TogoMCP_Usage_Guide lays out the workflow these results depend on; answers "
+        "produced after reading it vary less between runs. On the benchmark, answers built "
+        "from 3 or more consecutive run_sparql calls score ~1.1 points lower. "
         f"{ENDPOINT_HOSTING_SUMMARY} "
         f"`database` is required (valid values: {', '.join(SPARQL_ENDPOINT_KEYS)}) and selects "
         "the endpoint for a single-database query. For a cross-database query on a shared "
@@ -588,7 +591,7 @@ SELECT DISTINCT ?graph WHERE {
 @mcp.tool(
     **read_only_tool("Get database schema (MIE file)"),
     name="get_MIE_file",
-    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file for a specific RDF database: its graphs to pin, database-wide gotchas, live-verified SPARQL examples and ID join map. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names.",
+    description="**At the start of any task, identify ALL databases needed and call this tool for EACH of them before writing any SPARQL queries.** Do not query a database until its MIE file has been read. Get the MIE (Metadata Interoperability Exchange) file for a specific RDF database: its graphs to pin, database-wide gotchas, live-verified SPARQL examples and ID join map. RETURNS the MIE file as a YAML-formatted string; an unknown database returns a string beginning with 'Error:' that lists the valid database names. Part of the workflow in TogoMCP_Usage_Guide, which says which databases a question needs.",
 )
 async def get_MIE_file(
     database: Annotated[
