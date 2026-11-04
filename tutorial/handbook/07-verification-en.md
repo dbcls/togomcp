@@ -129,9 +129,28 @@ Look at the top entry, and at one from the bottom — or one that surprises you.
 
 Databases get updated. **A result with no "when" cannot be reproduced.**
 
+> 💡 With the **query-provenance** skill from [Chapter 5](05-skills-workflows-en.md), the skill keeps steps 1 and 4 in its ledger for you. Steps 2 and 3, the visual check in the source database above all, remain your job even with the skill.
+
 ---
 
 ## 7-3. What to save for reproducibility
+
+### The easiest way: the query-provenance skill
+
+Say this at the **start** of the investigation ([Chapter 5](05-skills-workflows-en.md)):
+
+```
+I will use the results of this investigation in a paper, so record the queries as you go.
+```
+
+For each conclusion, the full text of the supporting queries, the endpoint, the graphs, the date and the observed counts go into `ledger.yaml`; they are re-run to confirm; and you get `PROVENANCE.md` for people and a draft Methods paragraph, `METHODS.md`. Those correspond to `query.rq`, `endpoint.txt`, `counts.txt` and the date in the list below.
+
+There are **things the ledger does not hold**, though:
+
+- **The original question, the model name and the client.** This skill does not record prompts, because the same prompt does not take the same path (see "★ Record the model name" below). Add these yourself as `meta.txt`
+- **The result table itself.** The ledger keeps counts and key values. If you need the table, save `result.csv` separately
+
+### Without the skill
 
 For each query, keep the following.
 
@@ -168,7 +187,7 @@ So meta.txt needs at minimum these:
 
 > ⚠️ **Careful:** "the model you configured" and "the model that actually did the processing" are not necessarily the same. Fallbacks and switching can happen. **Strictly, the accurate thing to write is "configured as …"**, and this tutorial's own measurement records are written that way.
 
-You can also have Claude produce the whole set for you.
+Without the skill, you can also have Claude produce the whole set for you.
 
 ```
 For the query just run, give me
@@ -176,8 +195,6 @@ For the query just run, give me
 (3) the results as CSV (4) the COUNT cross-check (5) the date and time and the original question,
 in a form I can save to files as-is.
 ```
-
-> 💡 The **PRISM** skill in [Chapter 5](05-skills-workflows-en.md) has machinery for structuring this record and keeping it automatically (a provenance ledger). Consider it once doing this by hand becomes tiresome.
 
 ---
 
@@ -199,6 +216,8 @@ Plus a citation for each database you actually consulted — UniProt, PDB, ChEMB
 - If sampling or a LIMIT was used, **that fact itself, and its consequences**
 
 Not many people can write that last item. **Being able to write it is a strength.**
+
+The `METHODS.md` from query-provenance is a **draft** with these items filled in from the ledger. The TogoMCP version comes out blank: write in the value the re-run script prints. For the supplementary full query text, `ledger.yaml` and `PROVENANCE.md` can be used as they are. **Do not submit the draft as it is.** Check its numbers against the comparison results in `PROVENANCE.md` first.
 
 ### What must not be written
 
@@ -244,7 +263,7 @@ Honestly.
 
 1. Failure shows up **not as an error, but as a number that looks correct**
 2. **The four verification steps** — keep the query / cross-check with COUNT / check by eye in the source DB / record the date
-3. What you must save is **the query, not the table of results**
+3. What you must save is **the query, not the table of results**. If it is going into a paper, ask for **query-provenance** at the start of the investigation
 4. Cite at two levels: **TogoMCP + the individual databases**
 5. **There are things it is not good for.** Guaranteeing completeness, and clinical decisions, above all
 
