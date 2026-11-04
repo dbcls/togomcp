@@ -638,3 +638,175 @@ def test_load_mie_dates_skips_unrecognized_spec(tmp_path):
     out = stats.load_mie_dates(str(tmp_path))
     assert "old" not in out
     assert out["new"] == "2026-07-22"
+
+
+# --------------------------------------------------------------------------- #
+# Frozen monthly snapshots + paging
+# --------------------------------------------------------------------------- #
+from datetime import datetime, timezone  # noqa: E402
+
+NOW = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
+
+
+def _write_log(path, recs):
+    path.write_text("".join(json.dumps(r) + "\n" for r in recs))
+
+
+def _calls(month, n, *, day="05", client="c"):
+    out = []
+    for _ in range(n):
+        r = _rec(ts=f"{month}-{day}T10:00:00+00:00", args={"database": "pdb"})
+        r["meta"] = {"client": {"name": client, "version": "1"}}
+        out.append(r)
+    return out
+
+
+def _two_file_log(tmp_path):
+    base = tmp_path / "log.jsonl"
+    old = _calls("2026-07", 5)
+    new = _calls("2026-08", 3) + _calls("2026-11", 2)
+    _write_log(Path(f"{base}.1"), old)
+    _write_log(base, new)
+    return base, old + new
+
+
+def test_closed_months_are_frozen_and_current_is_not(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base, _ = _two_file_log(tmp_path)
+    out = stats.compute_stats(str(base), now=NOW)
+    assert out["snapshots"]["written"] == ["2026-07", "2026-08"]
+    snapdir = Path(stats.snapshot_dir(str(base)))
+    assert sorted(p.name for p in snapdir.iterdir()) == ["2026-07.json", "2026-08.json"]
+    assert out["month_meta"]["2026-11"]["frozen"] is False
+    assert out["month_meta"]["2026-07"]["frozen"] is True
+
+
+def test_frozen_months_are_not_reread(tmp_path, monkeypatch):
+    """Second run stops at the first file starting before the unfrozen range."""
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base, _ = _two_file_log(tmp_path)
+    stats.compute_stats(str(base), now=NOW)
+    # If the old rotated file were read again this would change July's count.
+    _write_log(Path(f"{base}.1"), _calls("2026-07", 100))
+    out = stats.compute_stats(str(base), now=NOW)
+    assert out["by_month"]["2026-07"]["tool_calls"] == 5
+    assert out["snapshots"]["written"] == []
+    assert out["snapshots"]["read_from"] == "2026-09"
+
+
+def test_incremental_equals_full_aggregate(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base, recs = _two_file_log(tmp_path)
+    full = stats.aggregate(recs)["by_month"]
+    first = stats.compute_stats(str(base), now=NOW)
+    second = stats.compute_stats(str(base), now=NOW)
+    # Round-trip through JSON so frozen and freshly computed entries compare alike.
+    norm = lambda x: json.loads(json.dumps(x))  # noqa: E731
+    assert norm(first["by_month"]) == norm(full)
+    assert norm(second["by_month"]) == norm(full)
+    assert second["n_records"] == len(recs)
+
+
+def test_month_is_not_frozen_inside_the_grace_period(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base = tmp_path / "log.jsonl"
+    _write_log(base, _calls("2026-10", 2, day="31"))
+    just_after = datetime(2026, 11, 1, 0, 30, tzinfo=timezone.utc)
+    assert stats.compute_stats(str(base), now=just_after)["snapshots"]["written"] == []
+    later = datetime(2026, 11, 1, 2, 0, tzinfo=timezone.utc)
+    assert stats.compute_stats(str(base), now=later)["snapshots"]["written"] == ["2026-10"]
+
+
+def test_changed_exclusions_recompute_when_raw_log_covers_month(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base = tmp_path / "log.jsonl"
+    _write_log(base, _calls("2026-08", 3, client="bot") + _calls("2026-08", 2, client="u"))
+    assert stats.compute_stats(str(base), now=NOW)["by_month"]["2026-08"]["tool_calls"] == 5
+    monkeypatch.setenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", "bot")
+    out = stats.compute_stats(str(base), now=NOW)
+    assert out["by_month"]["2026-08"]["tool_calls"] == 2
+    assert out["month_meta"]["2026-08"]["stale"] is False
+    assert out["excluded_clients"]["n_records"] == 3
+    snap = json.loads((Path(stats.snapshot_dir(str(base))) / "2026-08.json").read_text())
+    assert snap["fingerprint"] == stats.stats_fingerprint(["bot"])
+
+
+def test_stale_month_is_kept_and_flagged_when_raw_log_lost_it(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    monkeypatch.setattr(stats, "LOG_BACKUP_COUNT", 1)
+    base = tmp_path / "log.jsonl"
+    _write_log(base, _calls("2026-08", 4))
+    stats.compute_stats(str(base), now=NOW)
+    # Rotation fills up and deletes most of August; only its tail survives.
+    _write_log(Path(f"{base}.1"), _calls("2026-08", 1, day="30"))
+    _write_log(base, _calls("2026-11", 1))
+    monkeypatch.setenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", "someone")
+    out = stats.compute_stats(str(base), now=NOW)
+    assert out["by_month"]["2026-08"]["tool_calls"] == 4      # not overwritten by the tail
+    assert out["month_meta"]["2026-08"]["stale"] is True
+    assert "old settings" in stats.render_html(out)
+
+
+def test_partial_month_is_flagged_after_rotation_deleted_its_start(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    monkeypatch.setattr(stats, "LOG_BACKUP_COUNT", 1)
+    base = tmp_path / "log.jsonl"
+    _write_log(Path(f"{base}.1"), _calls("2026-07", 2, day="15"))
+    _write_log(base, _calls("2026-08", 2))
+    out = stats.compute_stats(str(base), now=NOW)
+    assert out["month_meta"]["2026-07"]["partial"] is True
+    assert out["month_meta"]["2026-08"]["partial"] is False
+    html = stats.render_html(out, shown=["2026-07"])
+    assert "Partial month" in html
+
+
+def test_month_starting_mid_month_is_not_partial_before_rotation_fills(tmp_path, monkeypatch):
+    """Service that started mid-month: nothing was deleted, so not 'partial'."""
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base = tmp_path / "log.jsonl"
+    _write_log(base, _calls("2026-07", 2, day="15"))
+    out = stats.compute_stats(str(base), now=NOW)
+    assert out["month_meta"]["2026-07"]["partial"] is False
+    assert "Log starts 2026-07-15 10:00 UTC." in stats.render_html(out)
+
+
+def test_unwritable_snapshot_dir_still_reports(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base, recs = _two_file_log(tmp_path)
+    Path(stats.snapshot_dir(str(base))).write_text("not a directory")
+    out = stats.compute_stats(str(base), now=NOW)
+    assert out["snapshots"]["written"] == []
+    assert out["by_month"]["2026-07"]["tool_calls"] == 5
+    assert out["n_records"] == len(recs)
+
+
+def test_trap_feed_covers_only_the_rolling_window(tmp_path, monkeypatch):
+    monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+    base = tmp_path / "log.jsonl"
+    _write_log(base, [_trap("empty_result", ts="2026-08-01T10:00:00+00:00", sha="old"),
+                      _trap("empty_result", ts="2026-11-01T10:00:00+00:00", sha="new")])
+    out = stats.compute_stats(str(base), now=NOW)
+    traps = out["mie_trap_candidates"]
+    assert [c["query_sha256"] for c in traps["candidates"]] == ["new"]
+    assert traps["window_days"] == stats.TRAP_WINDOW_DAYS
+    assert "Last 60 days only" in stats.render_html(out)
+
+
+def test_select_months():
+    s = {"months": ["2026-08", "2026-09", "2026-10", "2026-11"]}
+    assert stats.select_months(s, None) == ["2026-10", "2026-11"]
+    assert stats.select_months(s, "") == ["2026-10", "2026-11"]
+    assert stats.select_months(s, "all") == s["months"]
+    assert stats.select_months(s, "2026-09") == ["2026-09"]
+    assert stats.select_months(s, "2025-01") is None
+    assert stats.select_months({"months": []}, None) == []
+
+
+def test_render_shows_only_selected_months_with_navigation():
+    recs = _calls("2026-08", 1) + _calls("2026-09", 1) + _calls("2026-10", 1)
+    agg = stats.aggregate(recs)
+    html = stats.render_html(agg, shown=["2026-09", "2026-10"], selected="")
+    assert "<h2>2026-10</h2>" in html and "<h2>2026-09</h2>" in html
+    assert "<h2>2026-08</h2>" not in html
+    assert "<a href='/stats?month=2026-08'>" in html     # still reachable
+    assert "<b>latest 2</b>" in html                     # current view not linked

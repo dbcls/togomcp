@@ -231,7 +231,41 @@ A non-SPARQL call that raised (no `extra`):
   `load_mie_dates`, with schema-probe surveys and 4xx grammar errors set aside so
   a surviving entry is genuinely worth a human's time).
 
-Run it standalone (pass `--mie` to enable the date-filtered trap feed):
+### Frozen monthly snapshots
+
+The dashboard (`compute_stats`) does not re-aggregate the whole log on every
+refresh. A **closed** month (one hour past its end, UTC) is aggregated once and
+frozen to `<TOGOMCP_QUERY_LOG>.months/YYYY-MM.json`, next to the log, so it
+lives on the same persistent volume and needs no extra configuration. After
+that, only the current month and the MIE-trap window are read from the raw log,
+newest file first, stopping at the first file that starts before them. A
+background thread started by the HTTP entry point (`start_stats_freezer`) runs
+this once shortly after boot and then daily, so a month is frozen before
+rotation can delete it even if nobody opens `/stats`.
+
+- A snapshot is reused only if its `stats_schema` matches `STATS_SCHEMA` and its
+  `fingerprint` (the `TOGOMCP_STATS_EXCLUDE_CLIENTS` set) matches the current
+  one. Otherwise it is recomputed if the raw log still covers the whole month,
+  and kept but flagged **stale** ("old settings") if it does not. Bump
+  `STATS_SCHEMA` whenever the shape or meaning of a `by_month` entry changes.
+  `endpoints.csv` is deliberately not part of the fingerprint.
+- A month is **partial** when, at freeze time, rotation had filled every backup
+  slot and the oldest surviving record lies inside that month, so the start of
+  the month had already been deleted. A month that merely begins mid-month
+  because logging started then is not partial; the dashboard shows "Log starts
+  …" instead.
+- `mie_trap_candidates` covers the last `TRAP_WINDOW_DAYS` (60) days, not all
+  time, because it is the list of things to fix now.
+- Deleting the `.months` directory is safe: the next run re-freezes whatever the
+  raw log still holds. Anything already rotated away is then gone for good.
+
+`/stats` shows the latest two months by default; `?month=YYYY-MM` shows one
+and `?month=all` shows all of them. An unknown month returns 404. `/stats.json`
+returns every month unless `?month=` narrows it, and carries `month_meta`
+(frozen / partial / stale per month) and `snapshots`.
+
+Run it standalone (pass `--mie` to enable the date-filtered trap feed). The CLI
+aggregates the given file in full over all time and writes no snapshots:
 
 ```bash
 python -m togo_mcp.stats "$TOGOMCP_QUERY_LOG" \
@@ -243,9 +277,9 @@ python -m togo_mcp.stats "$TOGOMCP_QUERY_LOG" \
 
 `GET /stats/log` streams the raw JSONL — the active file plus every rotated
 sibling, concatenated **oldest first** so the stream reads chronologically. It
-serves exactly the files `compute_stats` aggregates, so a download is verifiably
-the same input the dashboard's numbers came from. The `/stats` dashboard links
-it at the top.
+serves the same files `compute_stats` reads for the current month and the trap
+feed. Frozen months can reach back further than the download once rotation has
+deleted their raw lines. The `/stats` dashboard links it at the top.
 
 ```bash
 curl -u "$TOGOMCP_STATS_USER:$TOGOMCP_STATS_PASSWORD" \
