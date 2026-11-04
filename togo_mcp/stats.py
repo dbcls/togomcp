@@ -84,19 +84,21 @@ _SEARCH_TOOL_DB = {
 
 # What each tool actually calls, for the per-tool table. Asked for by a reader
 # of /stats who could not tell which tools leave the server for a third-party
-# API. Three tool kinds:
+# API. "Internal" means operated by DBCLS (RDF Portal itself, TogoID, TogoVar,
+# PubCaseFinder, TogoDX, NanbyoData); "external" means anyone else. Tool kinds:
 #   local    — answered from files bundled with the server; no network call
 #   sparql   — a SPARQL endpoint; split PER CALL by the host it actually went
-#              to (see endpoint_host_kind), because one tool reaches both: in
-#              2026-07..09 run_sparql sent ~99% to rdfportal.org and the rest to
-#              the member databases that run their own endpoints (togovar,
-#              glycosmos, wikipathways, idsm, ...), and endpoint_url= can point
-#              it anywhere
-#   external — a REST API outside RDF Portal (EBI, NCBI, NLM, DBCLS services, ...)
+#              to (see endpoint_host_kind), because one tool reaches several: in
+#              2026-07..09 run_sparql sent ~98% to rdfportal.org and the rest to
+#              member databases that run their own endpoints (DBCLS's TogoVar,
+#              or external ones such as GlyCosmos, WikiPathways, IDSM), and
+#              endpoint_url= can point it anywhere
+#   internal — a DBCLS REST API
+#   external — a REST API run by someone else (EBI, NCBI, NLM, PDBj, KEGG, ...)
 # Classified by what the tool does, not by the module it lives in: the ChEMBL
 # wrappers sit next to the REST wrappers but are SPARQL-backed. The tool kind is
 # derived from the name at output time and never stored in a frozen snapshot;
-# the per-call host split is counted during aggregation (STATS_SCHEMA 2).
+# the per-call host split is counted during aggregation (STATS_SCHEMA 3).
 # `test_tool_backend_covers_every_tool` fails if a new tool is not classified.
 _TOOL_BACKEND: dict[str, tuple[str, str]] = {
     "TogoMCP_Usage_Guide": ("local", "bundled guide"),
@@ -109,42 +111,56 @@ _TOOL_BACKEND: dict[str, tuple[str, str]] = {
     "search_chembl_id_lookup": ("sparql", "ChEMBL on RDF Portal"),
     "search_chembl_target": ("sparql", "ChEMBL on RDF Portal"),
     "search_chembl_molecule": ("sparql", "ChEMBL on RDF Portal (SMILES: EBI REST)"),
+    "get_compound_attributes_from_pubchem": ("internal", "TogoDX SPARQList"),
     "search_uniprot_entity": ("external", "UniProt REST"),
     "search_pdb_entity": ("external", "PDBj REST"),
     "search_mesh_descriptor": ("external", "NLM MeSH lookup"),
     "search_reactome_entity": ("external", "Reactome REST"),
     "search_rhea_entity": ("external", "Rhea REST"),
     "get_pubchem_compound_id": ("external", "PubChem PUG-REST"),
-    "get_compound_attributes_from_pubchem": ("external", "TogoDX SPARQList"),
 }
 # Mounted sub-servers: every tool under the prefix goes to the same service.
 _TOOL_BACKEND_PREFIX: tuple[tuple[str, tuple[str, str]], ...] = (
+    ("togoid_", ("internal", "TogoID API")),
+    ("togovar_", ("internal", "TogoVar API")),
+    ("pubcasefinder_", ("internal", "PubCaseFinder API")),
     ("ncbi_", ("external", "NCBI E-utilities")),
-    ("togoid_", ("external", "TogoID API")),
-    ("togovar_", ("external", "TogoVar API")),
-    ("pubcasefinder_", ("external", "PubCaseFinder API")),
     ("kegg_", ("external", "KEGG REST")),
 )
-_TOOL_KIND_LABEL = {"local": "local", "sparql": "SPARQL",
+_TOOL_KIND_LABEL = {"local": "local", "sparql": "SPARQL", "internal": "DBCLS API",
                     "external": "external API", "unknown": "?"}
 
-# Per-month call totals. The SPARQL kind splits three ways:
-#   rdfportal       — the call went to rdfportal.org (incl. its /sib, /ebi groups)
-#   sparql_external — the call went to a non-RDF-Portal SPARQL endpoint
+# Hosts operated by DBCLS. A SPARQL endpoint on one of these (or a subdomain)
+# counts as internal. rdfportal.org is kept apart from the rest so the page can
+# still say how much traffic RDF Portal itself carries.
+# Confirmed by the maintainer (2026-11-04): TogoVar and NanbyoData are DBCLS
+# services; GlyCosmos (ts.glycosmos.org) and GlycoNAVI (sparql.glyconavi.org)
+# are NOT. Any host missing from this list is counted as external, with no
+# warning, so a new DBCLS endpoint must be added here by hand.
+RDF_PORTAL_HOST = "rdfportal.org"
+DBCLS_HOSTS = ("dbcls.jp", "togovar.org", "nanbyodata.jp")
+
+# Per-month call totals. SPARQL splits four ways:
+#   rdfportal       — rdfportal.org (incl. its /sib, /ebi groups)
+#   sparql_dbcls    — another DBCLS endpoint (e.g. TogoVar's own)
+#   sparql_external — an endpoint run by someone else
 #   sparql_unsent   — no endpoint was recorded: rejected before sending (invalid
 #                     database, validation error), ChEMBL's SMILES path (EBI
 #                     REST), or a month frozen before the split was counted
-BACKEND_KINDS = ("local", "rdfportal", "sparql_external", "sparql_unsent",
-                 "external", "unknown")
+BACKEND_KINDS = ("local", "rdfportal", "sparql_dbcls", "internal",
+                 "sparql_external", "external", "sparql_unsent", "unknown")
 BACKEND_LABEL = {
     "local": "local",
-    "rdfportal": "SPARQL (RDF Portal)",
-    "sparql_external": "SPARQL (external endpoint)",
-    "sparql_unsent": "SPARQL (no endpoint recorded)",
+    "rdfportal": "RDF Portal SPARQL",
+    "sparql_dbcls": "other DBCLS SPARQL",
+    "internal": "DBCLS API",
+    "sparql_external": "external SPARQL",
     "external": "external API",
+    "sparql_unsent": "SPARQL, no endpoint recorded",
     "unknown": "?",
 }
-RDF_PORTAL_HOST = "rdfportal.org"
+_HOST_FIELDS = (("rdfportal", "sparql_rdfportal"), ("sparql_dbcls", "sparql_dbcls"),
+                ("sparql_external", "sparql_external"))
 
 
 def tool_backend(tool: str) -> tuple[str, str]:
@@ -158,16 +174,22 @@ def tool_backend(tool: str) -> tuple[str, str]:
     return ("unknown", "")
 
 
+def _host_in(host: str, domain: str) -> bool:
+    return host == domain or host.endswith("." + domain)
+
+
 def endpoint_host_kind(rec: dict[str, Any]) -> str | None:
-    """``"rdfportal"`` / ``"external"`` for a call that reached a SPARQL endpoint
-    (by its logged ``extra.endpoint_url``), else None."""
+    """``"rdfportal"`` / ``"dbcls"`` / ``"external"`` for a call that reached a
+    SPARQL endpoint (by its logged ``extra.endpoint_url``), else None."""
     extra = rec.get("extra")
     url = extra.get("endpoint_url") if isinstance(extra, dict) else None
     if not isinstance(url, str) or not url:
         return None
     host = (urlparse(url).hostname or "").lower()
-    if host == RDF_PORTAL_HOST or host.endswith("." + RDF_PORTAL_HOST):
+    if _host_in(host, RDF_PORTAL_HOST):
         return "rdfportal"
+    if any(_host_in(host, d) for d in DBCLS_HOSTS):
+        return "dbcls"
     return "external"
 
 
@@ -177,10 +199,11 @@ def tool_split(tool: str, t: dict[str, Any]) -> dict[str, int]:
     kind = tool_backend(tool)[0]
     n = t.get("count", 0)
     if kind == "sparql":
-        rp = t.get("sparql_rdfportal", 0) or 0
-        ex = t.get("sparql_external", 0) or 0
-        out["rdfportal"], out["sparql_external"] = rp, ex
-        out["sparql_unsent"] = max(n - rp - ex, 0)
+        sent = 0
+        for k, field in _HOST_FIELDS:
+            out[k] = t.get(field, 0) or 0
+            sent += out[k]
+        out["sparql_unsent"] = max(n - sent, 0)
     else:
         # a non-SPARQL tool that somehow logged an endpoint is still filed by name
         out[kind] = n
@@ -664,7 +687,8 @@ def aggregate(
     )
     tool_counts: dict[str, dict[str, dict[str, Any]]] = defaultdict(
         lambda: defaultdict(lambda: {"count": 0, "errors": 0, "ips": set(),
-                                     "sparql_rdfportal": 0, "sparql_external": 0})
+                                     "sparql_rdfportal": 0, "sparql_dbcls": 0,
+                                     "sparql_external": 0})
     )
     # month -> client name -> reach. Call counts alone cannot tell demand from a
     # benchmark harness: in 2026-08 `mcp` (the SDK default name) sent 8,415 calls
@@ -798,6 +822,7 @@ def aggregate(
                 "p95_ms": _percentile(durs, 95),
                 "mean_ms": round(sum(durs) / len(durs), 2) if durs else 0.0,
                 "sparql_rdfportal": c["sparql_rdfportal"],
+                "sparql_dbcls": c["sparql_dbcls"],
                 "sparql_external": c["sparql_external"],
             }
 
@@ -1112,7 +1137,7 @@ def mie_trap_candidates(
 
 # Bump when the shape or meaning of a by_month entry changes; frozen months are
 # then recomputed where the raw log still covers them.
-STATS_SCHEMA = 2  # 2: per-tool sparql_rdfportal / sparql_external
+STATS_SCHEMA = 3  # 2: per-tool SPARQL host split; 3: + sparql_dbcls
 
 # Must match the RotatingFileHandler in server.py (which imports these).
 LOG_MAX_BYTES = 50_000_000
@@ -1689,25 +1714,34 @@ def render_html(
         bt = backend_totals(m["tools"])
         parts.append("<h3>Per tool</h3>")
         parts.append(
-            "<p class='muted'><b>backend</b> is what the tool calls: "
-            "<b>local</b> = files bundled with the server, no network; "
-            "<b>SPARQL</b> = a SPARQL endpoint, split per call by where it went "
-            "— <b>RDF Portal</b> (rdfportal.org) or an <b>external endpoint</b> "
-            "(a member database that runs its own, e.g. TogoVar, GlyCosmos, "
-            "WikiPathways, IDSM); <b>no endpoint</b> = rejected before sending "
-            "(e.g. an invalid database) or ChEMBL’s SMILES path; "
-            "<b>external API</b> = a REST API outside RDF Portal (EBI, NCBI, NLM, "
-            "DBCLS services, ...). <b>?</b> = a retired or unknown tool name.</p>"
+            "<p class='muted'><b>backend</b> is what the tool calls. "
+            "<b>Internal</b> = run by DBCLS: RDF Portal SPARQL, other DBCLS "
+            "SPARQL endpoints (e.g. TogoVar’s), and DBCLS APIs (TogoID, "
+            "TogoVar, PubCaseFinder, TogoDX). <b>External</b> = run by someone "
+            "else: SPARQL endpoints of member databases (e.g. GlyCosmos, "
+            "WikiPathways, IDSM) and REST APIs (EBI, NCBI, NLM, PDBj, ...). "
+            "SPARQL is split per call by the endpoint it actually went to. "
+            "<b>local</b> = files bundled with the server, no network. "
+            "<b>no endpoint</b> = a SPARQL tool call rejected before sending "
+            "(e.g. an invalid database) or ChEMBL’s SMILES path. "
+            "<b>?</b> = a retired or unknown tool name.</p>"
         )
-        parts.append(
-            "<p>"
-            + " · ".join(
-                f"{cell(BACKEND_LABEL[k])}: {cell(bt[k])}"
-                for k in BACKEND_KINDS
-                if bt[k] or k in ("local", "rdfportal", "sparql_external", "external")
-            )
-            + " calls</p>"
-        )
+
+        def _group(title: str, kinds: tuple[str, ...]) -> str:
+            total = sum(bt[k] for k in kinds)
+            inner = " · ".join(f"{cell(BACKEND_LABEL[k])} {cell(bt[k])}" for k in kinds)
+            return f"<b>{title}</b> {cell(total)} ({inner})"
+
+        groups = [
+            _group("Internal (DBCLS)", ("rdfportal", "sparql_dbcls", "internal")),
+            _group("External", ("sparql_external", "external")),
+            f"<b>local</b> {cell(bt['local'])}",
+        ]
+        if bt["sparql_unsent"]:
+            groups.append(f"{cell(BACKEND_LABEL['sparql_unsent'])} {cell(bt['sparql_unsent'])}")
+        if bt["unknown"]:
+            groups.append(f"? {cell(bt['unknown'])}")
+        parts.append("<p>" + " · ".join(groups) + " calls</p>")
         parts.append("<table><tr><th>tool</th><th>backend</th><th>service</th>"
                      "<th>calls</th><th>IPs</th><th>errors</th>"
                      "<th>error rate</th><th>p50 ms</th><th>p95 ms</th><th>mean ms</th></tr>")
@@ -1718,7 +1752,8 @@ def render_html(
                 service = " · ".join(
                     f"{lbl} {sp[k]}" for k, lbl in (
                         ("rdfportal", "RDF Portal"),
-                        ("sparql_external", "external endpoint"),
+                        ("sparql_dbcls", "other DBCLS"),
+                        ("sparql_external", "external"),
                         ("sparql_unsent", "no endpoint"),
                     ) if sp[k]
                 ) or service

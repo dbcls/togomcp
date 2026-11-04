@@ -15,20 +15,22 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ### Added
 
-- `/stats` labels each tool with its backend: **local** (bundled files, no
-  network), **SPARQL**, or **external API** (a REST service outside RDF Portal),
-  plus the service it calls. SPARQL calls are split per call by where they
-  actually went: **RDF Portal** or an **external endpoint** (the member
-  databases that run their own, such as TogoVar, GlyCosmos, WikiPathways and
-  IDSM). Each month shows call totals for every kind. A reader can now tell
-  which traffic leaves RDF Portal without knowing the code. The per-call split
-  matters because the tool name alone cannot say it: `run_sparql` goes to both,
-  and the ChEMBL search tools look like REST wrappers but are SPARQL-backed.
-  `/stats.json` carries `backend`/`service`, `sparql_rdfportal`/`sparql_external`
-  per tool and `backends` totals per month. `STATS_SCHEMA` is now 2, so frozen
-  months are recomputed on first load while the raw log still covers them; a
-  month it no longer covers keeps its old numbers, shows "old settings", and
-  reports its SPARQL calls as "no endpoint recorded".
+- `/stats` labels each tool with its backend and the service it calls, and
+  each month totals calls as **internal** (run by DBCLS), **external**, or
+  **local** (bundled files, no network). Internal covers RDF Portal SPARQL,
+  other DBCLS SPARQL endpoints (TogoVar's) and the DBCLS APIs (TogoID, TogoVar,
+  PubCaseFinder, TogoDX). External covers member databases' own SPARQL endpoints
+  (GlyCosmos, WikiPathways, IDSM, ...) and third-party REST APIs (EBI, NCBI,
+  NLM, PDBj, KEGG). This lets a reader see how much traffic leaves DBCLS
+  without knowing the code. SPARQL is split per call by the endpoint host,
+  because the tool name cannot say it: `run_sparql` reaches all three kinds of
+  endpoint, and the ChEMBL search tools look like REST wrappers but are
+  SPARQL-backed. `/stats.json` carries `backend`/`service` and
+  `sparql_rdfportal`/`sparql_dbcls`/`sparql_external` per tool, and `backends`
+  totals per month. `STATS_SCHEMA` is now 3, so frozen months are recomputed on
+  first load while the raw log still covers them. A month the log no longer
+  covers keeps its old numbers, shows "old settings", and reports its SPARQL
+  calls as "no endpoint recorded".
 
 ## [2.29.3] - 2026-11-04
 

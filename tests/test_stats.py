@@ -843,7 +843,12 @@ def test_tool_backend_kinds():
     # SPARQL-backed despite living beside the REST wrappers
     assert stats.tool_backend("search_chembl_target")[0] == "sparql"
     assert stats.tool_backend("search_uniprot_entity") == ("external", "UniProt REST")
-    assert stats.tool_backend("togovar_search_gene") == ("external", "TogoVar API")
+    # DBCLS services are internal
+    assert stats.tool_backend("togovar_search_gene") == ("internal", "TogoVar API")
+    assert stats.tool_backend("togoid_convertId")[0] == "internal"
+    assert stats.tool_backend("pubcasefinder_rank_by_phenotypes")[0] == "internal"
+    assert stats.tool_backend("get_compound_attributes_from_pubchem")[0] == "internal"
+    assert stats.tool_backend("ncbi_esearch")[0] == "external"
     assert stats.tool_backend("ncbi_list_databases")[0] == "local"
     assert stats.tool_backend("list_databases") == ("unknown", "")  # retired
 
@@ -853,7 +858,11 @@ def test_endpoint_host_kind():
         return {"extra": {"endpoint_url": url}} if url else {"extra": {}}
     assert stats.endpoint_host_kind(r("https://rdfportal.org/sib/sparql")) == "rdfportal"
     assert stats.endpoint_host_kind(r("https://rdfportal.org/ebi/sparql")) == "rdfportal"
-    assert stats.endpoint_host_kind(r("https://grch38.togovar.org/sparql")) == "external"
+    assert stats.endpoint_host_kind(r("https://grch38.togovar.org/sparql")) == "dbcls"
+    assert stats.endpoint_host_kind(r("https://nanbyodata.jp/sparql")) == "dbcls"
+    assert stats.endpoint_host_kind(r("https://ts.glycosmos.org/sparql")) == "external"
+    # maintainer-confirmed 2026-11-04: GlyCosmos and GlycoNAVI are not DBCLS
+    assert stats.endpoint_host_kind(r("https://sparql.glyconavi.org/sparql")) == "external"
     # a look-alike host is not RDF Portal
     assert stats.endpoint_host_kind(r("https://evilrdfportal.org/sparql")) == "external"
     assert stats.endpoint_host_kind(r(None)) is None
@@ -862,14 +871,17 @@ def test_endpoint_host_kind():
 def test_backends_in_json_and_html(tmp_path):
     log = tmp_path / "q.jsonl"
     rp = {"endpoint_url": "https://rdfportal.org/sib/sparql", "sparql_status": "ok", "n_rows": 1}
+    tv = {"endpoint_url": "https://grch38.togovar.org/sparql", "sparql_status": "ok", "n_rows": 1}
     ext = {"endpoint_url": "https://ts.glycosmos.org/sparql", "sparql_status": "ok", "n_rows": 1}
     recs = [
         _rec(tool="get_MIE_file", args={"database": "uniprot"}),
         _rec(tool="search_uniprot_entity", args={"query": "p"}),
         _rec(tool="ncbi_esearch", args={"db": "gene", "term": "x"}),
+        _rec(tool="togoid_convertId", args={"ids": "x"}),
         _rec(tool="list_databases"),
         _rec(tool="run_sparql", args={"database": "uniprot"}, extra=rp),
         _rec(tool="run_sparql", args={"database": "uniprot"}, extra=rp),
+        _rec(tool="run_sparql", args={"database": "togovar"}, extra=tv),
         _rec(tool="run_sparql", args={"database": "glycosmos"}, extra=ext),
         _rec(tool="run_sparql", args={"database": "nope"}, status="error"),
         _rec(tool="search_chembl_target", args={"query": "x"},
@@ -878,16 +890,19 @@ def test_backends_in_json_and_html(tmp_path):
     log.write_text("".join(json.dumps(r) + "\n" for r in recs))
     out = stats.compute_stats(str(log), now=datetime(2026, 6, 20, tzinfo=timezone.utc))
     m = out["by_month"][out["months"][-1]]
-    assert m["backends"] == {"local": 1, "rdfportal": 3, "sparql_external": 1,
-                             "sparql_unsent": 1, "external": 2, "unknown": 1}
+    assert m["backends"] == {"local": 1, "rdfportal": 3, "sparql_dbcls": 1, "internal": 1,
+                             "sparql_external": 1, "external": 2,
+                             "sparql_unsent": 1, "unknown": 1}
     rs = m["tools"]["run_sparql"]
-    assert (rs["backend"], rs["sparql_rdfportal"], rs["sparql_external"]) == ("sparql", 2, 1)
+    assert (rs["backend"], rs["sparql_rdfportal"], rs["sparql_dbcls"],
+            rs["sparql_external"]) == ("sparql", 2, 1, 1)
     assert m["tools"]["search_uniprot_entity"]["service"] == "UniProt REST"
     html = stats.render_html(out)
-    assert "<th>backend</th>" in html and "external API: 2" in html
-    assert "SPARQL (RDF Portal): 3" in html and "SPARQL (external endpoint): 1" in html
-    assert "RDF Portal 2 · external endpoint 1 · no endpoint 1" in html
-    assert "<td>?</td>" in html
+    assert "<th>backend</th>" in html
+    assert "<b>Internal (DBCLS)</b> 5 (RDF Portal SPARQL 3 · other DBCLS SPARQL 1 · DBCLS API 1)" in html
+    assert "<b>External</b> 3 (external SPARQL 1 · external API 2)" in html
+    assert "RDF Portal 2 · other DBCLS 1 · external 1 · no endpoint 1" in html
+    assert "<td>DBCLS API</td>" in html and "<td>?</td>" in html
 
 
 def test_backend_totals_old_snapshot_without_split():

@@ -231,18 +231,21 @@ A non-SPARQL call that raised (no `extra`):
   `load_mie_dates`, with schema-probe surveys and 4xx grammar errors set aside so
   a surviving entry is genuinely worth a human's time).
 - labels each tool with the backend it calls (`tool_backend`): `local` (bundled
-  files, no network), `sparql` (a SPARQL endpoint), or `external` (a REST API
-  outside RDF Portal), plus the service name. SPARQL calls are further split
-  **per call** by the host of the logged `extra.endpoint_url`
-  (`endpoint_host_kind`): `rdfportal` for rdfportal.org (including its `/sib`,
-  `/ebi` groups) or `external` for any other endpoint, counted into each tool
-  row as `sparql_rdfportal` / `sparql_external` (`STATS_SCHEMA` 2). A SPARQL-tool
-  call with no endpoint URL (rejected before sending, ChEMBL's SMILES path, or a
-  schema-1 month that could not be recomputed) is reported as "no endpoint
-  recorded", never guessed. The tool kind and service name are derived from the
-  tool name when the dashboard is served (`annotate_backends`: per-tool
-  `backend` / `service` and per-month `backends` totals in `/stats.json`) and
-  are not written into snapshots. Retired tool names read `unknown`.
+  files, no network), `sparql` (a SPARQL endpoint), `internal` (a DBCLS REST
+  API: TogoID, TogoVar, PubCaseFinder, TogoDX) or `external` (a REST API run by
+  someone else), plus the service name. **Internal** means operated by DBCLS.
+  SPARQL calls are split **per call** by the host of the logged
+  `extra.endpoint_url` (`endpoint_host_kind`): `rdfportal` (rdfportal.org,
+  including its `/sib`, `/ebi` groups), `dbcls` (another DBCLS host in
+  `DBCLS_HOSTS`: dbcls.jp, togovar.org, nanbyodata.jp) or `external`, counted
+  into each tool row as `sparql_rdfportal` / `sparql_dbcls` / `sparql_external`
+  (`STATS_SCHEMA` 3). A SPARQL-tool call with no endpoint URL (rejected before
+  sending, ChEMBL's SMILES path, or an older month that could not be
+  recomputed) is reported as "no endpoint recorded", never guessed. The tool
+  kind and service name are derived from the tool name when the dashboard is
+  served (`annotate_backends`: per-tool `backend` / `service` and per-month
+  `backends` totals in `/stats.json`) and are not written into snapshots.
+  Retired tool names read `unknown`.
 
 ### Frozen monthly snapshots
 
