@@ -1320,6 +1320,10 @@ def render_html(
     meta = stats.get("month_meta") or {}
     shown = list(months) if shown is None else shown
 
+    def _when(ts: Any) -> str:
+        dt = _parse_ts(ts)
+        return dt.strftime("%Y-%m-%d %H:%M UTC") if dt else str(ts or "?")
+
     def _flags(m: str) -> str:
         mm = meta.get(m) or {}
         out = []
@@ -1445,10 +1449,10 @@ def render_html(
         if mm.get("partial"):
             parts.append(
                 f"<p class='warn'>Partial month: log rotation had already deleted its "
-                f"beginning when it was frozen. Data starts {cell(mm.get('first_ts'))}.</p>"
+                f"beginning when it was frozen. Data starts {cell(_when(mm.get('first_ts')))}.</p>"
             )
         elif month == months[0] and mm.get("first_ts"):
-            parts.append(f"<p class='muted'>Log starts {cell(mm.get('first_ts'))}.</p>")
+            parts.append(f"<p class='muted'>Log starts {cell(_when(mm.get('first_ts')))}.</p>")
         if mm.get("stale"):
             parts.append(
                 "<p class='warn'>Frozen under different settings (aggregation version "

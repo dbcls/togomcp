@@ -767,7 +767,7 @@ def test_month_starting_mid_month_is_not_partial_before_rotation_fills(tmp_path,
     _write_log(base, _calls("2026-07", 2, day="15"))
     out = stats.compute_stats(str(base), now=NOW)
     assert out["month_meta"]["2026-07"]["partial"] is False
-    assert "Log starts 2026-07-15" in stats.render_html(out)
+    assert "Log starts 2026-07-15 10:00 UTC." in stats.render_html(out)
 
 
 def test_unwritable_snapshot_dir_still_reports(tmp_path, monkeypatch):
