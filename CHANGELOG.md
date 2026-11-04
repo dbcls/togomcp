@@ -13,6 +13,23 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- `/stats` labels each tool with its backend: **local** (bundled files, no
+  network), **SPARQL**, or **external API** (a REST service outside RDF Portal),
+  plus the service it calls. SPARQL calls are split per call by where they
+  actually went: **RDF Portal** or an **external endpoint** (the member
+  databases that run their own, such as TogoVar, GlyCosmos, WikiPathways and
+  IDSM). Each month shows call totals for every kind. A reader can now tell
+  which traffic leaves RDF Portal without knowing the code. The per-call split
+  matters because the tool name alone cannot say it: `run_sparql` goes to both,
+  and the ChEMBL search tools look like REST wrappers but are SPARQL-backed.
+  `/stats.json` carries `backend`/`service`, `sparql_rdfportal`/`sparql_external`
+  per tool and `backends` totals per month. `STATS_SCHEMA` is now 2, so frozen
+  months are recomputed on first load while the raw log still covers them; a
+  month it no longer covers keeps its old numbers, shows "old settings", and
+  reports its SPARQL calls as "no endpoint recorded".
+
 ## [2.29.3] - 2026-11-04
 
 MIE content fix. PATCH: no tool, parameter or return shape changed.

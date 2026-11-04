@@ -697,7 +697,7 @@ def test_frozen_months_are_not_reread(tmp_path, monkeypatch):
 def test_incremental_equals_full_aggregate(tmp_path, monkeypatch):
     monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
     base, recs = _two_file_log(tmp_path)
-    full = stats.aggregate(recs)["by_month"]
+    full = stats.annotate_backends(stats.aggregate(recs))["by_month"]
     first = stats.compute_stats(str(base), now=NOW)
     second = stats.compute_stats(str(base), now=NOW)
     # Round-trip through JSON so frozen and freshly computed entries compare alike.
@@ -810,3 +810,89 @@ def test_render_shows_only_selected_months_with_navigation():
     assert "<h2>2026-08</h2>" not in html
     assert "<a href='/stats?month=2026-08'>" in html     # still reachable
     assert "<b>latest 2</b>" in html                     # current view not linked
+
+
+def test_tool_backend_covers_every_tool(monkeypatch):
+    """Every tool a client can see (both transports, KEGG opted in) must have a
+    backend, or the per-tool table labels it '?' like a retired name."""
+    import asyncio
+
+    from fastmcp import Client, FastMCP
+
+    from togo_mcp import main
+    from togo_mcp.server import mcp as root
+
+    async def names() -> set[str]:
+        fresh = FastMCP("backend-test")
+        fresh.mount(root)
+        monkeypatch.setattr(main, "mcp", fresh)
+        monkeypatch.setenv(main._KEGG_ENV_VAR, "1")
+        await main.setup(local=True)
+        async with Client(fresh) as client:
+            return {t.name for t in await client.list_tools()}
+
+    tools = asyncio.run(names())
+    assert any(t.startswith("kegg_") for t in tools)
+    unknown = sorted(t for t in tools if stats.tool_backend(t)[0] == "unknown")
+    assert not unknown, f"unclassified tools: {unknown} — add them to stats._TOOL_BACKEND"
+
+
+def test_tool_backend_kinds():
+    assert stats.tool_backend("get_MIE_file")[0] == "local"
+    assert stats.tool_backend("run_sparql")[0] == "sparql"
+    # SPARQL-backed despite living beside the REST wrappers
+    assert stats.tool_backend("search_chembl_target")[0] == "sparql"
+    assert stats.tool_backend("search_uniprot_entity") == ("external", "UniProt REST")
+    assert stats.tool_backend("togovar_search_gene") == ("external", "TogoVar API")
+    assert stats.tool_backend("ncbi_list_databases")[0] == "local"
+    assert stats.tool_backend("list_databases") == ("unknown", "")  # retired
+
+
+def test_endpoint_host_kind():
+    def r(url):
+        return {"extra": {"endpoint_url": url}} if url else {"extra": {}}
+    assert stats.endpoint_host_kind(r("https://rdfportal.org/sib/sparql")) == "rdfportal"
+    assert stats.endpoint_host_kind(r("https://rdfportal.org/ebi/sparql")) == "rdfportal"
+    assert stats.endpoint_host_kind(r("https://grch38.togovar.org/sparql")) == "external"
+    # a look-alike host is not RDF Portal
+    assert stats.endpoint_host_kind(r("https://evilrdfportal.org/sparql")) == "external"
+    assert stats.endpoint_host_kind(r(None)) is None
+
+
+def test_backends_in_json_and_html(tmp_path):
+    log = tmp_path / "q.jsonl"
+    rp = {"endpoint_url": "https://rdfportal.org/sib/sparql", "sparql_status": "ok", "n_rows": 1}
+    ext = {"endpoint_url": "https://ts.glycosmos.org/sparql", "sparql_status": "ok", "n_rows": 1}
+    recs = [
+        _rec(tool="get_MIE_file", args={"database": "uniprot"}),
+        _rec(tool="search_uniprot_entity", args={"query": "p"}),
+        _rec(tool="ncbi_esearch", args={"db": "gene", "term": "x"}),
+        _rec(tool="list_databases"),
+        _rec(tool="run_sparql", args={"database": "uniprot"}, extra=rp),
+        _rec(tool="run_sparql", args={"database": "uniprot"}, extra=rp),
+        _rec(tool="run_sparql", args={"database": "glycosmos"}, extra=ext),
+        _rec(tool="run_sparql", args={"database": "nope"}, status="error"),
+        _rec(tool="search_chembl_target", args={"query": "x"},
+             extra={"endpoint_url": "https://rdfportal.org/ebi/sparql"}),
+    ]
+    log.write_text("".join(json.dumps(r) + "\n" for r in recs))
+    out = stats.compute_stats(str(log), now=datetime(2026, 6, 20, tzinfo=timezone.utc))
+    m = out["by_month"][out["months"][-1]]
+    assert m["backends"] == {"local": 1, "rdfportal": 3, "sparql_external": 1,
+                             "sparql_unsent": 1, "external": 2, "unknown": 1}
+    rs = m["tools"]["run_sparql"]
+    assert (rs["backend"], rs["sparql_rdfportal"], rs["sparql_external"]) == ("sparql", 2, 1)
+    assert m["tools"]["search_uniprot_entity"]["service"] == "UniProt REST"
+    html = stats.render_html(out)
+    assert "<th>backend</th>" in html and "external API: 2" in html
+    assert "SPARQL (RDF Portal): 3" in html and "SPARQL (external endpoint): 1" in html
+    assert "RDF Portal 2 · external endpoint 1 · no endpoint 1" in html
+    assert "<td>?</td>" in html
+
+
+def test_backend_totals_old_snapshot_without_split():
+    """A stale schema-1 month has no per-call host counts: its SPARQL calls are
+    reported as 'no endpoint recorded', never guessed into RDF Portal."""
+    tools = {"run_sparql": {"count": 5}, "get_MIE_file": {"count": 2}}
+    bt = stats.backend_totals(tools)
+    assert bt["sparql_unsent"] == 5 and bt["rdfportal"] == 0 and bt["local"] == 2
