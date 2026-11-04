@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.2] - 2026-11-04
+
+Operator dashboard only. PATCH: no tool, parameter or return shape changed. The `/stats` page had
+been growing by one month of tables every month and re-parsing the whole rotated log on every
+refresh. This release pages it by month and freezes closed months to snapshots, so their numbers
+survive log rotation.
+
 ### Changed
 - **`/stats` is paged and no longer re-reads the whole log.** The page grew by one month's tables
   every month, and every refresh re-parsed the full rotated log (up to 550 MB). Now `/stats`
@@ -3762,7 +3769,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.2...HEAD
+[2.29.2]: https://github.com/dbcls/togomcp/compare/v2.29.1...v2.29.2
 [2.29.1]: https://github.com/dbcls/togomcp/compare/v2.29.0...v2.29.1
 [2.29.0]: https://github.com/dbcls/togomcp/compare/v2.28.1...v2.29.0
 [2.28.1]: https://github.com/dbcls/togomcp/compare/v2.28.0...v2.28.1
