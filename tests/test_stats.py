@@ -901,7 +901,7 @@ def test_backends_in_json_and_html(tmp_path):
     assert "<th>backend</th>" in html
     assert "<b>Internal (DBCLS)</b> 5 (RDF Portal SPARQL 3 · other DBCLS SPARQL 1 · DBCLS API 1)" in html
     assert "<b>External</b> 3 (external SPARQL 1 · external API 2)" in html
-    assert "RDF Portal 2 · other DBCLS 1 · external 1 · no endpoint 1" in html
+    assert "2 to RDF Portal · 1 to other DBCLS · 1 to external · 1 with no endpoint logged" in html
     assert "<td>DBCLS API</td>" in html and "<td>?</td>" in html
 
 

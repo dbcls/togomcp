@@ -1722,7 +1722,8 @@ def render_html(
             "WikiPathways, IDSM) and REST APIs (EBI, NCBI, NLM, PDBj, ...). "
             "SPARQL is split per call by the endpoint it actually went to. "
             "<b>local</b> = files bundled with the server, no network. "
-            "<b>no endpoint</b> = a SPARQL tool call rejected before sending "
+            "For SPARQL tools the service column counts calls by where they "
+            "went. <b>with no endpoint logged</b> = calls rejected before sending "
             "(e.g. an invalid database) or ChEMBL’s SMILES path. "
             "<b>?</b> = a retired or unknown tool name.</p>"
         )
@@ -1749,12 +1750,13 @@ def render_html(
             kind, service = tool_backend(tool)
             if kind == "sparql":
                 sp = tool_split(tool, t)
+                # Count FIRST: "no endpoint 7" was read as a number of endpoints.
                 service = " · ".join(
-                    f"{lbl} {sp[k]}" for k, lbl in (
-                        ("rdfportal", "RDF Portal"),
-                        ("sparql_dbcls", "other DBCLS"),
-                        ("sparql_external", "external"),
-                        ("sparql_unsent", "no endpoint"),
+                    f"{sp[k]} {lbl}" for k, lbl in (
+                        ("rdfportal", "to RDF Portal"),
+                        ("sparql_dbcls", "to other DBCLS"),
+                        ("sparql_external", "to external"),
+                        ("sparql_unsent", "with no endpoint logged"),
                     ) if sp[k]
                 ) or service
             parts.append(
