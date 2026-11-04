@@ -34,8 +34,9 @@ import json
 import logging
 import os
 import re
+import threading
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
@@ -518,8 +519,13 @@ def aggregate(
     endpoint_groups: dict[str, str] | None = None,
     mie_dates: dict[str, str] | None = None,
     exclude_clients: Iterable[str] | None = None,
+    *,
+    traps: bool = True,
 ) -> dict[str, Any]:
     """Roll records up into a JSON-serializable monthly statistics structure.
+
+    ``traps=False`` skips the MIE-trap feed: ``compute_stats`` builds that feed
+    itself over a rolling window that differs from the months it re-aggregates.
 
     ``exclude_clients`` drops whole clients by reported name — the escape hatch
     for a known self-inflicted source (a benchmark harness, a catalog sweeper).
@@ -739,7 +745,9 @@ def aggregate(
         "months": sorted(months),
         "by_month": by_month,
         "mie_candidates": _mie_candidates(by_month),
-        "mie_trap_candidates": mie_trap_candidates(records, endpoint_groups, mie_dates),
+        "mie_trap_candidates": (
+            mie_trap_candidates(records, endpoint_groups, mie_dates) if traps else None
+        ),
     }
 
 
@@ -958,28 +966,326 @@ def mie_trap_candidates(
 
 
 # --------------------------------------------------------------------------- #
-# Convenience: load + aggregate from the configured log path
+# Convenience: load + aggregate from the configured log path, with frozen
+# monthly snapshots
 # --------------------------------------------------------------------------- #
+# Frozen monthly snapshots.
+#
+# The raw log is a RotatingFileHandler set capped at (1 + LOG_BACKUP_COUNT) x
+# 50 MB. Re-aggregating all of it on every dashboard refresh cost a full JSON
+# parse of up to 550 MB, and once the cap was reached the oldest month went on
+# being displayed after rotation had deleted part of it — wrong numbers with no
+# warning. A closed month no longer changes, so it is aggregated ONCE and frozen
+# to `<TOGOMCP_QUERY_LOG>.months/YYYY-MM.json`, next to the log (the log
+# directory is already a persistent volume, so no new env var or mount). After
+# that, only the current month and the trap window are read from the raw log,
+# newest file first, stopping at the first file that starts before them.
+#
+# A snapshot is reused only if it was computed by the same aggregation code
+# (STATS_SCHEMA) and with the same client exclusions (the fingerprint). If not,
+# it is recomputed when the raw log still covers that month fully, and otherwise
+# kept and marked `stale` — never silently dropped, never silently mixed.
+# endpoints.csv is deliberately NOT in the fingerprint: attribution of a past
+# month reflects the registry at the time it was frozen, and folding the file
+# in would mark every rotated-away month stale whenever a database is added.
+
+# Bump when the shape or meaning of a by_month entry changes; frozen months are
+# then recomputed where the raw log still covers them.
+STATS_SCHEMA = 1
+
+# Must match the RotatingFileHandler in server.py (which imports these).
+LOG_MAX_BYTES = 50_000_000
+LOG_BACKUP_COUNT = 10
+
+# The MIE-trap feed covers a rolling window, not all time: it lists what is
+# worth fixing NOW, and MIEs are re-verified often enough that older failures
+# are mostly already fixed (or pre-date the current MIE and are dropped anyway).
+TRAP_WINDOW_DAYS = 60
+
+# A month is frozen only this long after it ends: a call that started before
+# midnight UTC can be logged (with the earlier timestamp) a little later.
+FREEZE_GRACE = timedelta(hours=1)
+
+# compute_stats is called from request handlers and from the background
+# freezer thread; serialize so two callers never write the same snapshot.
+_COMPUTE_LOCK = threading.Lock()
+
+
+def snapshot_dir(log_path: str) -> str:
+    """Directory holding the frozen months for this log ('' if no log)."""
+    return f"{log_path}.months" if log_path else ""
+
+
+def stats_fingerprint(excluded: Iterable[str]) -> str:
+    """Identity of the settings a frozen month's numbers depend on."""
+    return "exclude=" + ",".join(sorted(excluded))
+
+
+def _month_start(month: str) -> datetime:
+    y, m = month.split("-")
+    return datetime(int(y), int(m), 1, tzinfo=timezone.utc)
+
+
+def _next_month(month: str) -> str:
+    y, m = (int(x) for x in month.split("-"))
+    return f"{y + (m == 12):04d}-{m % 12 + 1:02d}"
+
+
+def _month_of_dt(dt: datetime) -> str:
+    dt = dt.astimezone(timezone.utc)
+    return f"{dt.year:04d}-{dt.month:02d}"
+
+
+def _parse_ts(ts: Any) -> datetime | None:
+    if not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def first_ts(path: str) -> datetime | None:
+    """Timestamp of the first parseable record in a log file (None if none)."""
+    for rec in iter_records([path]):
+        dt = _parse_ts(rec.get("ts"))
+        if dt is not None:
+            return dt
+    return None
+
+
+def load_snapshots(directory: str) -> dict[str, dict[str, Any]]:
+    """month -> snapshot dict. Unreadable or malformed files are skipped."""
+    out: dict[str, dict[str, Any]] = {}
+    if not directory:
+        return out
+    try:
+        paths = sorted(Path(directory).glob("????-??.json"))
+    except OSError:
+        return out
+    for p in paths:
+        try:
+            snap = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            log.warning("stats: ignoring unreadable snapshot %s", p)
+            continue
+        if isinstance(snap, dict) and isinstance(snap.get("by_month"), dict):
+            out[p.stem] = snap
+    return out
+
+
+def _write_snapshot(directory: str, month: str, snap: dict[str, Any]) -> bool:
+    """Atomically write one frozen month. Failure is logged, never raised."""
+    try:
+        os.makedirs(directory, exist_ok=True)
+        final = os.path.join(directory, f"{month}.json")
+        tmp = f"{final}.tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(snap, fh, default=str)
+        os.replace(tmp, final)
+        return True
+    except OSError as exc:
+        log.warning("stats: cannot freeze %s in %s (%s)", month, directory, exc)
+        return False
+
+
 def compute_stats(
     log_path: str | None = None,
     endpoints_csv: str | None = None,
     mie_dir: str | None = None,
+    *,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Load the configured log (TOGOMCP_QUERY_LOG) and return the aggregate."""
+    """Load the configured log (TOGOMCP_QUERY_LOG) and return the aggregate.
+
+    Closed months come from frozen snapshots (written here on first sight);
+    only the current month and the MIE-trap window are read from the raw log.
+    """
     log_path = log_path if log_path is not None else os.getenv("TOGOMCP_QUERY_LOG", "").strip()
     groups = load_endpoint_groups(endpoints_csv) if endpoints_csv else {}
     mie_dates = load_mie_dates(mie_dir) if mie_dir else {}
-    paths = log_paths(log_path)
     excluded = parse_excluded_clients(os.getenv("TOGOMCP_STATS_EXCLUDE_CLIENTS"))
-    out = aggregate(iter_records(paths), groups, mie_dates, excluded)
-    # Describe the bytes behind the aggregate so the dashboard's raw-log download
-    # can state its size up front, and so a downloaded file is verifiably the
-    # same input the numbers came from (the download serves exactly `paths`).
-    out["log_files"] = {
-        "n_files": len(paths),
-        "n_bytes": sum(os.path.getsize(p) for p in paths if os.path.exists(p)),
+    now = now or datetime.now(timezone.utc)
+    with _COMPUTE_LOCK:
+        return _compute_incremental(log_path, groups, mie_dates, excluded, now)
+
+
+def _compute_incremental(
+    log_path: str,
+    groups: dict[str, str],
+    mie_dates: dict[str, str],
+    excluded: frozenset[str],
+    now: datetime,
+) -> dict[str, Any]:
+    paths = log_paths(log_path)
+    snap_dir = snapshot_dir(log_path)
+    fp = stats_fingerprint(excluded)
+    snaps = load_snapshots(snap_dir)
+
+    current = _month_of_dt(now)
+    last_open = _month_of_dt(now - FREEZE_GRACE)  # months before this are closed
+    trap_cutoff = (now - timedelta(days=TRAP_WINDOW_DAYS)).strftime("%Y-%m-%d")
+
+    # Raw-log coverage. Until rotation has filled every backup slot nothing has
+    # been deleted, so the raw log holds every month it ever saw. After that,
+    # a month is fully present only if the oldest surviving record predates it.
+    oldest = first_ts(paths[-1]) if paths else None
+    rotation_full = len(paths) > LOG_BACKUP_COUNT
+
+    def covered(month: str) -> bool:
+        if not rotation_full:
+            return True
+        return oldest is not None and oldest <= _month_start(month)
+
+    valid = {
+        m: s for m, s in snaps.items()
+        if s.get("stats_schema") == STATS_SCHEMA and s.get("fingerprint") == fp
     }
-    return out
+    stale = {m for m in snaps if m not in valid}
+    recompute = {m for m in stale if covered(m)}
+
+    # Oldest month the raw log must be read from. With no snapshots at all
+    # (first run, or the directory is unwritable) that is everything.
+    if snaps:
+        floor = [current, trap_cutoff[:7], _next_month(max(snaps)), *recompute]
+        need_from: str | None = min(floor)
+    else:
+        need_from = None
+
+    def _read() -> Iterator[dict[str, Any]]:
+        for p in paths:  # newest first
+            yield from iter_records([p])
+            if need_from is not None:
+                ft = first_ts(p)
+                if ft is not None and _month_of_dt(ft) < need_from:
+                    break  # every older file lies wholly before need_from
+
+    n_skipped = 0
+    window: list[dict[str, Any]] = []      # post-exclusion, for the trap feed
+    fresh: list[dict[str, Any]] = []       # records of months to (re)aggregate
+    excl_by_month: dict[str, int] = defaultdict(int)
+    span: dict[str, list[str]] = {}        # month -> [first ts, last ts]
+    for rec in _read():
+        month = month_of(rec)
+        if month is None:
+            n_skipped += 1
+            continue
+        if need_from is not None and month < need_from:
+            continue
+        if excluded and client_of(rec) in excluded:
+            excl_by_month[month] += 1
+            continue
+        day = day_of(rec)
+        if day and day >= trap_cutoff:
+            window.append(rec)
+        if month < last_open and (month in valid or (month in stale and month not in recompute)):
+            # Frozen with matching settings — or frozen under other settings
+            # while the raw log no longer holds the whole month, in which case
+            # a partial re-aggregate would overwrite complete numbers.
+            continue
+        fresh.append(rec)
+        ts = rec["ts"]
+        sp = span.setdefault(month, [ts, ts])
+        if _parse_ts(ts) < _parse_ts(sp[0]):
+            sp[0] = ts
+        if _parse_ts(ts) > _parse_ts(sp[1]):
+            sp[1] = ts
+
+    agg = aggregate(fresh, groups, traps=False)
+    by_month: dict[str, Any] = {}
+    meta: dict[str, dict[str, Any]] = {}
+    for m, s in snaps.items():
+        if m in recompute and m in agg["by_month"]:
+            continue
+        by_month[m] = s["by_month"]
+        cov = s.get("coverage") or {}
+        meta[m] = {
+            "frozen": True,
+            "frozen_at": s.get("frozen_at"),
+            "partial": bool(cov.get("partial")),
+            "first_ts": cov.get("first_ts"),
+            "stale": m in stale,
+            "n_excluded": s.get("n_excluded", 0),
+        }
+
+    written: list[str] = []
+    frozen_at = now.isoformat()
+    for m, entry in agg["by_month"].items():
+        by_month[m] = entry
+        closed = m < last_open
+        partial = not covered(m)
+        meta[m] = {
+            "frozen": False,
+            "frozen_at": None,
+            "partial": partial,
+            "first_ts": span[m][0],
+            "stale": False,
+            "n_excluded": excl_by_month.get(m, 0),
+        }
+        if closed and snap_dir:
+            snap = {
+                "stats_schema": STATS_SCHEMA,
+                "fingerprint": fp,
+                "month": m,
+                "frozen_at": frozen_at,
+                "coverage": {
+                    "first_ts": span[m][0],
+                    "last_ts": span[m][1],
+                    "n_records": entry["tool_calls"],
+                    "partial": partial,
+                },
+                "n_excluded": excl_by_month.get(m, 0),
+                "by_month": entry,
+            }
+            if _write_snapshot(snap_dir, m, snap):
+                written.append(m)
+                meta[m].update(frozen=True, frozen_at=frozen_at)
+
+    months = sorted(by_month)
+    traps = mie_trap_candidates(window, groups, mie_dates)
+    traps["window_days"] = TRAP_WINDOW_DAYS
+    traps["since"] = trap_cutoff
+    return {
+        "generated_at": now.isoformat(),
+        "n_records": sum(by_month[m].get("tool_calls", 0) for m in months) + n_skipped,
+        "excluded_clients": {
+            "names": sorted(excluded),
+            "n_records": sum(meta[m].get("n_excluded", 0) for m in months),
+        },
+        "n_skipped_no_timestamp": n_skipped,
+        "months": months,
+        "month_meta": meta,
+        "by_month": by_month,
+        "mie_candidates": _mie_candidates(by_month),
+        "mie_trap_candidates": traps,
+        "log_files": {
+            "n_files": len(paths),
+            "n_bytes": sum(os.path.getsize(p) for p in paths if os.path.exists(p)),
+        },
+        "snapshots": {
+            "dir": snap_dir,
+            "n_frozen": sum(1 for m in months if meta[m]["frozen"]),
+            "written": written,
+            "read_from": need_from,
+        },
+    }
+
+
+def select_months(stats: dict[str, Any], param: str | None) -> list[str] | None:
+    """Months to show for a `?month=` value; None if the value names no month.
+
+    Default (absent/empty) is the latest two months: early in a month the
+    current one is nearly empty, so the previous one has to stay in view.
+    """
+    months = stats.get("months", [])
+    if not param:
+        return months[-2:]
+    if param == "all":
+        return list(months)
+    return [param] if param in months else None
 
 
 def _human_bytes(n: Any) -> str:
@@ -994,14 +1300,34 @@ def _human_bytes(n: Any) -> str:
     return f"{size:.1f} GB"
 
 
-def render_html(stats: dict[str, Any]) -> str:
-    """Render the aggregate as a self-contained HTML dashboard (no external JS/CSS)."""
+def render_html(
+    stats: dict[str, Any],
+    shown: list[str] | None = None,
+    selected: str = "",
+) -> str:
+    """Render the aggregate as a self-contained HTML dashboard (no external JS/CSS).
+
+    ``shown`` limits the per-month sections (None = every month); the two
+    top tables always cover their own full scope. ``selected`` is the raw
+    ``?month=`` value, used only to highlight the current navigation link.
+    """
     from html import escape
 
     def cell(v: Any) -> str:
         return escape("" if v is None else str(v))
 
     months = stats.get("months", [])
+    meta = stats.get("month_meta") or {}
+    shown = list(months) if shown is None else shown
+
+    def _flags(m: str) -> str:
+        mm = meta.get(m) or {}
+        out = []
+        if mm.get("partial"):
+            out.append("partial")
+        if mm.get("stale"):
+            out.append("old settings")
+        return f" ({', '.join(out)})" if out else ""
     parts: list[str] = [
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>",
         "<meta name='viewport' content='width=device-width, initial-scale=1'>",
@@ -1013,12 +1339,23 @@ def render_html(stats: dict[str, Any]) -> str:
         "th,td{border:1px solid #ddd;padding:.25rem .5rem;text-align:right}",
         "th:first-child,td:first-child{text-align:left}",
         "th{background:#f0f0f0}tr:nth-child(even) td{background:#f8f8f8}",
-        ".muted{color:#888}.warn{color:#b00}.tag{font-size:.75rem;color:#666}",
+        ".muted{color:#888}.warn{color:#b00}.tag{font-size:.75rem;color:#666}.nav{line-height:2}",
         "</style></head><body>",
         "<h1>TogoMCP usage statistics</h1>",
         f"<p class='muted'>Generated {cell(stats.get('generated_at'))} · "
-        f"{cell(stats.get('n_records'))} records · months: {cell(', '.join(months)) or '—'}</p>",
+        f"{cell(stats.get('n_records'))} records · months: "
+        f"{cell(months[0] + ' – ' + months[-1]) if months else '—'}</p>",
     ]
+    if months:
+        def _link(label: str, value: str, text: str) -> str:
+            if value == selected:
+                return f"<b>{cell(text)}</b>"
+            return f"<a href='/stats?month={cell(value)}'>{cell(text)}</a>"
+
+        links = [_link("latest", "", "latest 2")]
+        links += [_link(m, m, m + _flags(m)) for m in reversed(months)]
+        links.append(_link("all", "all", "all"))
+        parts.append("<p class='nav'>Months: " + " · ".join(links) + "</p>")
     _exc = stats.get("excluded_clients") or {}
     if _exc.get("names"):
         parts.append(
@@ -1040,7 +1377,8 @@ def render_html(stats: dict[str, Any]) -> str:
             "<p><a href='/stats/log' download>⬇ Download raw log (JSONL)</a> "
             f"<span class='tag'>{cell(_human_bytes(_nb))} · "
             f"{cell(_nf)} file{'s' if _nf != 1 else ''}, active + rotated · "
-            "exactly the records these tables aggregate</span></p>"
+            "the input behind the current month and the trap feed; frozen months "
+            "may reach back further than it does</span></p>"
         )
 
     cand = stats.get("mie_candidates", [])
@@ -1069,7 +1407,10 @@ def render_html(stats: dict[str, Any]) -> str:
     tcand = trap.get("candidates", [])
     parts.append("<h2>MIE traps to fix (filtered)</h2>")
     parts.append(
-        "<p class='muted'>Distinct queries that empty/time-out <em>after</em> the current MIE "
+        (f"<p class='muted'>Last {cell(trap['window_days'])} days only "
+           f"(since {cell(trap.get('since'))}): this list is for what to fix now.</p>"
+           if trap.get("window_days") else "")
+        + "<p class='muted'>Distinct queries that empty/time-out <em>after</em> the current MIE "
         "(deduped by query hash; schema-probe surveys and pre-MIE failures removed). "
         f"Excluded: {cell(trap.get('excluded_pre_mie', 0))} pre-MIE · "
         f"{cell(trap.get('excluded_schema_probe', 0))} schema-probe · "
@@ -1097,9 +1438,23 @@ def render_html(stats: dict[str, Any]) -> str:
         parts.append("<p class='muted'>No post-MIE traps after filtering — "
                      "the logged failures are already-fixed or schema-probe noise.</p>")
 
-    for month in reversed(months):
+    for month in reversed(shown):
         m = stats["by_month"][month]
-        parts.append(f"<h2>{cell(month)}</h2>")
+        parts.append(f"<h2>{cell(month)}{cell(_flags(month))}</h2>")
+        mm = meta.get(month) or {}
+        if mm.get("partial"):
+            parts.append(
+                f"<p class='warn'>Partial month: log rotation had already deleted its "
+                f"beginning when it was frozen. Data starts {cell(mm.get('first_ts'))}.</p>"
+            )
+        elif month == months[0] and mm.get("first_ts"):
+            parts.append(f"<p class='muted'>Log starts {cell(mm.get('first_ts'))}.</p>")
+        if mm.get("stale"):
+            parts.append(
+                "<p class='warn'>Frozen under different settings (aggregation version "
+                "or excluded clients) and the raw log no longer holds this whole month, "
+                "so it could not be recomputed. Compare with other months with care.</p>"
+            )
         parts.append(
             f"<p>{cell(m['tool_calls'])} tool calls · {cell(m['errors'])} errors "
             f"(<span class='warn'>{cell(round(m['error_rate'] * 100, 1))}%</span>)</p>"

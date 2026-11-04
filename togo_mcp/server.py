@@ -1015,8 +1015,15 @@ class _ToolCallLogger(_Middleware):
                 log_dir = os.path.dirname(log_path)
                 if log_dir:
                     os.makedirs(log_dir, exist_ok=True)
+                # Limits live in stats.py: its frozen-month coverage check has to
+                # know when rotation starts deleting data.
+                from togo_mcp.stats import LOG_BACKUP_COUNT, LOG_MAX_BYTES
+
                 handler = RotatingFileHandler(
-                    log_path, maxBytes=50_000_000, backupCount=10, encoding="utf-8"
+                    log_path,
+                    maxBytes=LOG_MAX_BYTES,
+                    backupCount=LOG_BACKUP_COUNT,
+                    encoding="utf-8",
                 )
                 handler.setFormatter(logging.Formatter("%(message)s"))
                 log = logging.getLogger("togomcp.toolcalls")
@@ -1359,6 +1366,39 @@ def _get_stats() -> dict[str, Any]:
 
 _AUTH_HEADERS = {"WWW-Authenticate": 'Basic realm="TogoMCP stats"'}
 
+# Freeze closed months even when nobody opens /stats. Snapshots are otherwise
+# written only by a dashboard request, and a month nobody looked at before
+# rotation deleted it would be lost for good. Runs regardless of whether the
+# dashboard credentials are set: what it protects is the data, not the page.
+_STATS_FREEZE_INTERVAL = 24 * 3600.0
+_STATS_FREEZE_FIRST_DELAY = 60.0
+_stats_freezer_started = False
+
+
+def start_stats_freezer() -> None:
+    """Start the daily snapshot thread (HTTP entry point only; idempotent)."""
+    global _stats_freezer_started
+    if _stats_freezer_started or not os.getenv("TOGOMCP_QUERY_LOG", "").strip():
+        return
+    _stats_freezer_started = True
+
+    import threading
+
+    def _loop() -> None:
+        time.sleep(_STATS_FREEZE_FIRST_DELAY)  # stay out of the boot path
+        while True:
+            try:
+                from togo_mcp import stats as _stats_mod
+
+                done = _stats_mod.compute_stats(endpoints_csv=ENDPOINTS_CSV, mie_dir=MIE_DIR)
+                if done["snapshots"]["written"]:
+                    logger.info("stats: froze %s", ", ".join(done["snapshots"]["written"]))
+            except Exception as exc:  # read-only housekeeping must never kill the server
+                logger.warning("stats freezer failed: %s", exc)
+            time.sleep(_STATS_FREEZE_INTERVAL)
+
+    threading.Thread(target=_loop, name="togomcp-stats-freezer", daemon=True).start()
+
 
 @mcp.custom_route("/stats", methods=["GET"])
 async def stats_dashboard(request: Request) -> HTMLResponse:
@@ -1372,7 +1412,16 @@ async def stats_dashboard(request: Request) -> HTMLResponse:
     from togo_mcp import stats as _stats_mod
 
     try:
-        return HTMLResponse(_stats_mod.render_html(_get_stats()))
+        data = _get_stats()
+        month = request.query_params.get("month")
+        shown = _stats_mod.select_months(data, month)
+        if shown is None:
+            return HTMLResponse(
+                "<h1>404</h1><p>No statistics for that month. "
+                "<a href='/stats?month=all'>All months</a></p>",
+                status_code=404,
+            )
+        return HTMLResponse(_stats_mod.render_html(data, shown=shown, selected=month or ""))
     except Exception as exc:  # never 500 with a stack trace; logging stays read-only
         logger.warning("stats render failed: %s", exc)
         return HTMLResponse("<h1>500</h1><p>Could not compute stats.</p>", status_code=500)
@@ -1443,8 +1492,24 @@ async def stats_json(request: Request) -> JSONResponse:
         return JSONResponse({"error": "not configured"}, status_code=503)
     if not _check_basic_auth(request, creds):
         return JSONResponse({"error": "auth required"}, status_code=401, headers=_AUTH_HEADERS)
+    from togo_mcp import stats as _stats_mod
+
     try:
-        return JSONResponse(_get_stats())
+        data = _get_stats()
+        # Unlike the HTML page, the JSON default stays "every month": it is the
+        # machine-readable whole, and ?month= narrows it on request.
+        month = request.query_params.get("month")
+        if month:
+            shown = _stats_mod.select_months(data, month)
+            if shown is None:
+                return JSONResponse({"error": "unknown month"}, status_code=404)
+            data = {
+                **data,
+                "months": shown,
+                "by_month": {m: data["by_month"][m] for m in shown},
+                "month_meta": {m: data["month_meta"][m] for m in shown},
+            }
+        return JSONResponse(data)
     except Exception as exc:
         logger.warning("stats compute failed: %s", exc)
         return JSONResponse({"error": "compute failed"}, status_code=500)

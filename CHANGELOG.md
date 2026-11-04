@@ -13,6 +13,22 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+- **`/stats` is paged and no longer re-reads the whole log.** The page grew by one month's tables
+  every month, and every refresh re-parsed the full rotated log (up to 550 MB). Now `/stats`
+  shows the latest two months, with links to each month and `?month=all`. Closed months are
+  aggregated once and frozen to `<TOGOMCP_QUERY_LOG>.months/` next to the log, and only the
+  current month and the trap window are read from the raw log. A daily background thread freezes
+  months even when nobody opens the page. Before this, a month's raw lines were lost for good once
+  rotation reached them, and a half-deleted oldest month was shown as if it were complete. Such a
+  month is now marked *partial*. A month frozen under other settings that can no longer be
+  recomputed is marked *old settings*. No new env var: the snapshots live on the existing log
+  volume.
+- **The MIE-trap table covers the last 60 days** instead of all time. It is the list of what to
+  fix now, and older failures mostly predate a re-verified MIE.
+- `/stats.json` still returns every month by default, and accepts `?month=` to narrow it. It now
+  carries `month_meta` and `snapshots`. Its `mie_trap_candidates` gains `window_days` and `since`.
+
 ## [2.29.1] - 2026-11-03
 
 Description and documentation changes. PATCH: no tool, parameter or return shape changed. What a

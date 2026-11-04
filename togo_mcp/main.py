@@ -117,6 +117,9 @@ def run():
 
     asyncio.run(setup())
     fastmcp.settings.http_session_idle_timeout = _SESSION_IDLE_TIMEOUT_SECONDS
+    from .server import start_stats_freezer
+
+    start_stats_freezer()
     mcp.run(**_http_run_kwargs())
 
 def run_local():

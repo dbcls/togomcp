@@ -1030,6 +1030,56 @@ class TestRawLogDownload:
             assert c.get(href, auth=("u", "p")).status_code == 200
 
 
+class TestStatsPaging:
+    """/stats shows the latest two months by default; ?month= picks one or all."""
+
+    @staticmethod
+    def _client(tmp_path, monkeypatch):
+        import json as _json
+
+        from starlette.testclient import TestClient
+
+        import togo_mcp.server as srv
+        from togo_mcp.main import mcp
+
+        log = tmp_path / "log.jsonl"
+        log.write_text("".join(
+            _json.dumps({"ts": f"{m}-05T00:00:00+00:00", "tool": "get_MIE_file",
+                         "args": {"database": "pdb"}, "status": "ok"}) + "\n"
+            for m in ("2026-07", "2026-08", "2026-09")
+        ))
+        monkeypatch.setenv("TOGOMCP_QUERY_LOG", str(log))
+        monkeypatch.setenv("TOGOMCP_STATS_USER", "u")
+        monkeypatch.setenv("TOGOMCP_STATS_PASSWORD", "p")
+        monkeypatch.delenv("TOGOMCP_STATS_EXCLUDE_CLIENTS", raising=False)
+        # The aggregate is cached process-wide; never serve another test's log.
+        monkeypatch.setitem(srv._stats_cache, "data", None)
+        return TestClient(mcp.http_app())
+
+    def test_default_is_latest_two_months(self, tmp_path, monkeypatch) -> None:
+        with self._client(tmp_path, monkeypatch) as c:
+            html = c.get("/stats", auth=("u", "p")).text
+        assert "<h2>2026-09</h2>" in html and "<h2>2026-08</h2>" in html
+        assert "<h2>2026-07</h2>" not in html
+        assert "<a href='/stats?month=2026-07'>" in html
+
+    def test_single_month_all_and_unknown(self, tmp_path, monkeypatch) -> None:
+        with self._client(tmp_path, monkeypatch) as c:
+            one = c.get("/stats?month=2026-07", auth=("u", "p")).text
+            assert "<h2>2026-07</h2>" in one and "<h2>2026-09</h2>" not in one
+            every = c.get("/stats?month=all", auth=("u", "p")).text
+            assert all(f"<h2>{m}</h2>" in every for m in ("2026-07", "2026-08", "2026-09"))
+            assert c.get("/stats?month=1999-01", auth=("u", "p")).status_code == 404
+
+    def test_json_defaults_to_everything_and_narrows_on_request(self, tmp_path, monkeypatch) -> None:
+        with self._client(tmp_path, monkeypatch) as c:
+            full = c.get("/stats.json", auth=("u", "p")).json()
+            assert full["months"] == ["2026-07", "2026-08", "2026-09"]
+            one = c.get("/stats.json?month=2026-08", auth=("u", "p")).json()
+            assert one["months"] == ["2026-08"] and list(one["by_month"]) == ["2026-08"]
+            assert c.get("/stats.json?month=nope", auth=("u", "p")).status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # _StaleToolNames middleware — clients with a cached, out-of-date tool list
 # ---------------------------------------------------------------------------
