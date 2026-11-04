@@ -13,6 +13,25 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.3] - 2026-11-04
+
+MIE content fix. PATCH: no tool, parameter or return shape changed.
+
+### Fixed
+- **`idsm` MIE re-measured after IDSM reloaded its datasets (around 2026-11-02; #282).** An agent
+  following the old file would get wrong expectations in three places:
+  - The ChEBI antifungal-role example now expects 779 compounds (previously 706), because ChEBI
+    grew.
+  - Dropping the graph pin when attaching ChEBI labels now doubles the rows rather than
+    quadrupling them. The ontology graph stopped re-declaring ChEBI labels but still re-declares
+    their types.
+  - The warning that `ORDER BY ?p` crashes the engine is removed. That query now works for every
+    dataset the warning named, so the warning was steering agents away from a working query.
+- Every `idsm` entity count was re-measured and now states what it counts. ChEBI went from
+  224,439 to 238,150 classes, pdb-ccd from 48,434 to 50,627 ligands, and named graphs from 39 to
+  42. `mona_spectra` is redefined as the number of mass-spectrum records (3,601,153), because the
+  query behind the old 5,010,892 was never recorded and no obvious definition reproduces it.
+
 ## [2.29.2] - 2026-11-04
 
 Operator dashboard only. PATCH: no tool, parameter or return shape changed. The `/stats` page had
@@ -3769,7 +3788,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.3...HEAD
+[2.29.3]: https://github.com/dbcls/togomcp/compare/v2.29.2...v2.29.3
 [2.29.2]: https://github.com/dbcls/togomcp/compare/v2.29.1...v2.29.2
 [2.29.1]: https://github.com/dbcls/togomcp/compare/v2.29.0...v2.29.1
 [2.29.0]: https://github.com/dbcls/togomcp/compare/v2.28.1...v2.29.0

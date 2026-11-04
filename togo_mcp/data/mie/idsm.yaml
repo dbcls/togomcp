@@ -32,11 +32,13 @@ graphs:
     - https://idsm.elixir-czech.cz/rdf/isdb/
   co_hosted:
     bioinfo.iocb.cz/dataset/ontology: >
-      INFLATION (2g, 2026-09-14). A merged OBO/NCIt/NDF-RT/EFO import closure (3,573,768
-      obo:* subjects carry a label here). It RE-DECLARES ChEBI classes under ChEBI's own
-      IRIs — rdf:type, rdfs:label (same value) and rdfs:subClassOf (17 here vs 18 in the
-      chebi graph, so the two closures DIFFER). Type-leg x2 times label-leg x2 = x4 on the
-      standard `?c a ?t ; rdfs:label ?l` join. FIX = pin <http://rdf.ebi.ac.uk/dataset/chebi>.
+      INFLATION (2g, re-measured 2026-11-04). A merged OBO/NCIt/NDF-RT/EFO import closure
+      (3,709,852 obo:* subjects carry a label here). It RE-DECLARES ChEBI classes under
+      ChEBI's own IRIs: rdf:type owl:Class (8,142 CHEBI_* subjects) and rdfs:subClassOf (39
+      here vs 40 in the chebi graph for CHEBI_15365, so the two closures DIFFER). It no
+      longer carries ChEBI labels (0 since the 2026-11 reload), so the standard
+      `?c a ?t ; rdfs:label ?l` join doubles (type leg x2) rather than the earlier x4.
+      FIX = pin <http://rdf.ebi.ac.uk/dataset/chebi>.
     pubchem/{synonym,inchikey,descriptor/*}: >
       INFLATION, the severest measured here. These graphs hang MORE sio:SIO_000008
       attributes off the SAME pubchem/compound/CID* IRIs, so an unpinned attribute walk
@@ -52,21 +54,21 @@ graphs:
       declared. void:distinctSubjects does NOT agree with a live COUNT(DISTINCT ?s) — use
       void:triples, measure subjects yourself.
 
-entity_counts:                        # all verified 2026-09-14, COUNT(DISTINCT) + graph-pinned
-  named_graphs: 39
+entity_counts:                        # all re-measured 2026-11-04, COUNT(DISTINCT) + graph-pinned
+  named_graphs: 42                    # live COUNT(DISTINCT ?g) = void sd:name count
   structure_indexed_datasets: 9       # datasets the sachem index spans (see agg_substructure_by_dataset)
-  triples_total: 43950346732          # sum of void:triples over all 39 graphs
-  chebi_classes: 224439
-  chembl_small_molecules: 1920603
-  pdbccd_ligands: 48434
-  drugbank_drugs: 14630
-  mona_spectra: 5010892
+  triples_total: 43970917580          # sum of void:triples over all 42 graphs
+  chebi_classes: 238150               # owl:Class in the chebi graph
+  chembl_small_molecules: 1920259     # cco:SmallMolecule in the chembl graph
+  pdbccd_ligands: 50627               # subjects with sio:SIO_000008 in the pdb-ccd graph
+  drugbank_drugs: 14630               # subjects with sio:SIO_000008 in the drugbank graph
+  mona_spectra: 3601153               # subjects typed obo:MS_1000294 (mass spectrum) in the mona graph
 
 global_gotchas:
   - id: union_default_graph
     say: >
       This endpoint declares sd:UnionDefaultGraph: a triple pattern with NO GRAPH clause
-      matches the UNION of all 39 graphs. Because the co-hosted graphs hang extra
+      matches the UNION of all 42 graphs. Because the co-hosted graphs hang extra
       attributes off the SAME compound IRIs, an unpinned attribute walk on PubChem CID2244
       returns 723 rows where the pinned one returns 24 (x30.125) — in under a second, with
       every row well-formed, so neither an error nor DISTINCT will reveal it. FIX = always
@@ -152,25 +154,6 @@ global_gotchas:
         }
       expect: {value: 93904765, tolerance: 0.02}
 
-  - id: order_by_predicate_variable_errors
-    say: >
-      This is NOT Virtuoso — it is a PostgreSQL-backed engine, and `ORDER BY ?p` where ?p sits
-      in the PREDICATE position can abort the query with a RAW driver error
-      ("org.postgresql.util.PSQLException: ERROR: syntax error at or near \")\"", HTTP 400)
-      instead of a SPARQL error. It is dataset-dependent — reproducible for pdb-ccd, Wikidata
-      and DrugBank subjects, while the same shape succeeds for PubChem, ChEMBL and ChEBI — and
-      it fails identically on a warm second run, so it is not a load or cache effect. FIX =
-      `ORDER BY STR(?p)`, which returns normally in every case tested; or drop the ORDER BY.
-    check:
-      kind: error
-      date: "2026-09-14"
-      expect: {timeout_s: 60}
-      query: |
-        SELECT ?p ?o WHERE {
-          GRAPH <https://identifiers.org/pdb-ccd/> {
-            <https://identifiers.org/pdb-ccd/AIN> ?p ?o }
-        } ORDER BY ?p
-
   - id: literals_match_by_value_not_term
     say: >
       Unlike the Virtuoso-backed RDF Portal endpoints, this engine matches literals by RDF-1.1
@@ -250,10 +233,10 @@ examples:
     verified: {min_rows: 25, date: "2026-09-14"}
     teaches: "The structure index is dataset-agnostic, so you scope it AFTERWARDS by filtering the hit IRI's namespace — then GRAPH-pin that same dataset to pick up labels."
     traps_avoided:
-      - say: "Do not drop the GRAPH pin when attaching the label: <bioinfo.iocb.cz/dataset/ontology> re-declares ChEBI's rdf:type AND rdfs:label under ChEBI's own IRIs, so an unpinned `?c a ?t ; rdfs:label ?l` returns 4 rows for CHEBI_15365 where the pinned form returns 1 (x4 — the product of a x2 type leg and a x2 label leg)."
+      - say: "Do not drop the GRAPH pin when attaching the label: <bioinfo.iocb.cz/dataset/ontology> re-declares ChEBI's rdf:type under ChEBI's own IRIs, so an unpinned `?c a ?t ; rdfs:label ?l` returns 2 rows for CHEBI_15365 where the pinned form returns 1 (x2, from the type leg). Any other leg that graph re-declares, such as rdfs:subClassOf, multiplies it again."
         check:
           kind: ratio
-          date: "2026-09-14"
+          date: "2026-11-04"
           unpinned: |
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             SELECT (COUNT(*) AS ?n) WHERE {
@@ -265,7 +248,7 @@ examples:
               GRAPH <http://rdf.ebi.ac.uk/dataset/chebi> {
                 <http://purl.obolibrary.org/obo/CHEBI_15365> a ?t ; rdfs:label ?l . }
             }
-          expect: {ratio: 4.0, tolerance: 0.05}
+          expect: {ratio: 2.0, tolerance: 0.05}
       - "Filtering the namespace does not make the search cheaper — the index is still scanned across all 9 datasets. If you only ever want one dataset, IDSM also publishes per-dataset endpoints (.../sparql/endpoint/chebi, /chembl, /pubchem, /drugbank, /wikidata) that skip the others entirely."
 
   - id: similarity_search_with_score
@@ -306,13 +289,13 @@ examples:
                                       owl:someValuesFrom ?role ] .
         }
       }
-    verified: {n: 706, date: "2026-09-14"}
+    verified: {n: 779, date: "2026-11-04"}
     teaches: "A ChEBI role is asserted as an owl:Restriction on RO_0000087 ('has role'), and roles form a hierarchy — so lead with `?role rdfs:subClassOf* <role>` and let the restriction match any descendant role."
     traps_avoided:
-      - say: "Matching the role IRI DIRECTLY (owl:someValuesFrom obo:CHEBI_35718, no subClassOf*) returns 358 instead of 706 — it silently drops every compound annotated with a more specific role such as an azole antifungal. The naive query undercounts by half and looks perfectly successful."
+      - say: "Matching the role IRI DIRECTLY (owl:someValuesFrom obo:CHEBI_35718, no subClassOf*) returns 421 instead of 779 — it silently drops every compound annotated with a more specific role such as an azole antifungal. The naive query undercounts by nearly half and looks perfectly successful."
         check:
           kind: ratio
-          date: "2026-09-14"
+          date: "2026-11-04"
           numerator: |
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             PREFIX owl: <http://www.w3.org/2002/07/owl#>
@@ -334,7 +317,7 @@ examples:
                                             owl:onProperty obo:RO_0000087 ;
                                             owl:someValuesFrom obo:CHEBI_35718 ] . }
             }
-          expect: {ratio: 1.9721, tolerance: 0.05}
+          expect: {ratio: 1.8504, tolerance: 0.05}
 
   - id: agg_substructure_hits_by_dataset
     intent: count structure-search hits per dataset — the un-inflated way to size a scaffold
@@ -346,8 +329,8 @@ examples:
         ?compound sachem:substructureSearch [ sachem:query "O=C(Nc1ccccc1)c1ccccc1" ] .
         BIND(REPLACE(STR(?compound), "^(.*/)[^/]+$", "$1") AS ?dataset)
       } GROUP BY ?dataset ORDER BY DESC(?hits)
-    verified: {row_count: 9, date: "2026-09-14",
-               note: "pubchem 1562165, chembl 58922, wikidata 8977, chebi 1605, pdb-ccd 625, molmedb 554, isdb 173, drugbank 156, mona 151 (1,633,328 total)"}
+    verified: {row_count: 9, date: "2026-11-04",
+               note: "pubchem 1562650, chembl 58921, mona 15217, wikidata 8979, isdb 7584, chebi 1680, pdb-ccd 659, molmedb 554, drugbank 156 (1,656,400 total)"}
     teaches: "Bucketing the hit IRI by namespace is how you see WHICH datasets the structure index actually spans — nine of them — and it doubles as the un-inflated per-dataset total because the sachem index returns each compound once."
     traps_avoided:
       - "COUNT(DISTINCT) here is honest without a GRAPH pin ONLY because sachem hits come from the procedural index rather than from graph matching. The moment you join anything off ?compound, the union-default-graph rule applies again and you must pin."
@@ -370,10 +353,10 @@ examples:
                note: "molfile begins 'AIN - Model conformer / RDKit 3D / 21 21 0 0...'"}
     teaches: "Structures are stored as an ATTRIBUTE NODE, not a literal on the compound: compound -sio:SIO_000008-> node, typed sio:SIO_011120 (MDL molfile), whose sio:SIO_000300 carries the text."
     traps_avoided:
-      - say: "The attribute node lives in a PARALLEL IRI namespace — <https://idsm.elixir-czech.cz/rdf/pdb-ccd/AIN_molfile> for compound <https://identifiers.org/pdb-ccd/AIN>. That is why the graph holds exactly 2 subjects per ligand (96,868 for 48,434 ligands); it is the schema, not duplication, so do NOT try to collapse it with DISTINCT. Never construct the attribute IRI by hand — traverse SIO_000008."
+      - say: "The attribute node lives in a PARALLEL IRI namespace — <https://idsm.elixir-czech.cz/rdf/pdb-ccd/AIN_molfile> for compound <https://identifiers.org/pdb-ccd/AIN>. That is why the graph holds exactly 2 subjects per ligand (101,254 for 50,627 ligands); it is the schema, not duplication, so do NOT try to collapse it with DISTINCT. Never construct the attribute IRI by hand — traverse SIO_000008."
         check:
           kind: ratio
-          date: "2026-09-14"
+          date: "2026-11-04"
           numerator: |
             SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
               GRAPH <https://identifiers.org/pdb-ccd/> { ?s ?p ?o }
@@ -511,7 +494,7 @@ schema_delta:
      declared in the endpoint's sd:extensionFunction list — that declaration is what is
      verified here; their argument signatures are NOT, and a guessed call returns 0 rows
      silently, so read IDSM's manual before using one. The spectra they operate on live in
-     the MoNA (5,010,892 spectra) and ISDB graphs."
+     the MoNA (3,601,153 spectra) and ISDB graphs."
   - "fulltext:bioassaySearch is the assay-side twin of fulltext:compoundSearch, searching
      PubChem BioAssay text. It does NOT use the result-node shape: it binds the assay IRI
      DIRECTLY, like substructureSearch — `?assay fulltext:bioassaySearch [ fulltext:query
