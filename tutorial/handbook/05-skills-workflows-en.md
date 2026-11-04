@@ -17,7 +17,7 @@ Think of a skill as what saves you from writing out by hand, every single time, 
 
 ---
 
-## The three skills
+## The four skills
 
 The TogoMCP server provides the following skills (it calls them *workflows*).
 
@@ -79,6 +79,38 @@ Use PRISM to find genes associated with [DISEASE] that are also modulated by an 
 
 Applications with a track record include lipid transport in age-related macular degeneration, and the analysis of Pompe disease.
 
+### query-provenance — record the queries behind your conclusions, packaged for a paper
+
+**What it does:** for each conclusion of an investigation, it records the tool calls that support it (SPARQL, `search_*`, TogoID, NCBI, TogoVar) **exactly as they were sent**, runs them again to confirm they return the same results, and packages everything as three files for a paper.
+
+```
+ledger.yaml     the query ledger: calls and their arguments, what was observed, the re-run check
+PROVENANCE.md   the version for people: per claim, the full text of the supporting queries,
+                the check result, and how to re-run them
+METHODS.md      a draft Methods paragraph; every number in it comes from the ledger
+```
+
+**Why it works:** **a prompt is not a record.** Ask the same question twice and an LLM does not take the same path ([Chapter 7](07-verification-en.md)). What can be reproduced is the **tool call itself**, arguments included. This skill copies those calls without summarizing or rewriting them. The check re-runs each call **with the arguments copied from the ledger**, not from the original call in the conversation, so a copying slip is caught there too. It also does not make up what it cannot see (the server version, result hashes): it leaves those blank, and the re-run script below fills them in.
+
+**When to use it:** whenever results go into a paper, a report or a talk. It is the machinery for doing "keep the query" and "record the date and the endpoint" from [Chapter 7](07-verification-en.md) without the manual work.
+
+**Say it at the start.** Announce it at the **beginning** of the investigation and each call is written into the ledger as it is made. Asking afterwards also works, but in a long conversation the full text of the early queries may already have dropped out of the context; those are then recorded as "unrecoverable".
+
+```
+I will use the results of this investigation in a paper, so record the queries as you go.
+(then ask your question as usual)
+```
+
+Choosing **Record this investigation for a paper** (`record_for_paper`) from your client's prompt menu does the same. Claude Desktop does not pass the server's guidance to the model, so **this skill does not start there unless you ask**: add the sentence above, or use the prompt. If the prompt is not in the menu, disconnect and reconnect TogoMCP (clients keep the prompt list from when they first connected).
+
+**Readers can re-run the ledger themselves.** The re-run script sends the SPARQL straight to the endpoints, not through TogoMCP, so it keeps working if TogoMCP changes or goes away.
+
+```bash
+uv run https://raw.githubusercontent.com/dbcls/togomcp/v2.29.0/scripts/togomcp_reproduce.py ledger.yaml
+```
+
+> This is not PRISM's "provenance ledger". PRISM's is a per-member evidence table for one intersection. **The two combine**: "Use PRISM to find …, and record the queries with query-provenance."
+
 ---
 
 <!-- workshop-only -->## How skills are handled in the workshop
@@ -86,7 +118,7 @@ Applications with a track record include lipid transport in age-related macular 
 **Skills are introduced only, in this workshop.** We will not install them on the spot.
 
 - Live, we will **run exactly one of them to completion** (`research-article-analysis` is recommended — the input is a single paper, which is easy to follow, and the output is a "verification result per claim" table, which is easy to read)
-- For the remaining two, **complete outputs produced in advance** are handed out as materials
+- For the rest, **complete outputs produced in advance** are handed out as materials
 - If you want to try them, install them yourself from the GitHub repository above<!-- /workshop-only --><!-- public-only -->## To try them
 
 You do not need to install anything: just ask, naming the skill if you want to be sure it is used (for example, "Use the research-article-analysis workflow to …"). `disease-analysis` also uses the OLS4 and PubMed MCP servers (Chapter 1), so connect those for it. **If you are trying one first, we recommend `research-article-analysis`** — the input is a single paper, which is easy to follow, and the output is a "verification result per claim" table, which makes it easy to read what happened.
@@ -101,7 +133,7 @@ Hand it a paper from your own field, and see **how far the claims can be backed 
 |---|---|
 | A one-off, simple query | No skill needed. The templates in Chapter 6 are enough |
 | The same kind of work, repeated | **Use a skill.** The variation in procedure disappears |
-| Results going into a paper | **Use a skill.** The provenance is kept automatically |
+| Results going into a paper | **Use query-provenance.** The queries are recorded, re-run to confirm, and a draft Methods paragraph comes out |
 | You want to share or review the procedure itself | **Use a skill.** The procedure exists as a file |
 | Exploring, feeling your way | A skill can get in the way. Ask plainly |
 

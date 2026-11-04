@@ -13,6 +13,40 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.4] - 2026-11-04
+
+Operator dashboard and tutorial only. PATCH: no tool, parameter or return shape changed. `/stats`
+now says which calls stay inside DBCLS and which leave it. The tutorial now covers the
+query-provenance skill shipped in 2.29.0.
+
+### Added
+
+- `/stats` labels each tool with its backend and the service it calls, and
+  each month totals calls as **internal** (run by DBCLS), **external**, or
+  **local** (bundled files, no network). Internal covers RDF Portal SPARQL,
+  other DBCLS SPARQL endpoints (TogoVar's) and the DBCLS APIs (TogoID, TogoVar,
+  PubCaseFinder, TogoDX). External covers member databases' own SPARQL endpoints
+  (GlyCosmos, WikiPathways, IDSM, ...) and third-party REST APIs (EBI, NCBI,
+  NLM, PDBj, KEGG). This lets a reader see how much traffic leaves DBCLS
+  without knowing the code. SPARQL is split per call by the endpoint host,
+  because the tool name cannot say it: `run_sparql` reaches all three kinds of
+  endpoint, and the ChEMBL search tools look like REST wrappers but are
+  SPARQL-backed. `/stats.json` carries `backend`/`service` and
+  `sparql_rdfportal`/`sparql_dbcls`/`sparql_external` per tool, and `backends`
+  totals per month. `STATS_SCHEMA` is now 3, so frozen months are recomputed on
+  first load while the raw log still covers them. A month the log no longer
+  covers keeps its old numbers, shows "old settings", and reports its SPARQL
+  calls as "no endpoint recorded".
+
+### Documentation
+- **The tutorial covers the query-provenance skill.** The skill shipped in 2.29.0 without being
+  mentioned in the tutorial. Chapter 5 now lists four skills instead of three and explains what the
+  skill writes (ledger, PROVENANCE.md, Methods draft). It also explains when to start it, the
+  `record_for_paper` prompt (reconnect if it is missing from the menu), and how to re-run a ledger.
+  Chapter 7's reproducibility steps now begin with the skill and say what a ledger does not record.
+  The slides, the instructor script and the built HTML (`/tutorial`, `/tutorial/ja`) were updated
+  to match.
+
 ## [2.29.3] - 2026-11-04
 
 MIE content fix. PATCH: no tool, parameter or return shape changed.
@@ -3788,7 +3822,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.3...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.4...HEAD
+[2.29.4]: https://github.com/dbcls/togomcp/compare/v2.29.3...v2.29.4
 [2.29.3]: https://github.com/dbcls/togomcp/compare/v2.29.2...v2.29.3
 [2.29.2]: https://github.com/dbcls/togomcp/compare/v2.29.1...v2.29.2
 [2.29.1]: https://github.com/dbcls/togomcp/compare/v2.29.0...v2.29.1
