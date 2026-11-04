@@ -13,6 +13,12 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.29.4] - 2026-11-04
+
+Operator dashboard and tutorial only. PATCH: no tool, parameter or return shape changed. `/stats`
+now says which calls stay inside DBCLS and which leave it. The tutorial now covers the
+query-provenance skill shipped in 2.29.0.
+
 ### Added
 
 - `/stats` labels each tool with its backend and the service it calls, and
@@ -31,6 +37,15 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   first load while the raw log still covers them. A month the log no longer
   covers keeps its old numbers, shows "old settings", and reports its SPARQL
   calls as "no endpoint recorded".
+
+### Documentation
+- **The tutorial covers the query-provenance skill.** The skill shipped in 2.29.0 without being
+  mentioned in the tutorial. Chapter 5 now lists four skills instead of three and explains what the
+  skill writes (ledger, PROVENANCE.md, Methods draft). It also explains when to start it, the
+  `record_for_paper` prompt (reconnect if it is missing from the menu), and how to re-run a ledger.
+  Chapter 7's reproducibility steps now begin with the skill and say what a ledger does not record.
+  The slides, the instructor script and the built HTML (`/tutorial`, `/tutorial/ja`) were updated
+  to match.
 
 ## [2.29.3] - 2026-11-04
 
@@ -3807,7 +3822,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.3...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.4...HEAD
+[2.29.4]: https://github.com/dbcls/togomcp/compare/v2.29.3...v2.29.4
 [2.29.3]: https://github.com/dbcls/togomcp/compare/v2.29.2...v2.29.3
 [2.29.2]: https://github.com/dbcls/togomcp/compare/v2.29.1...v2.29.2
 [2.29.1]: https://github.com/dbcls/togomcp/compare/v2.29.0...v2.29.1
