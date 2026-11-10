@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.30.0] - 2026-11-10
+
+New database and an MIE fix. MINOR: adds `database="jcm"`; no tool, parameter or return shape
+changed. JCM (RIKEN BRC Japan Collection of Microorganisms) joins NBRC as a second Japanese culture
+collection on the primary endpoint. The `marpolbase` MIE, which had gone to 0 rows when MarpolBase
+switched to MpTak_v7.1r2, is re-measured. `/stats` stops crediting NBRC with MarpolBase queries.
+
 <!-- whatsnew: 2026-11-10 | New database: <code>jcm</code> — RIKEN BRC's Japan Collection of Microorganisms, about 19,000 microbial strains with culture conditions, isolation sources and links to NCBI Taxonomy and NBRC. -->
 
 ### Added
@@ -3866,7 +3873,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.4...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.30.0...HEAD
+[2.30.0]: https://github.com/dbcls/togomcp/compare/v2.29.4...v2.30.0
 [2.29.4]: https://github.com/dbcls/togomcp/compare/v2.29.3...v2.29.4
 [2.29.3]: https://github.com/dbcls/togomcp/compare/v2.29.2...v2.29.3
 [2.29.2]: https://github.com/dbcls/togomcp/compare/v2.29.1...v2.29.2
