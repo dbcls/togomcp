@@ -70,7 +70,7 @@ is the bold row label.
 
 | Endpoint | n | `database` keys |
 |---|---:|---|
-| **primary** | 21 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `hco` `mco` `ontology` `fantabio` `pubcasefinder` `jogo` `tismed` `lotus` |
+| **primary** | 22 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `jcm` `hco` `mco` `ontology` `fantabio` `pubcasefinder` `jogo` `tismed` `lotus` |
 | **ebi** | 6 | `chembl` `chebi` `reactome` `ensembl` `amrportal` `gwascatalog` |
 | **ncbi** | 5 | `clinvar` `pubmed` `pubtator` `ncbigene` `medgen` |
 | **sib** | 4 | `uniprot` `rhea` `bgee` **`oma`** |
@@ -85,7 +85,7 @@ is the bold row label.
 | **lipidmaps** | 1 | `lipidmaps` |
 | **swisslipids** | 1 | `swisslipids` |
 | **microbes** | 1 | `bh26microbes` ← key ≠ endpoint name; experimental (QLever) |
-| **marpolbase** | 1 | `marpolbase` ← Marchantia polymorpha genome; own endpoint, 7 graphs, 10k row cap, no `SERVICE` |
+| **marpolbase** | 1 | `marpolbase` ← Marchantia polymorpha genome; own endpoint, 7 graphs, 30 s cutoff truncates silently, no `SERVICE` |
 
 **One database ≠ one graph.** A database alone on its endpoint still serves many graphs
 (GlyCosmos ~150, PubChem 69, PDB 46, DDBJ 43, IDSM 39), so co-tenancy is a property of

@@ -911,3 +911,22 @@ def test_backend_totals_old_snapshot_without_split():
     tools = {"run_sparql": {"count": 5}, "get_MIE_file": {"count": 2}}
     bt = stats.backend_totals(tools)
     assert bt["sparql_unsent"] == 5 and bt["rdfportal"] == 0 and bt["local"] == 2
+
+
+def test_mpo_and_mccv_resolved_by_local_name():
+    """mpo: means MarpolBase's ontology in MarpolBase queries but the microbial
+    phenotype ontology in NBRC/JCM ones. Mapped whole to nbrc, it credited NBRC
+    with all 22 of its co-queries in the 2026-11-10 production log — every one a
+    MarpolBase query."""
+    mp = _sparql("ok", db="marpolbase", rows=3)
+    mp["extra"]["query_shape"] = _shape("mpo:hasGenomeGene", "mpo:inOrthoGroup")
+    assert stats.co_queried_databases(mp, "marpolbase") == set()
+    assert stats.co_queried_databases(mp, "uniprot") == {"marpolbase"}
+
+    # mccv: is shared by NBRC and JCM — a term both use credits neither
+    shared = _sparql("ok", db="jcm", rows=3)
+    shared["extra"]["query_shape"] = _shape("mccv:MCCV_000001", "mccv:MCCV_000017")
+    assert stats.co_queried_databases(shared, "jcm") == set()
+    assert stats.co_queried_databases(shared, "nbrc") == set()
+    for prefix in ("mpo", "mccv"):
+        assert prefix not in stats.SIGNATURE_PREFIXES

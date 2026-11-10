@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 49 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
+All 50 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -17,7 +17,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **glycan** — `glycosmos`
 - **literature** — `lotus` `pubmed` `pubtator`
 - **materials** — `supercon`
-- **microbe** — `amrportal` `bacdive` `bh26microbes` `mediadive` `nbrc`
+- **microbe** — `amrportal` `bacdive` `bh26microbes` `jcm` `mediadive` `nbrc`
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
@@ -48,11 +48,12 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **hco** — HCO. The human cytogenetic map: every Giemsa-stained chromosome band (ISCN name, e.g. _[cytoband, chromosome band, karyotype, cytogenetic, giemsa stain, ideogram]_
 - **hgnc** — HGNC. Authoritative approved human gene nomenclature: official symbol, full name, HGNC ID, chromosomal band, and a… _[human gene, gene nomenclature, gene symbol, approved gene, gene name, hgnc id]_
 - **idsm** — IDSM. Chemical structure search engine (substructure, similarity, exact) over nine integrated small-molecule datase… _[chemical structure, substructure search, similarity search, smiles, molfile, cheminformatics]_
+- **jcm** — JCM. Catalogue of ~19k microbial strains (bacteria, archaea, fungi, yeasts, algae) distributed by the RIKEN BioRes… _[culture collection, biological resource, microbial strain, jcm, riken brc, bacteria]_
 - **jogo** — JoGo. Per-gene catalogue of phased human haplotypes (protein, CDS, transcript and gene-body sequence levels) from 2… _[haplotype, phased genome, long-read sequencing, human genetic variation, variant, allele frequency]_
 - **jpostdb** — jPOST. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimenta… _[proteomics, mass spectrometry, peptide, psm, peptide spectrum match, protein identification]_
 - **lipidmaps** — LIPID MAPS Structure Database. Classified lipid structures with molecular formula, monoisotopic mass, InChI/InChIKey and lipidomics shorthan… _[lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol]_
 - **lotus** — LOTUS. Referenced structure–organism occurrences of natural products, linking compounds with their chemical classifi… _[natural product, secondary metabolite, specialized metabolite, phytochemical, chemotaxonomy, source organism]_
-- **marpolbase** — MarpolBase. Genome structural annotation, functional annotation, co-expression, orthogroups and curated gene-literature a… _[plant, liverwort, bryophyte, genome, gene model, genome annotation]_
+- **marpolbase** — MarpolBase. Genome structural annotation, functional annotation, co-expression, 13-genome orthology and curated gene-lite… _[plant, liverwort, bryophyte, genome, gene model, genome annotation]_
 - **massbank** — MassBank. Open repository of reference MS/MS mass spectra for small molecules (metabolites, drugs, natural products, en… _[mass spectrometry, mass spectra, ms/ms, tandem ms, metabolomics, metabolite]_
 - **mco** — MCO. Reference ontology of the mouse (Mus musculus) chromosome set — the 22 chromosomes (1-19, X, Y, MT) as owl:Cl… _[mouse chromosome, mus musculus, karyotype, genome build, grcm38, grcm39]_
 - **medgen** — MedGen. NCBI's UMLS-derived registry of ~240k clinical concepts (diseases, phenotypes, findings) with genetic compone… _[medical genetics, disease, phenotype, clinical concept, syndrome, finding]_

@@ -13,6 +13,57 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.30.0] - 2026-11-10
+
+New database and an MIE fix. MINOR: adds `database="jcm"`; no tool, parameter or return shape
+changed. JCM (RIKEN BRC Japan Collection of Microorganisms) joins NBRC as a second Japanese culture
+collection on the primary endpoint. The `marpolbase` MIE, which had gone to 0 rows when MarpolBase
+switched to MpTak_v7.1r2, is re-measured. `/stats` stops crediting NBRC with MarpolBase queries.
+
+<!-- whatsnew: 2026-11-10 | New database: <code>jcm</code> — RIKEN BRC's Japan Collection of Microorganisms, about 19,000 microbial strains with culture conditions, isolation sources and links to NCBI Taxonomy and NBRC. -->
+
+### Added
+
+- **JCM** (RIKEN BRC Japan Collection of Microorganisms, ~19k strains) as a new
+  database (`database="jcm"`, primary endpoint). Its MIE carries 11 verified
+  examples, including a habitat (MEO) enumeration and two same-endpoint joins:
+  to NCBI Taxonomy, and to NBRC via the zero-padded NBRC number. That second join
+  matters because JCM's "NBRC 12155" never equals NBRC's own "NBRC 00012155", so
+  a direct literal join silently returns nothing.
+- `jcm` registered in `endpoints.csv` on the shared primary endpoint, so
+  `run_sparql`/`get_MIE_file` accept `database="jcm"`.
+
+### Changed
+
+- The primary endpoint now hosts 22 databases, not 21. The count is updated in
+  the Usage Guide's endpoint table (which now lists `jcm`) and in the
+  `TogoMCP_Usage_Guide` tool description. Both are checked against
+  `endpoints.csv` by tests, which failed until they matched the new registration.
+- The generated database catalog (`02b_database_catalog.md` and
+  `references/database-catalog.md`) is regenerated to include JCM.
+- `nbrc.yaml` no longer counts JCM's 64,341 `mccv:MCCV_000001` nodes as JCM
+  strains; they are equivalent-strain reference nodes. The graph-pin inflation is
+  now stated on `brso:BiologicalResource` (×1.81: JCM and MoG+ strains), with a
+  `check:`, and the 153,459 unpinned `MCCV_000001` figure is labelled as not a
+  strain count.
+
+### Fixed
+
+- **`marpolbase` MIE re-measured after MarpolBase switched to MpTak_v7.1r2** (2026-11-09, #290).
+  The old `MpTak_v7.1/*` graphs were removed upstream, so every example and check in the MIE
+  returned 0 rows with no hint why. All graph and gene IRIs now use v7.1r2 and every figure was
+  re-measured. Orthology is rewritten for the new 13-genome model (`mpo:GenomeGene`, four typed
+  ortholog predicates; `mpo:hasMember` is retired), with a new `gene_orthologs` example. The
+  10,000-row-cap warning is replaced by the real trap: the 30 s cutoff silently truncates a plain
+  SELECT. The intro page's MarpolBase card carries the new figures.
+- **`/stats` no longer credits NBRC with MarpolBase queries.** The co-query column mapped the
+  `mpo:` prefix to NBRC, but MarpolBase binds `mpo:` to its own ontology, so all 22 NBRC co-queries
+  in the production log through 2026-11-10 were MarpolBase queries. `mpo:` and `mccv:` (shared by
+  NBRC and the new JCM) are now resolved by local name, like `schema:`, so a MarpolBase join is
+  credited to MarpolBase and a term NBRC and JCM share credits neither.
+- The Usage Guide's "`primary` hosts N databases" sentence now says 22. No test covers that
+  line, so it had stayed at 21 when JCM was added.
+
 ## [2.29.4] - 2026-11-04
 
 Operator dashboard and tutorial only. PATCH: no tool, parameter or return shape changed. `/stats`
@@ -3822,7 +3873,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.29.4...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.30.0...HEAD
+[2.30.0]: https://github.com/dbcls/togomcp/compare/v2.29.4...v2.30.0
 [2.29.4]: https://github.com/dbcls/togomcp/compare/v2.29.3...v2.29.4
 [2.29.3]: https://github.com/dbcls/togomcp/compare/v2.29.2...v2.29.3
 [2.29.2]: https://github.com/dbcls/togomcp/compare/v2.29.1...v2.29.2

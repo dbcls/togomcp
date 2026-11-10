@@ -25,12 +25,20 @@ base_uri: http://purl.jp/bio/103/nite/nbrc/
 graphs:
   primary: http://purl.jp/bio/103/nite/culture/    # NBRC's OWN graph — the mandatory pin target for every strain query
   co_hosted:
-    riken_jcm + naro_genebank: >
-      INFLATION. Two OTHER culture collections re-use NBRC's own classes mccv:MCCV_000001 and
-      brso:BiologicalResource with ZERO IRI overlap (disjoint namespaces). They never DUPLICATE a row — they
-      SILENTLY ADD foreign strains, each well-formed. Unpinned `?s a mccv:MCCV_000001` = 153,459 (NBRC 62,676
-      + RIKEN JCM 64,341 + NARO 26,442, all pairwise disjoint) — only 40.8% is NBRC's. COUNT(DISTINCT) does
-      NOT help (distinct foreign entities, not dup rows); only the graph pin removes them (gotcha graph_pin).
+    riken_jcm + mogplus: >
+      SCOPE BLEED on the strain class. RIKEN JCM (19,452) and MoG+ (62) type their own strains with the same
+      brso:BiologicalResource, in disjoint IRI spaces: unpinned `?s a brso:BiologicalResource` = 43,501
+      (NBRC 23,987 + JCM 19,452 + MoG+ 62, exact sum) — only 55.1% is NBRC's (live 2026-11-10). Nothing
+      DUPLICATES, so COUNT(DISTINCT) does not help; only the graph pin removes them (gotcha graph_pin). JCM's
+      64,341 mccv:MCCV_000001 nodes are NOT strains: every one is an equivalent-strain reference node off
+      mccv:MCCV_000024 (JCM types none of its strains MCCV_000001).
+    naro_genebank: >
+      SCOPE BLEED on mccv:MCCV_000001 only. Its 26,442 MCCV_000001 nodes ARE NARO strain records (IRIs
+      ...micro_search_detail.php?maff=<n>, mccv:MCCV_000010 'MAFF <n>', category, NCBI taxon as rdf:type; no
+      incoming links) but carry NO brso:BiologicalResource (0), so they do not touch a brso-anchored count
+      (live 2026-11-10). Unpinned `?s a mccv:MCCV_000001` = 153,459 is therefore NOT a strain count: NBRC
+      62,676 (23,987 strains + 38,689 equivalent-strain refs) + JCM 64,341 (all refs) + NARO 26,442 (strains),
+      pairwise disjoint (exact sum).
     microbedbjp: >
       JOIN + TRAP. The "taxonomy hub": (a) JOIN — holds MEO habitat labels reached from NBRC isolation-source
       nodes (example xdb_meo). (b) TRAP — it RE-DECLARES the same identifiers.org/taxonomy/N IRIs NBRC points
@@ -46,16 +54,26 @@ entity_counts:                     # graph-pinned COUNT(DISTINCT), live 2026-07-
   strains: 23987                   # ?s a brso:BiologicalResource in the culture graph — THE holdings count
   type_strains: 6275               # mccv:MCCV_000017 1
   by_category: {Fungi: 10140, Bacteria: 9276, Yeasts: 3692, Algae: 470, Archaea: 305, Phages: 104}   # mccv:MCCV_000038
-  strains_unpinned_MCCV_000001: 153459   # INFLATED — NBRC 62,676 + RIKEN 64,341 + NARO 26,442; NEVER report as NBRC (gotcha graph_pin)
+  strains_unpinned_brso: 43501           # INFLATED — NBRC 23,987 + JCM 19,452 + MoG+ 62 strains; NEVER report as NBRC (gotcha graph_pin) — 2026-11-10
+  strains_unpinned_MCCV_000001: 153459   # NOT a strain count — NBRC 62,676 (strains + equivalent-strain refs) + JCM 64,341 (all equivalent-strain refs) + NARO 26,442 (NARO strains); co_hosted naro_genebank — 2026-11-10
   coverage: "growth temp ~100% · NCBI taxon 91.2% (UNEVEN: Archaea 99% → Phages 1.9%, Algae 55%) · isolation sample 80.9% · equiv-strain 51.1% · PubMed 30.8% · genome accession 8.2%"
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: graph_pin
     say: >
       GRAPH IS MANDATORY: scope every query with `GRAPH <http://purl.jp/bio/103/nite/culture/>` (or FROM). The
-      primary endpoint co-hosts ~40 datasets; without the pin, RIKEN JCM + NARO strains bleed in (unpinned
-      `?s a mccv:MCCV_000001` = 153,459, only 40.8% NBRC) and other datasets mix in. Nothing DUPLICATES, so
-      COUNT(DISTINCT) does not save you — the surplus rows are well-formed FOREIGN strains; only the pin removes them.
+      primary endpoint co-hosts ~40 datasets; without the pin, RIKEN JCM and MoG+ strains bleed in (unpinned
+      `?s a brso:BiologicalResource` = 43,501 vs 23,987 pinned, ×1.81 — only 55.1% NBRC) and other datasets mix
+      in. Nothing DUPLICATES, so COUNT(DISTINCT) does not save you — the surplus rows are well-formed FOREIGN
+      strains; only the pin removes them.
+    check:
+      kind: ratio
+      date: "2026-11-10"
+      unpinned: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> }
+      pinned: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://purl.jp/bio/103/nite/culture/> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> } }
+      expect: {ratio: 1.8135, tolerance: 0.02}
   - id: anchor_brso
     say: >
       ANCHOR HOLDINGS ON brso:BiologicalResource (23,987), NEVER on mccv:MCCV_000001 (62,676 in-graph — it is

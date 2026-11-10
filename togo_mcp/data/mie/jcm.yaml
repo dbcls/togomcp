@@ -1,0 +1,461 @@
+# MIE v3 — JCM (RIKEN BRC Japan Collection of Microorganisms), 2026-11-10.
+# MCCV term meanings: MCCV v0.97 beta (mccv.ttl in
+# dbarchive.biosciencedbc.jp/data/microbedb/LATEST/ontology.tar.gz) — not loaded on the endpoint.
+mie_spec: 3
+database: jcm
+
+discovery:
+  title: JCM — RIKEN BRC Japan Collection of Microorganisms
+  description: >
+    Catalogue of ~19k microbial strains (bacteria, archaea, fungi, yeasts, algae) distributed by the RIKEN
+    BioResource Research Center's Japan Collection of Microorganisms — accepted name with author, synonyms,
+    type-strain status, organism category, optimum growth temperature, growth medium, isolation source and
+    habitat, deposit history, equivalent strain numbers in other world collections, and links to NCBI Taxonomy,
+    INSDC sequences and PubMed.
+  keywords: [culture collection, biological resource, microbial strain, jcm, riken brc, bacteria, archaea, fungi,
+             yeast, type strain, isolation source, growth temperature, culture medium, rehydration fluid,
+             habitat, strain equivalence, deposit history]
+  categories: [microbe]
+
+endpoint: https://rdfportal.org/primary/sparql   # shared "primary" endpoint — JCM is ONE tenant
+base_uri: http://metadb.riken.jp/db/rikenbrc_jcm_microbe/
+graphs:
+  primary: http://metadb.riken.jp/db/xsearch_jcm_brso   # JCM's ONLY graph (the only graph URI containing "jcm")
+  co_hosted:
+    nbrc + mogplus: >
+      SCOPE BLEED + JOIN. NBRC (purl.jp/bio/103/nite/culture/) types 23,987 and MoG+ 62 strains as the same
+      brso:BiologicalResource, so an unpinned `?s a brso:BiologicalResource` = 43,501 (×2.24; gotcha graph_pin).
+      Disjoint IRIs — nothing duplicates, foreign strains are added. NBRC is also a JOIN target: JCM's "NBRC <n>"
+      equivalent numbers resolve to NBRC strain IRIs after zero-padding (example xdb_nbrc).
+    naro_genebank: >
+      SCOPE BLEED on mccv:MCCV_000001 only (26,442 in-graph, plus NBRC 62,676) — see gotcha anchor_brso.
+    ontology/taxonomy: >
+      JOIN. NCBI scientificName / rank on the identifiers.org/taxonomy/N IRIs JCM links via mccv:MCCV_000023
+      (example xdb_taxonomy). PIN it for the name leg.
+    microbedbjp: >
+      JOIN + TRAP. Re-declares every taxonomy predicate on the same identifiers.org/taxonomy/N IRIs (2g reverse
+      probe: scientificName, rank, label, subClassOf … in both graphs), supplying names for 8,223 of JCM's taxa —
+      an unpinned name leg inflates the join ×3.90 (example xdb_taxonomy). It is also the only graph carrying
+      rdfs:label for the MEO habitat IRIs JCM points at.
+    probed: >
+      2g reverse probe 2026-11-10 (?p unbound) on JCM_19485, taxon 1529637, medium gm:JCM_M14, MEO_0000199,
+      pubmed/25385992: the strain and medium IRIs occur ONLY in the JCM graph; taxon → ontology/taxonomy +
+      microbedbjp (+ TogoID relation graphs); MEO → microbedbjp; PubMed → TogoID relation graphs only.
+
+entity_counts:                       # graph-pinned COUNT(DISTINCT ?s), ?s a brso:BiologicalResource — 2026-11-10
+  strains: 19452
+  type_strains: 9495                 # mccv:MCCV_000017 true (no strain carries false)
+  by_category: {Bacteria_MCCV_000040: 13076, Fungi_MCCV_000042: 3013, Yeasts_MCCV_000043: 2688, Archaea_MCCV_000041: 649, Algae_MCCV_000044: 26}
+  strains_unpinned_brso: 43501       # INFLATED — JCM 19,452 + NBRC 23,987 + MoG+ 62; NEVER report (gotcha graph_pin)
+  coverage: "culture condition/temperature 100% · isolation sample 87.2% · equivalent strains 77.7% · INSDC accession 61.2% · type strain 48.8% · NCBI taxon 46.7% · PubMed 36.2% · biosafety 7.9% · application 7.3%"
+  date: "2026-11-10"
+
+global_gotchas:
+  - id: graph_pin
+    say: >
+      GRAPH IS MANDATORY: scope every query with GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso>. NBRC and
+      MoG+ type their strains with the same brso:BiologicalResource, so an unpinned strain count is ×2.24
+      (43,501 vs 19,452). Every surplus row is a well-formed foreign strain — COUNT(DISTINCT) does not help.
+    check:
+      kind: ratio
+      date: "2026-11-10"
+      unpinned: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> }
+      pinned: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> } }
+      expect: {ratio: 2.236, tolerance: 0.02}
+  - id: anchor_brso
+    say: >
+      COUNT STRAINS AS brso:BiologicalResource (19,452), never mccv:MCCV_000001 ("Culture", 64,341 in-graph ×3.31 —
+      it types the equivalent-strain blank nodes off mccv:MCCV_000024) and never mccv:MCCV_000005 (19,452 blank
+      culture-CONDITION nodes, not strains). Strain IRIs are .../rikenbrc_jcm_microbe/JCM_<n>, themselves typed
+      rdfs:Class (rdfs:subClassOf brso:repository).
+    check:
+      kind: ratio
+      date: "2026-11-10"
+      numerator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/mccv#MCCV_000001> } }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> } }
+      expect: {ratio: 3.308, tolerance: 0.02}
+  - id: typed_string_literals
+    say: >
+      STRING VALUES ARE TYPED ^^xsd:string (the reverse of NBRC, whose strings are plain): an exact match written
+      as a plain literal returns 0 rows — `mccv:MCCV_000030 "Seawater"` → 0, `"Seawater"^^xsd:string` → 33 strains.
+      Write the typed form or compare STR(?x) = "…".
+    check:
+      kind: zero_rows
+      date: "2026-11-10"
+      query: |
+        SELECT ?x WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?x <http://purl.jp/bio/10/mccv#MCCV_000030> "Seawater" } } LIMIT 1
+  - id: iri_multiforms
+    say: >
+      ONE taxon, THREE IRIs: mccv:MCCV_000023 gives every linked taxon as identifiers.org/taxonomy/N +
+      obo/NCBITaxon_N + bioportal NCBITAXON/N (27,240 triples = 3 × 9,080 strains), so a COUNT(*) over it is ×3 —
+      count DISTINCT strains (which form joins where: example xdb_taxonomy).
+      dcterms:references likewise repeats each PMID as identifiers.org/pubmed/ AND rdf.ncbi.nlm.nih.gov/pubmed/.
+    check:
+      kind: ratio
+      date: "2026-11-10"
+      numerator: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000023> ?t } }
+      denominator: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000023> ?t } }
+      expect: {ratio: 3.0, tolerance: 0.001}
+
+# ── examples. Hub = brso:BiologicalResource strain (IRI .../rikenbrc_jcm_microbe/JCM_<n>); blank-node satellites:
+#    culture condition (mccv:MCCV_000073), isolation sample (mccv:MCCV_000028), equivalent strains (mccv:MCCV_000024). ──
+examples:
+  - id: strain_record
+    intent: core metadata for one strain by its IRI (the cheapest query)
+    question: "What are the accepted name, category, type-strain status and deposit history of JCM 19485?"
+    complexity: basic
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      SELECT ?label ?name ?category ?isType ?history ?page
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_19485>
+              rdfs:label ?label ;              # "JCM 19485"
+              mccv:MCCV_000012 ?name ;         # accepted name WITH author — one per strain
+              mccv:MCCV_000038 ?category ;     # organism-category enum IRI
+              mccv:MCCV_000027 ?history ;      # deposit history "<-- depositor <-- …"
+              foaf:homepage ?page .
+          OPTIONAL { <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_19485> mccv:MCCV_000017 ?isType }
+        }
+      }
+    verified: {row_count: 1, has_values: ["JCM 19485", "Rhodococcus aerolatus Hwang et al. 2015", "MCCV_000040"], date: "2026-11-10"}
+    teaches: "Strain IRI = .../rikenbrc_jcm_microbe/JCM_<n>; rdfs:label / mccv:MCCV_000010 = 'JCM <n>', dcterms:identifier = 'JCM_<n>'. Name = mccv:MCCV_000012; mccv:MCCV_000027 = deposit history; foaf:homepage = the JCM catalogue page. MCCV_000017 is OPTIONAL (48.8% carry it)."
+    traps_avoided:
+      - say: "mccv:MCCV_000011 is a NAME LIST (current name plus synonyms/basionyms; up to 7 per strain, 1,982 strains have >1), so joining it multiplies rows (22,008 values / 19,452 strains). For ONE name per strain use mccv:MCCV_000012 — exactly one per strain, the name WITH author (\"Aspergillus alliaceus Thom & Church\")."
+        check:
+          kind: ratio
+          date: "2026-11-10"
+          numerator: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000011> ?n11 } }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> } }
+          expect: {ratio: 1.1314, tolerance: 0.01}
+
+  - id: category_counts
+    intent: the SET-LEVEL enumeration route — count ALL strains per organism category, with a human label
+    question: "How many JCM strains are in each organism category?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      SELECT ?category ?label (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000038 ?category ; xs:resourceTypeLink ?rt .
+          ?rt rdfs:label ?label FILTER(LANG(?label) = "en")
+        }
+      }
+      GROUP BY ?category ?label ORDER BY DESC(?n)
+    verified: {row_count: 5, has_values: ["MCCV_000040", "Bacteria", 13076, "Archaea", 649], date: "2026-11-10"}
+    teaches: "mccv:MCCV_000038 is the 5-value category enum (Bacteria MCCV_000040 · Archaea 041 · Fungi 042 · Yeasts 043 · Algae 044) — the structured route to 'all strains of category X'. MCCV terms have no labels on the endpoint; the parallel xs:resourceTypeLink (1:1 with the enum, 19,452/19,452) carries en/ja labels."
+
+  - id: enum_biosafety
+    intent: the SET-LEVEL biosafety route — count all strains recorded at one biosafety level
+    question: "How many JCM strains are recorded as biosafety level BSL 2, provisional assignments included?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      SELECT (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000034 ?bsl .
+          FILTER(STRSTARTS(STR(?bsl), "BSL 2"))   # 'BSL 2' + 'BSL 2 (provisional)'
+        }
+      }
+    verified: {n: 1528, date: "2026-11-10"}
+    teaches: "mccv:MCCV_000034 is a 2-value enum stored as typed strings: 'BSL 2' 1,398 strains · 'BSL 2 (provisional)' 130 (together 1,528). Only 7.9% of strains carry it; a strain without the triple has no level recorded (not 'BSL 1')."
+    traps_avoided:
+      - say: "An exact match on \"BSL 2\"^^xsd:string returns only the 1,398 confirmed strains and silently drops the 130 'BSL 2 (provisional)' ones; use STRSTARTS(STR(?bsl), 'BSL 2') for the total, or match the provisional value explicitly to separate them."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000034> "BSL 2 (provisional)"^^<http://www.w3.org/2001/XMLSchema#string> } }
+          expect: {value: 130, tolerance: 0.02}
+
+  - id: type_strains_genus
+    intent: type strains of one genus — boolean flag + genus taken from the accepted name
+    question: "How many Bifidobacterium type strains does JCM hold?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      SELECT (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000017 true ; mccv:MCCV_000012 ?name .
+          FILTER(STRSTARTS(REPLACE(STR(?name), "^\"", ""), "Bifidobacterium "))   # tolerate a leading quote
+        }
+      }
+    verified: {n: 81, date: "2026-11-10"}
+    teaches: "Type strain = mccv:MCCV_000017 true. Genus = the first token of mccv:MCCV_000012 (one accepted name per strain)."
+    traps_avoided:
+      - "Names not validly published are wrapped in double quotes in mccv:MCCV_000012 ('\"Pseudoruegeria limi\" Lee et al.'), so a bare STRSTARTS(…, 'Genus ') misses them; strip a leading quote first."
+      - say: "mccv:MCCV_000017 (is type strain) is xsd:boolean and only ever `true` (9,495 strains; a non-type strain has NO triple, so test non-type with FILTER NOT EXISTS). `true`, `1`, \"true\"^^xsd:boolean and \"1\"^^xsd:boolean all match; the STRING \"1\" returns 0 rows."
+        check:
+          kind: zero_rows
+          date: "2026-11-10"
+          query: |
+            SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s <http://purl.jp/bio/10/mccv#MCCV_000017> "1" } } LIMIT 1
+
+  - id: culture_conditions
+    intent: a strain's growth medium, rehydration fluid and optimum temperature via the culture-condition node
+    question: "What medium, rehydration fluid and growth temperature does JCM 19485 need?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo#>
+      PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?medium ?mediumName ?mediumNo ?fluidName ?tempC
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_19485> mccv:MCCV_000073 ?cc .   # culture condition (mccv:MCCV_000005)
+          ?cc mccv:MCCV_000014 ?t .                    # optimum growth temperature
+          ?t a mpo:MPO_00102 ; rdf:value ?tempC .      # xsd:decimal, unit obo:UO_0000027 (°C) on sio:SIO_000221
+          OPTIONAL { ?cc mccv:MCCV_000018 ?medium .    # growth medium (gm:Medium)
+                     ?medium dcterms:identifier ?mediumNo . OPTIONAL { ?medium rdfs:label ?mediumName } }
+          OPTIONAL { ?cc mccv:MCCV_000019/rdfs:label ?fluidName }   # rehydration fluid
+        }
+      }
+    verified: {row_count: 1, has_values: ["JCM_M43", "YEAST EXTRACT--MALT EXTRACT AGAR (ISP--2)", 25], date: "2026-11-10"}
+    teaches: "Culture data hangs off ONE blank node: ?strain mccv:MCCV_000073 ?cc. On it: MCCV_000014 → temperature node (mpo:MPO_00102, rdf:value), MCCV_000018 → growth medium IRI(s) gm:JCM_M<n> (label, dcterms:identifier = JCM medium no., rdfs:seeAlso = JCM medium page), MCCV_000019 → rehydration fluid (also gm:Medium). Medium labels are upper-case and can carry TeX markup ('0.2\\% MgSO$_4$…')."
+    traps_avoided:
+      - say: "mccv:MCCV_000018 is multi-valued (1 medium for 12,917 strains, 2–5 for 6,522, none for 13), so a strain can return several rows; MCCV_000019 is the REHYDRATION FLUID (MCCV v0.97), not a second growth medium, though both point at gm:Medium IRIs."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE { { SELECT ?s (COUNT(?m) AS ?k) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000073>/<http://purl.jp/bio/10/mccv#MCCV_000018> ?m } } GROUP BY ?s } FILTER(?k >= 2) }
+          expect: {value: 6522, tolerance: 0.02}
+
+  - id: temperature_distribution
+    intent: distribution of optimum growth temperatures across the collection
+    question: "What are the most common optimum growth temperatures of JCM strains?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX mpo:  <http://purl.jp/bio/10/mpo#>
+      PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      SELECT ?tempC (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000073/mccv:MCCV_000014 ?t .
+          ?t a mpo:MPO_00102 ; rdf:value ?tempC .
+        }
+      }
+      GROUP BY ?tempC ORDER BY DESC(?n) LIMIT 5
+    verified: {min_rows: 5, has_values: [30, 4050, 25, 3924], date: "2026-11-10"}
+    teaches: "Every strain has exactly one culture-condition node and one temperature node (19,452/19,452), so COUNT(DISTINCT ?s) per value is a clean distribution: 30 °C 4,050 · 25 °C 3,924 · 28 °C 3,900 · 37 °C 3,269 · 20 °C 1,639."
+    traps_avoided:
+      - say: "Growth temperature (rdf:value on the mpo:MPO_00102 node) is xsd:decimal. Any NUMERIC form matches (20, 20.0, \"20\"^^xsd:integer, \"20\"^^xsd:decimal → 1,639 nodes each); a string form (\"20\", \"20\"^^xsd:string) returns 0 rows."
+        check:
+          kind: zero_rows
+          date: "2026-11-10"
+          query: |
+            SELECT ?t WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?t a <http://purl.jp/bio/10/mpo#MPO_00102> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> "20" } } LIMIT 1
+
+  - id: isolation_source_search
+    intent: free-text isolation source via the sample node, matched with the indexed word search
+    question: "How many JCM strains were isolated from seawater (written 'seawater' or 'sea water')?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      SELECT (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000028 ?sample .
+          ?sample mccv:MCCV_000030 ?source .
+          ?source bif:contains '"sea water" OR seawater' .
+        }
+      }
+    verified: {n: 495, date: "2026-11-10"}
+    teaches: "Isolation source: ?strain mccv:MCCV_000028 → sample node (mic_6, label 'Sample from …') with free-text mccv:MCCV_000030. bif:contains is the indexed word match; spelling variants need an OR with a quoted phrase ('seawater' alone 473 strains, '\"sea water\"' alone 22, both 495; an exact 'Seawater' only 33)."
+
+  - id: enum_habitat_meo
+    intent: the SET-LEVEL habitat route — count ALL strains annotated with one MEO environment term, label from microbedbjp
+    question: "How many JCM strains come from a marine-water habitat (MEO_0000041)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX meo:  <http://purl.jp/bio/11/meo/>
+      SELECT ?label (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ;
+             mccv:MCCV_000028/mccv:MCCV_000072/mccv:MCCV_000071 meo:MEO_0000041 .   # sample → habitat → environment
+        }
+        GRAPH <http://rdfportal.org/dataset/microbedbjp> { meo:MEO_0000041 rdfs:label ?label }   # MEO labels are NOT in the JCM graph
+      }
+      GROUP BY ?label
+    verified: {row_count: 1, has_values: ["marine water", 437], date: "2026-11-10"}
+    teaches: "Habitat is structured: ?strain mccv:MCCV_000028 (sample, mic_6) / mccv:MCCV_000072 (habitat, mic_7) / mccv:MCCV_000071 → MEO IRI. Bind the MEO term for 'all strains from environment X' (top terms: MEO_0000007 soil 2,333 · MEO_0000054 feces 907 · MEO_0000379 leaf 670 · MEO_0000041 marine water 437); resolve labels in GRAPH <http://rdfportal.org/dataset/microbedbjp>. Direct term only — subterms (e.g. MEO_0000198 field soil) are separate IRIs."
+    traps_avoided:
+      - say: "mccv:MCCV_000071 on the habitat node MIXES vocabularies — MEO (18,538), the HOST organism as NCBI taxon in three IRI forms (~6,960 each), PDO (330), CSSO (235). Filter by namespace (or bind a MEO IRI, as here) before treating a value as an environment."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000028>/<http://purl.jp/bio/10/mccv#MCCV_000072>/<http://purl.jp/bio/10/mccv#MCCV_000071> ?f FILTER(STRSTARTS(STR(?f), "http://purl.jp/bio/11/meo/MEO_")) } }
+          expect: {value: 18538, tolerance: 0.02}
+      - say: "Select an MEO term by IRI, not by label: the label 'feces' belongs to TWO MEO terms (MEO_0000054, 907 strains; MEO_0000627, 801), so a label match merges two environments and a GROUP BY ?label folds them into one row."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(DISTINCT ?meo) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000028>/<http://purl.jp/bio/10/mccv#MCCV_000072>/<http://purl.jp/bio/10/mccv#MCCV_000071> ?meo } GRAPH <http://rdfportal.org/dataset/microbedbjp> { ?meo <http://www.w3.org/2000/01/rdf-schema#label> ?l FILTER(STR(?l) = "feces") } }
+          expect: {value: 2, tolerance: 0}
+
+  - id: genome_accessions
+    intent: INSDC sequence accessions carried by a strain (mostly single sequences, rarely genomes)
+    question: "Which INSDC accessions are recorded for JCM 19487?"
+    complexity: basic
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      SELECT ?accession
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_19487> mccv:MCCV_000077 ?iri .
+          BIND(STRAFTER(STR(?iri), "insdc:") AS ?accession)
+        }
+      }
+      ORDER BY ?accession
+    verified: {row_count: 2, has_values: ["KF303136", "KF738947"], date: "2026-11-10"}
+    teaches: "mccv:MCCV_000077 → https://identifiers.org/insdc:<acc> (one namespace only, 61.2% of strains, multi-valued). Strip the prefix with STRAFTER(STR(?iri), 'insdc:')."
+    traps_avoided:
+      - say: "These are NOT genome assemblies: of 20,754 values, 18,169 are 2-letter+6-digit and 2,552 1-letter+5-digit single-sequence accessions; only 12 are WGS contig accessions (AAAA99999999), and a handful are junk ('clone1', 'citedasJCM11717'). There is no RefSeq/GCA namespace here, unlike NBRC."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000077> ?a FILTER(REGEX(STRAFTER(STR(?a), "insdc:"), "^[A-Z]{4}[0-9]{8}$", "")) } }
+          expect: {value: 12, tolerance: 0.02}
+
+  - id: xdb_taxonomy
+    intent: "cross-DB: JCM strains → NCBI Taxonomy scientific name + rank in the co-hosted ontology/taxonomy graph"
+    question: "What are the NCBI scientific names and ranks of JCM archaea strains?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+      SELECT ?label ?taxon ?sciName ?rank
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000038 mccv:MCCV_000041 ;   # Archaea
+             rdfs:label ?label ; mccv:MCCV_000023 ?taxon .
+          FILTER(STRSTARTS(STR(?taxon), "http://identifiers.org/taxonomy/"))  # 1 of the 3 IRI forms
+        }
+        GRAPH <http://rdfportal.org/ontology/taxonomy> {                     # PIN the name leg
+          ?taxon taxo:scientificName ?sciName ; taxo:rank ?rank .
+        }
+      }
+      ORDER BY ?label LIMIT 10
+    verified: {min_rows: 10, has_values: ["JCM 10011", "Methanococcus maripaludis C5", "Methanocaldococcus jannaschii"], date: "2026-11-10"}
+    teaches: "JCM's identifiers.org/taxonomy/N IRIs ARE NCBI Taxonomy's; join directly in GRAPH <ontology/taxonomy> (8,842 of the 9,080 taxon-linked strains resolve; rank mostly Species)."
+    traps_avoided:
+      - say: "Leave the name leg unpinned and co-hosted microbedbjp's copy of the same taxon IRIs multiplies the join ×3.90 (34,479 vs 8,842 rows over all taxon-linked strains)."
+        check:
+          kind: ratio
+          date: "2026-11-10"
+          unpinned: |
+            PREFIX mccv: <http://purl.jp/bio/10/mccv#> PREFIX brso: <http://purl.jp/bio/10/brso/> PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a brso:BiologicalResource ; mccv:MCCV_000023 ?taxon FILTER(STRSTARTS(STR(?taxon), "http://identifiers.org/taxonomy/")) } ?taxon taxo:scientificName ?name ; taxo:rank ?rank . }
+          pinned: |
+            PREFIX mccv: <http://purl.jp/bio/10/mccv#> PREFIX brso: <http://purl.jp/bio/10/brso/> PREFIX taxo: <http://ddbj.nig.ac.jp/ontologies/taxonomy/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a brso:BiologicalResource ; mccv:MCCV_000023 ?taxon FILTER(STRSTARTS(STR(?taxon), "http://identifiers.org/taxonomy/")) } GRAPH <http://rdfportal.org/ontology/taxonomy> { ?taxon taxo:scientificName ?name ; taxo:rank ?rank } }
+          expect: {ratio: 3.90, tolerance: 0.02}
+      - say: "Only the identifiers.org form joins: the obo NCBITaxon_ and bioportal NCBITAXON/ copies of the same taxa resolve to nothing in the taxonomy graph."
+        check:
+          kind: absent
+          date: "2026-11-10"
+          query: |
+            SELECT ?t WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000023> ?t FILTER(!STRSTARTS(STR(?t), "http://identifiers.org/taxonomy/")) } GRAPH <http://rdfportal.org/ontology/taxonomy> { ?t ?p ?o } } LIMIT 1
+
+  - id: xdb_nbrc
+    intent: "cross-DB: JCM strains → the SAME strain in the co-hosted NBRC catalogue, via a constructed IRI"
+    question: "Which JCM strains are also held by NBRC, and under what NBRC catalogue number and name?"
+    complexity: cross_db
+    endpoint_name: primary
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?jcmLabel ?nbrc ?nbrcNumber ?nbrcName
+      WHERE {
+        { SELECT ?jcmLabel ?nbrc WHERE {
+            GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+              ?jcm a brso:BiologicalResource ; rdfs:label ?jcmLabel ;
+                   mccv:MCCV_000024/mccv:MCCV_000026 ?id .
+              FILTER(STRSTARTS(STR(?id), "NBRC "))
+            }
+            BIND(STRAFTER(STR(?id), "NBRC ") AS ?num)
+            BIND(IRI(CONCAT("http://purl.jp/bio/103/nite/nbrc/cultures/",
+                            SUBSTR("00000000", STRLEN(?num) + 1), ?num)) AS ?nbrc)   # zero-pad to 8 digits
+        } }
+        GRAPH <http://purl.jp/bio/103/nite/culture/> {
+          ?nbrc a brso:BiologicalResource ; mccv:MCCV_000010 ?nbrcNumber ; skos:prefLabel ?nbrcName .
+        }
+      }
+      ORDER BY ?jcmLabel ?nbrcNumber LIMIT 10
+    verified: {min_rows: 10, has_values: ["JCM 10002", "NBRC 00012155", "Rhodococcoides fascians"], date: "2026-11-10"}
+    teaches: "JCM records NBRC equivalents as 'NBRC <n>' on mccv:MCCV_000024 → [mccv:MCCV_000026]; NBRC's IRI is .../nbrc/cultures/<n zero-padded to 8>. Building the IRI in a subquery then matching it in the NBRC graph resolves 4,622 of 4,731 strains (unresolved: e.g. 'NBRC 0164')."
+    traps_avoided:
+      - say: "JCM's equivalent number \"NBRC 12155\" (mccv:MCCV_000024/mccv:MCCV_000026, typed ^^xsd:string) never equals NBRC's own mccv:MCCV_000010 \"NBRC 00012155\" (8-digit zero-padded, PLAIN literal): a direct join returns 0 of 4,731 strains, and so does an STR() join. Zero-pad and build the NBRC strain IRI instead, as this example does."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(DISTINCT ?jcm) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?jcm a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000024>/<http://purl.jp/bio/10/mccv#MCCV_000026> ?id FILTER(STRSTARTS(STR(?id), "NBRC ")) } GRAPH <http://purl.jp/bio/103/nite/culture/> { ?nb a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000010> ?id2 } FILTER(STR(?id2) = STR(?id)) }
+          expect: {value: 0, tolerance: 0}
+      - say: "The constructed-IRI join covers 4,622 JCM strains; EXISTS{} over the BIND-made IRI is rejected by Virtuoso (SP031) — bind it in a subquery as here."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            PREFIX mccv: <http://purl.jp/bio/10/mccv#> PREFIX brso: <http://purl.jp/bio/10/brso/>
+            SELECT (COUNT(DISTINCT ?jcm) AS ?n) WHERE { { SELECT DISTINCT ?jcm ?nb WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?jcm a brso:BiologicalResource ; mccv:MCCV_000024/mccv:MCCV_000026 ?id FILTER(STRSTARTS(STR(?id), "NBRC ")) } BIND(STRAFTER(STR(?id), "NBRC ") AS ?num) BIND(IRI(CONCAT("http://purl.jp/bio/103/nite/nbrc/cultures/", SUBSTR("00000000", STRLEN(?num) + 1), ?num)) AS ?nb) } } GRAPH <http://purl.jp/bio/103/nite/culture/> { ?nb a brso:BiologicalResource } }
+          expect: {value: 4622, tolerance: 0.02}
+
+schema_delta:
+  - "Equivalent strains: mccv:MCCV_000024 → blank node (a mccv:MCCV_000001) carrying mccv:MCCV_000026 = the other collection's number ('DSM 20669', typed string; 77.7% of strains, 64,341 nodes). Prefix by collection: DSM 6,868 · NBRC 5,163 · ATCC 5,068 · IFO 3,845 · IAM 3,340 · CBS 3,170. mccv:MCCV_000025 (catalogue URL) is on 11,936 of them."
+  - "PubMed: dcterms:references and cito:citesAsAuthority carry the SAME PMIDs, each as identifiers.org/pubmed/N and rdf.ncbi.nlm.nih.gov/pubmed/N (36.2% of strains)."
+  - "brso:organism → [ a sio:SIO_010000 ; obo:RO_0002162 <taxon> ] restates mccv:MCCV_000023 on the same 9,080 strains; prefer the direct link."
+  - "mccv:MCCV_000033 application text ('Production of …'; 7.3%) is a sparse typed string. foaf:depiction / foaf:thumbnail give JCM micrograph URLs (36.4%)."
+  - "MCCV, MPO and brso terms carry NO rdfs:label anywhere on the endpoint (D query, 0 rows) — use the IRIs documented here; MCCV v0.97 (purl.jp/bio/01/mccv#, same local IDs) defines 000014 optimum growth temperature · 017 is type strain · 018 growth medium · 019 rehydration fluid · 023 related taxonomy · 024/026 other-collection info/number · 028 isolated from · 030 isolation source description · 038 organism category · 071 environmental feature · 072 sampled from · 073 culture condition; 000077 is not in v0.97."
+  - "Medium IRIs gm:JCM_M<n> (purl.jp/bio/11/gm/, 1,025 distinct) carry a label and the JCM medium page; none is shared with MediaDive (purl.dsmz.de/mediadive/medium/) or NBRC (…/nbrc/medium/)."
+
+id_join_map:
+  stable_anchor: >
+    Strain = http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_<n>, anchored with `a brso:BiologicalResource`
+    in GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso>. Human keys: rdfs:label / mccv:MCCV_000010 'JCM <n>'
+    (space), dcterms:identifier 'JCM_<n>' (underscore).
+  same_endpoint_joins:
+    ncbi_taxonomy: "mccv:MCCV_000023 identifiers.org/taxonomy/N form → GRAPH <http://rdfportal.org/ontology/taxonomy> taxo:scientificName / taxo:rank (example xdb_taxonomy)"
+    nbrc: "mccv:MCCV_000024/mccv:MCCV_000026 'NBRC <n>' → zero-pad to 8 → IRI .../nbrc/cultures/<pad> in GRAPH <http://purl.jp/bio/103/nite/culture/> (example xdb_nbrc)"
+    meo_habitat: "sample mccv:MCCV_000072 → habitat mccv:MCCV_000071 MEO IRI; labels in GRAPH <http://rdfportal.org/dataset/microbedbjp> (example enum_habitat_meo)"
+  xrefs:
+    insdc: "mccv:MCCV_000077 → https://identifiers.org/insdc:<acc> (61.2% of strains; mostly single sequences — example genome_accessions)"
+    pubmed: "dcterms:references → identifiers.org/pubmed/N + rdf.ncbi.nlm.nih.gov/pubmed/N (36.2%)"
+    wfcc_ccinfo: "mccv:MCCV_000076 → http://www.wfcc.info/ccinfo/collection/by_id/567 (constant — JCM itself)"
+  bridged_via_togoid:
+    - "NCBI taxon / INSDC accessions → other RDF Portal DBs via togoid_convertId when no co-hosted graph carries the join."
