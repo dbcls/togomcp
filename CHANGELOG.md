@@ -32,6 +32,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   `endpoints.csv` by tests, which failed until they matched the new registration.
 - The generated database catalog (`02b_database_catalog.md` and
   `references/database-catalog.md`) is regenerated to include JCM.
+- `nbrc.yaml` no longer counts JCM's 64,341 `mccv:MCCV_000001` nodes as JCM
+  strains; they are equivalent-strain reference nodes. The graph-pin inflation is
+  now stated on `brso:BiologicalResource` (×1.81: JCM and MoG+ strains), with a
+  `check:`, and the 153,459 unpinned `MCCV_000001` figure is labelled as not a
+  strain count.
 
 ## [2.29.4] - 2026-11-04
 
