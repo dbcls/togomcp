@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 49 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 50 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -19,7 +19,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **glycan** — `glycosmos`
 - **literature** — `lotus` `pubmed` `pubtator`
 - **materials** — `supercon`
-- **microbe** — `amrportal` `bacdive` `bh26microbes` `mediadive` `nbrc`
+- **microbe** — `amrportal` `bacdive` `bh26microbes` `jcm` `mediadive` `nbrc`
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
@@ -68,6 +68,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: human gene, gene nomenclature, gene symbol, approved gene, gene name, hgnc id, chromosomal location, cross-reference, id mapping, ncbi gene, ensembl, uniprot, omim, orphanet, ec code, mirbase, ortholog, gene alias
 - **idsm** — IDSM (Integrated Database of Small Molecules). Chemical structure search engine (substructure, similarity, exact) over nine integrated small-molecule datasets — PubChem, ChEMBL, ChEBI, Wikidata, DrugBank, PDB-CCD, MolMeDB, MoNA and ISDB — queryab… _(categories: compound, drug_target)_  
   keywords: chemical structure, substructure search, similarity search, smiles, molfile, cheminformatics, small molecule, compound, bioactivity, mass spectra, scaffold, chemical identifier mapping
+- **jcm** — JCM — RIKEN BRC Japan Collection of Microorganisms. Catalogue of ~19k microbial strains (bacteria, archaea, fungi, yeasts, algae) distributed by the RIKEN BioResource Research Center's Japan Collection of Microorganisms — accepted name with author, sy… _(categories: microbe)_  
+  keywords: culture collection, biological resource, microbial strain, jcm, riken brc, bacteria, archaea, fungi, yeast, type strain, isolation source, growth temperature, culture medium, rehydration fluid, habitat, strain equivalence, deposit history
 - **jogo** — JoGo — phased human gene haplotypes and variants. Per-gene catalogue of phased human haplotypes (protein, CDS, transcript and gene-body sequence levels) from 258 long-read genomes across 1000 Genomes populations, with per-population haplotype counts… _(categories: genomics, variant)_  
   keywords: haplotype, phased genome, long-read sequencing, human genetic variation, variant, allele frequency, population frequency, population genetics, 1000 genomes, japanese, jpt, diplotype, star allele, missense, snpeff, hgvs, mane select, grch38, snv, indel
 - **jpostdb** — jPOST — Japan ProteOme STandard repository. Reanalysed mass-spectrometry proteomics submissions: each Project (JPST id) bundles Datasets with experimental Profiles (sample tissue/disease/species, enzyme, MS mode) plus identified Peptides, PSMs… _(categories: protein)_  

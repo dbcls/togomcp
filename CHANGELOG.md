@@ -13,6 +13,31 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **JCM** (RIKEN BRC Japan Collection of Microorganisms, ~19k strains) as a new
+  database (`database="jcm"`, primary endpoint). Its MIE carries 11 verified
+  examples, including a habitat (MEO) enumeration and two same-endpoint joins:
+  to NCBI Taxonomy, and to NBRC via the zero-padded NBRC number. That second join
+  matters because JCM's "NBRC 12155" never equals NBRC's own "NBRC 00012155", so
+  a direct literal join silently returns nothing.
+- `jcm` registered in `endpoints.csv` on the shared primary endpoint, so
+  `run_sparql`/`get_MIE_file` accept `database="jcm"`.
+
+### Changed
+
+- The primary endpoint now hosts 22 databases, not 21. The count is updated in
+  the Usage Guide's endpoint table (which now lists `jcm`) and in the
+  `TogoMCP_Usage_Guide` tool description. Both are checked against
+  `endpoints.csv` by tests, which failed until they matched the new registration.
+- The generated database catalog (`02b_database_catalog.md` and
+  `references/database-catalog.md`) is regenerated to include JCM.
+- `nbrc.yaml` no longer counts JCM's 64,341 `mccv:MCCV_000001` nodes as JCM
+  strains; they are equivalent-strain reference nodes. The graph-pin inflation is
+  now stated on `brso:BiologicalResource` (×1.81: JCM and MoG+ strains), with a
+  `check:`, and the 153,459 unpinned `MCCV_000001` figure is labelled as not a
+  strain count.
+
 ## [2.29.4] - 2026-11-04
 
 Operator dashboard and tutorial only. PATCH: no tool, parameter or return shape changed. `/stats`
