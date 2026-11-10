@@ -49,6 +49,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   ortholog predicates; `mpo:hasMember` is retired), with a new `gene_orthologs` example. The
   10,000-row-cap warning is replaced by the real trap: the 30 s cutoff silently truncates a plain
   SELECT. The intro page's MarpolBase card carries the new figures.
+- **`/stats` no longer credits NBRC with MarpolBase queries.** The co-query column mapped the
+  `mpo:` prefix to NBRC, but MarpolBase binds `mpo:` to its own ontology, so all 22 NBRC co-queries
+  in the production log through 2026-11-10 were MarpolBase queries. `mpo:` and `mccv:` (shared by
+  NBRC and the new JCM) are now resolved by local name, like `schema:`, so a MarpolBase join is
+  credited to MarpolBase and a term NBRC and JCM share credits neither.
 - The Usage Guide's "`primary` hosts N databases" sentence now says 22. No test covers that
   line, so it had stayed at 21 when JCM was added.
 

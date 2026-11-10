@@ -279,8 +279,7 @@ SIGNATURE_PREFIXES = {
     "ensg": "ensembl",          # http://rdf.ebi.ac.uk/resource/ensembl/
     "gwas": "gwascatalog",      # http://rdf.ebi.ac.uk/terms/gwas/
     "amr": "amrportal",         # http://example.org/ebiamr#
-    "mccv": "nbrc",             # http://purl.jp/bio/10/mccv#
-    "mpo": "nbrc",              # http://purl.jp/bio/10/mpo/
+    # mccv: / mpo: are resolved by local name in _AMBIGUOUS_PREFIX_QNAMES
     "ncbio": "ncbigene",        # https://dbcls.github.io/ncbigene-rdf/ontology.ttl#
     "pubtator": "pubtator",     # http://purl.jp/bio/10/pubtator-central/ontology#
     "hco": "hco",
@@ -325,6 +324,46 @@ _AMBIGUOUS_PREFIX_QNAMES: dict[str, dict[str, frozenset[str]]] = {
             "hasLinkToSource", "hasMetaCyc", "hasMinPH", "hasOxygenRequirement",
             "hasPubChem", "includesIngredient", "includesSolution", "ingredientAmount",
             "ingredientUnit", "isComplex", "mmolPerLiter", "partOfSolution",
+        }),
+    },
+    # mpo: COLLIDES. NBRC and JCM bind it to the microbial phenotype ontology
+    # <http://purl.jp/bio/10/mpo#> (MPO_nnnnn terms); MarpolBase binds it to
+    # its own <http://marchantia.info/ontology/>. Mapped whole to nbrc, it
+    # credited NBRC with all 22 of its co-queries through 2026-11-10, every one
+    # of them a MarpolBase query (20 declared marchantia.info) — NBRC's row
+    # showed cross-database use that never happened.
+    "mpo": {
+        "marpolbase": frozenset({
+            "AllelePair", "CoexpressionEdge", "Condition", "ConditionEnrichedGene",
+            "GametologPair", "Gene", "GeneLiteratureAssertion", "Genes", "Genome",
+            "GenomeGene", "GenomeGenes", "Hog", "Subject", "aboutGene", "bioProject",
+            "bioSample", "cdsOf", "chromosomeClass", "clade", "doi", "evidenceType",
+            "foldVsMedian", "fromPaper", "functionSummary", "gene1", "gene2",
+            "geneRole", "genome", "hasAllele", "hasCds", "hasExampleQuery",
+            "hasExperiment", "hasGOTerm", "hasGametolog", "hasGenomeGene", "hasKEGG",
+            "hasMember", "hasOrtholog", "hasPfam", "hasUtrSegment", "hrr", "inHog",
+            "inOrthoGroup", "instrumentModel", "isCoreReference", "lengthRatio",
+            "maxPosition", "meanTPM", "minPosition", "mr", "pairMember",
+            "pairingEvidence", "pcc", "phase", "pmcid", "pmid", "product",
+            "proteinIdentical", "refCondition", "refGene", "referenceLabel",
+            "representativeRun", "runCount", "sampleTitle", "sparql", "tissue",
+            "tissueLabel", "utrSegmentOf", "v3Identifier"
+        }),
+        "nbrc": frozenset({
+            "MPO_00103", "MPO_00104"
+        }),
+    },
+    # mccv: is SHARED by the culture collections (NBRC, JCM; both type strains
+    # as brso:BiologicalResource with MCCV properties). Terms both MIEs use
+    # credit neither; a term only one of them documents credits that one.
+    "mccv": {
+        "jcm": frozenset({
+            "MCCV_000011", "MCCV_000014", "MCCV_000019", "MCCV_000023", "MCCV_000026",
+            "MCCV_000033", "MCCV_000041", "MCCV_000071"
+        }),
+        "nbrc": frozenset({
+            "MCCV_000007", "MCCV_000008", "MCCV_000043", "MCCV_000044", "MCCV_000046",
+            "MCCV_000065"
         }),
     },
 }
