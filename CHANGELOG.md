@@ -13,6 +13,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+<!-- whatsnew: 2026-11-10 | New database: <code>jcm</code> — RIKEN BRC's Japan Collection of Microorganisms, about 19,000 microbial strains with culture conditions, isolation sources and links to NCBI Taxonomy and NBRC. -->
+
 ### Added
 
 - **JCM** (RIKEN BRC Japan Collection of Microorganisms, ~19k strains) as a new
@@ -37,6 +39,18 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   now stated on `brso:BiologicalResource` (×1.81: JCM and MoG+ strains), with a
   `check:`, and the 153,459 unpinned `MCCV_000001` figure is labelled as not a
   strain count.
+
+### Fixed
+
+- **`marpolbase` MIE re-measured after MarpolBase switched to MpTak_v7.1r2** (2026-11-09, #290).
+  The old `MpTak_v7.1/*` graphs were removed upstream, so every example and check in the MIE
+  returned 0 rows with no hint why. All graph and gene IRIs now use v7.1r2 and every figure was
+  re-measured. Orthology is rewritten for the new 13-genome model (`mpo:GenomeGene`, four typed
+  ortholog predicates; `mpo:hasMember` is retired), with a new `gene_orthologs` example. The
+  10,000-row-cap warning is replaced by the real trap: the 30 s cutoff silently truncates a plain
+  SELECT. The intro page's MarpolBase card carries the new figures.
+- The Usage Guide's "`primary` hosts N databases" sentence now says 22. No test covers that
+  line, so it had stayed at 21 when JCM was added.
 
 ## [2.29.4] - 2026-11-04
 
