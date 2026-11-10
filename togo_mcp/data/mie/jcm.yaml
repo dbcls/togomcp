@@ -1,4 +1,4 @@
-# MIE v3 — JCM (RIKEN BRC Japan Collection of Microorganisms). DRAFT authored 2026-11-10 on `feature/add-jcm-mie`.
+# MIE v3 — JCM (RIKEN BRC Japan Collection of Microorganisms). Authored 2026-11-10 on `feature/add-jcm-mie`.
 # Format: togo_mcp/data/docs/MIE_v3_spec.md. Evidence: work/jcm_phase2/*.tsv (Phase 2 survey, 2026-11-10).
 # New file (no v2 predecessor). MCCV term meanings: MCCV v0.97 beta (mccv.ttl in
 # dbarchive.biosciencedbc.jp/data/microbedb/LATEST/ontology.tar.gz) — not loaded on the endpoint.
@@ -83,7 +83,7 @@ global_gotchas:
     say: >
       STRING VALUES ARE TYPED ^^xsd:string (the reverse of NBRC, whose strings are plain): an exact match written
       as a plain literal returns 0 rows — `mccv:MCCV_000030 "Seawater"` → 0, `"Seawater"^^xsd:string` → 33 strains.
-      Write the typed form or compare STR(?x) = "…" (needed in any JCM↔NBRC string join).
+      Write the typed form or compare STR(?x) = "…".
     check:
       kind: zero_rows
       date: "2026-11-10"
@@ -159,6 +159,23 @@ examples:
       GROUP BY ?category ?label ORDER BY DESC(?n)
     verified: {row_count: 5, has_values: ["MCCV_000040", "Bacteria", 13076, "Archaea", 649], date: "2026-11-10"}
     teaches: "mccv:MCCV_000038 is the 5-value category enum (Bacteria MCCV_000040 · Archaea 041 · Fungi 042 · Yeasts 043 · Algae 044) — the structured route to 'all strains of category X'. MCCV terms have no labels on the endpoint; the parallel xs:resourceTypeLink (1:1 with the enum, 19,452/19,452) carries en/ja labels."
+
+  - id: enum_biosafety
+    intent: the SET-LEVEL biosafety route — count all strains recorded at one biosafety level
+    question: "How many JCM strains are recorded as biosafety level BSL 2?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+      SELECT (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; mccv:MCCV_000034 "BSL 2"^^xsd:string .   # typed literal
+        }
+      }
+    verified: {n: 1398, date: "2026-11-10"}
+    teaches: "mccv:MCCV_000034 is a 2-value enum stored as typed strings: 'BSL 2' 1,398 strains · 'BSL 2 (provisional)' 130. Only 7.9% of strains carry it; a strain without the triple has no level recorded (not 'BSL 1')."
 
   - id: type_strains_genus
     intent: type strains of one genus — boolean flag + genus taken from the accepted name
@@ -245,8 +262,8 @@ examples:
             SELECT ?t WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?t a <http://purl.jp/bio/10/mpo#MPO_00102> ; <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> "20" } } LIMIT 1
 
   - id: isolation_source_search
-    intent: free-text isolation source via the sample node, with the habitat IRI it is annotated with
-    question: "Which JCM strains were isolated from seawater or a seawater-derived source?"
+    intent: free-text isolation source via the sample node, matched with the indexed word search
+    question: "How many JCM strains were isolated from seawater (written 'seawater' or 'sea water')?"
     complexity: intermediate
     sparql: |
       PREFIX mccv: <http://purl.jp/bio/10/mccv#>
@@ -256,13 +273,34 @@ examples:
         GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
           ?s a brso:BiologicalResource ; mccv:MCCV_000028 ?sample .
           ?sample mccv:MCCV_000030 ?source .
-          ?source bif:contains "seawater" .
+          ?source bif:contains '"sea water" OR seawater' .
         }
       }
-    verified: {n: 473, date: "2026-11-10"}
-    teaches: "Isolation source: ?strain mccv:MCCV_000028 → sample node (mic_6, label 'Sample from …') with free-text mccv:MCCV_000030; bif:contains is the indexed word match (473 strains vs 33 for an exact 'Seawater')."
+    verified: {n: 495, date: "2026-11-10"}
+    teaches: "Isolation source: ?strain mccv:MCCV_000028 → sample node (mic_6, label 'Sample from …') with free-text mccv:MCCV_000030. bif:contains is the indexed word match; spelling variants need an OR with a quoted phrase ('seawater' alone 473 strains, '\"sea water\"' alone 22, both 495; an exact 'Seawater' only 33)."
+
+  - id: enum_habitat_meo
+    intent: the SET-LEVEL habitat route — count ALL strains annotated with one MEO environment term, label from microbedbjp
+    question: "How many JCM strains come from a marine-water habitat (MEO_0000041)?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX meo:  <http://purl.jp/bio/11/meo/>
+      SELECT ?label (COUNT(DISTINCT ?s) AS ?n)
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ;
+             mccv:MCCV_000028/mccv:MCCV_000072/mccv:MCCV_000071 meo:MEO_0000041 .   # sample → habitat → environment
+        }
+        GRAPH <http://rdfportal.org/dataset/microbedbjp> { meo:MEO_0000041 rdfs:label ?label }   # MEO labels are NOT in the JCM graph
+      }
+      GROUP BY ?label
+    verified: {row_count: 1, has_values: ["marine water", 437], date: "2026-11-10"}
+    teaches: "Habitat is structured: ?strain mccv:MCCV_000028 (sample, mic_6) / mccv:MCCV_000072 (habitat, mic_7) / mccv:MCCV_000071 → MEO IRI. Bind the MEO term for 'all strains from environment X' (top terms: MEO_0000007 soil 2,333 · MEO_0000054 feces 907 · MEO_0000379 leaf 670 · MEO_0000041 marine water 437); resolve labels in GRAPH <http://rdfportal.org/dataset/microbedbjp>. Direct term only — subterms (e.g. MEO_0000198 field soil) are separate IRIs."
     traps_avoided:
-      - say: "The habitat is one hop further: sample mccv:MCCV_000072 → habitat node (mic_7) whose mccv:MCCV_000071 MIXES vocabularies — MEO (18,538), the HOST organism as NCBI taxon in three IRI forms (~6,960 each), PDO (330), CSSO (235). Filter by namespace before treating it as an environment; MEO labels live in GRAPH <http://rdfportal.org/dataset/microbedbjp>."
+      - say: "mccv:MCCV_000071 on the habitat node MIXES vocabularies — MEO (18,538), the HOST organism as NCBI taxon in three IRI forms (~6,960 each), PDO (330), CSSO (235). Filter by namespace (or bind a MEO IRI, as here) before treating a value as an environment."
         check:
           kind: count
           date: "2026-11-10"
@@ -388,7 +426,7 @@ schema_delta:
   - "Equivalent strains: mccv:MCCV_000024 → blank node (a mccv:MCCV_000001) carrying mccv:MCCV_000026 = the other collection's number ('DSM 20669', typed string; 77.7% of strains, 64,341 nodes). Prefix by collection: DSM 6,868 · NBRC 5,163 · ATCC 5,068 · IFO 3,845 · IAM 3,340 · CBS 3,170. mccv:MCCV_000025 (catalogue URL) is on 11,936 of them."
   - "PubMed: dcterms:references and cito:citesAsAuthority carry the SAME PMIDs, each as identifiers.org/pubmed/N and rdf.ncbi.nlm.nih.gov/pubmed/N (36.2% of strains)."
   - "brso:organism → [ a sio:SIO_010000 ; obo:RO_0002162 <taxon> ] restates mccv:MCCV_000023 on the same 9,080 strains; prefer the direct link."
-  - "mccv:MCCV_000034 biosafety level ('BSL 2'; 7.9%) and mccv:MCCV_000033 application text ('Production of …'; 7.3%) are sparse typed strings. foaf:depiction / foaf:thumbnail give JCM micrograph URLs (36.4%)."
+  - "mccv:MCCV_000033 application text ('Production of …'; 7.3%) is a sparse typed string. foaf:depiction / foaf:thumbnail give JCM micrograph URLs (36.4%)."
   - "MCCV, MPO and brso terms carry NO rdfs:label anywhere on the endpoint (D query, 0 rows) — use the IRIs documented here; MCCV v0.97 (purl.jp/bio/01/mccv#, same local IDs) defines 000014 optimum growth temperature · 017 is type strain · 018 growth medium · 019 rehydration fluid · 023 related taxonomy · 024/026 other-collection info/number · 028 isolated from · 030 isolation source description · 038 organism category · 071 environmental feature · 072 sampled from · 073 culture condition; 000077 is not in v0.97."
   - "Medium IRIs gm:JCM_M<n> (purl.jp/bio/11/gm/, 1,025 distinct) carry a label and the JCM medium page; none is shared with MediaDive (purl.dsmz.de/mediadive/medium/) or NBRC (…/nbrc/medium/)."
 
@@ -400,7 +438,7 @@ id_join_map:
   same_endpoint_joins:
     ncbi_taxonomy: "mccv:MCCV_000023 identifiers.org/taxonomy/N form → GRAPH <http://rdfportal.org/ontology/taxonomy> taxo:scientificName / taxo:rank (example xdb_taxonomy)"
     nbrc: "mccv:MCCV_000024/mccv:MCCV_000026 'NBRC <n>' → zero-pad to 8 → IRI .../nbrc/cultures/<pad> in GRAPH <http://purl.jp/bio/103/nite/culture/> (example xdb_nbrc)"
-    meo_habitat: "sample mccv:MCCV_000072 → habitat mccv:MCCV_000071 MEO IRI; labels in GRAPH <http://rdfportal.org/dataset/microbedbjp>"
+    meo_habitat: "sample mccv:MCCV_000072 → habitat mccv:MCCV_000071 MEO IRI; labels in GRAPH <http://rdfportal.org/dataset/microbedbjp> (example enum_habitat_meo)"
   xrefs:
     insdc: "mccv:MCCV_000077 → https://identifiers.org/insdc:<acc> (61.2% of strains; mostly single sequences — example genome_accessions)"
     pubmed: "dcterms:references → identifiers.org/pubmed/N + rdf.ncbi.nlm.nih.gov/pubmed/N (36.2%)"
