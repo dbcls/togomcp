@@ -162,20 +162,28 @@ examples:
 
   - id: enum_biosafety
     intent: the SET-LEVEL biosafety route — count all strains recorded at one biosafety level
-    question: "How many JCM strains are recorded as biosafety level BSL 2?"
+    question: "How many JCM strains are recorded as biosafety level BSL 2, provisional assignments included?"
     complexity: aggregation
     sparql: |
       PREFIX mccv: <http://purl.jp/bio/10/mccv#>
       PREFIX brso: <http://purl.jp/bio/10/brso/>
-      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
       SELECT (COUNT(DISTINCT ?s) AS ?n)
       WHERE {
         GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
-          ?s a brso:BiologicalResource ; mccv:MCCV_000034 "BSL 2"^^xsd:string .   # typed literal
+          ?s a brso:BiologicalResource ; mccv:MCCV_000034 ?bsl .
+          FILTER(STRSTARTS(STR(?bsl), "BSL 2"))   # 'BSL 2' + 'BSL 2 (provisional)'
         }
       }
-    verified: {n: 1398, date: "2026-11-10"}
-    teaches: "mccv:MCCV_000034 is a 2-value enum stored as typed strings: 'BSL 2' 1,398 strains · 'BSL 2 (provisional)' 130. Only 7.9% of strains carry it; a strain without the triple has no level recorded (not 'BSL 1')."
+    verified: {n: 1528, date: "2026-11-10"}
+    teaches: "mccv:MCCV_000034 is a 2-value enum stored as typed strings: 'BSL 2' 1,398 strains · 'BSL 2 (provisional)' 130 (together 1,528). Only 7.9% of strains carry it; a strain without the triple has no level recorded (not 'BSL 1')."
+    traps_avoided:
+      - say: "An exact match on \"BSL 2\"^^xsd:string returns only the 1,398 confirmed strains and silently drops the 130 'BSL 2 (provisional)' ones; use STRSTARTS(STR(?bsl), 'BSL 2') for the total, or match the provisional value explicitly to separate them."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000034> "BSL 2 (provisional)"^^<http://www.w3.org/2001/XMLSchema#string> } }
+          expect: {value: 130, tolerance: 0.02}
 
   - id: type_strains_genus
     intent: type strains of one genus — boolean flag + genus taken from the accepted name
@@ -307,6 +315,13 @@ examples:
           query: |
             SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000028>/<http://purl.jp/bio/10/mccv#MCCV_000072>/<http://purl.jp/bio/10/mccv#MCCV_000071> ?f FILTER(STRSTARTS(STR(?f), "http://purl.jp/bio/11/meo/MEO_")) } }
           expect: {value: 18538, tolerance: 0.02}
+      - say: "Select an MEO term by IRI, not by label: the label 'feces' belongs to TWO MEO terms (MEO_0000054, 907 strains; MEO_0000627, 801), so a label match merges two environments and a GROUP BY ?label folds them into one row."
+        check:
+          kind: count
+          date: "2026-11-10"
+          query: |
+            SELECT (COUNT(DISTINCT ?meo) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000028>/<http://purl.jp/bio/10/mccv#MCCV_000072>/<http://purl.jp/bio/10/mccv#MCCV_000071> ?meo } GRAPH <http://rdfportal.org/dataset/microbedbjp> { ?meo <http://www.w3.org/2000/01/rdf-schema#label> ?l FILTER(STR(?l) = "feces") } }
+          expect: {value: 2, tolerance: 0}
 
   - id: genome_accessions
     intent: INSDC sequence accessions carried by a strain (mostly single sequences, rarely genomes)
