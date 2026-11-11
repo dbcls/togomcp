@@ -13,6 +13,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.32.1] - 2026-11-11
+
+PATCH: two more verified examples in the `jcm` MIE; no tool, parameter or return shape changed. They were
+written for #291 but pushed after it merged, so they missed 2.30.0 (re-submitted as #300).
+
 ### Changed
 
 - `jcm`: two examples (now 13) that combine the application text (`mccv:MCCV_000033`, "Production of …") with
@@ -3961,7 +3966,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.32.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.32.1...HEAD
+[2.32.1]: https://github.com/dbcls/togomcp/compare/v2.32.0...v2.32.1
 [2.32.0]: https://github.com/dbcls/togomcp/compare/v2.31.0...v2.32.0
 [2.31.0]: https://github.com/dbcls/togomcp/compare/v2.30.0...v2.31.0
 [2.30.0]: https://github.com/dbcls/togomcp/compare/v2.29.4...v2.30.0
