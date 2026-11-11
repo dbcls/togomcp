@@ -13,6 +13,27 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+Fifth RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_plant`, `rikenbrc_dnabank`,
+`rikenbrc_cell` and `rikenbrc_mouse` entries below). MINOR: adds `database="rikenbrc_jcm"`.
+
+<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_jcm</code> — the current RIKEN BRC JCM catalogue of about 21,700 microbial strains, served by RIKEN BRC; <code>jcm</code> stays the BRSO-harmonised snapshot for joins with NBRC. -->
+
+### Added
+
+- **RIKEN BRC JCM, latest** (`database="rikenbrc_jcm"`, ~21.7k strains, graph `xsearch_jcm`): the current JCM
+  catalogue, about 2,200 strains more than `jcm` on RDF Portal, with the same strain IRIs and MCCV fields. Its MIE
+  carries 5 verified examples, including strains newer than the BRSO copy and a same-endpoint join that resolves
+  `rikenbrc_dnabank` genomic-DNA clones to JCM strains from the strain number in their label. Five header gotchas:
+  the graph pin (×2.00 unpinned through `xsearch_jcm_brso`), an anchor that differs from `jcm`
+  (`rdfs:subClassOf mic:mic_1`), the same-strains warning, typed literals and equivalent-strain nodes.
+
+### Changed
+
+- `jcm` MIE: discovery description and a new header gotcha (`latest_catalogue_is_rikenbrc_jcm`) route current
+  strain lookups to `rikenbrc_jcm` and keep NBRC/NBRP joins on `jcm`; the two must never be summed.
+- `stats._AMBIGUOUS_PREFIX_QNAMES["mccv"]`: `rikenbrc_jcm` uses the same MCCV properties as `jcm`, so five terms
+  that were exclusive to `jcm` are now shared and no longer credit it (re-derived from the MIE corpus).
+
 Fourth RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_dnabank`, `rikenbrc_cell` and
 `rikenbrc_mouse` entries below). MINOR: adds `database="rikenbrc_plant"`.
 
@@ -78,7 +99,7 @@ of five RIKEN BRC catalogues planned there (cell lines, DNA, plants and the late
 ### Changed
 
 - The generated database catalog (`02b_database_catalog.md`, `references/database-catalog.md`) is
-  regenerated: 55 databases, with new categories `biological resource` and `model organism`.
+  regenerated: 56 databases, with new categories `biological resource` and `model organism`.
 
 ## [2.31.0] - 2026-11-11
 

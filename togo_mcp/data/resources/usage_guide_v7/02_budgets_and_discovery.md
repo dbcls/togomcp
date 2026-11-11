@@ -86,7 +86,7 @@ is the bold row label.
 | **swisslipids** | 1 | `swisslipids` |
 | **microbes** | 1 | `bh26microbes` ← key ≠ endpoint name; experimental (QLever) |
 | **marpolbase** | 1 | `marpolbase` ← Marchantia polymorpha genome; own endpoint, 7 graphs, 30 s cutoff truncates silently, no `SERVICE` |
-| **rikenbrc** | 4 | `rikenbrc_mouse` `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_plant` ← RIKEN BRC's own endpoint (~400 graphs, each catalogue mirrored in a `_brso` twin: pin its own graph); can call RDF Portal via `SERVICE` |
+| **rikenbrc** | 5 | `rikenbrc_mouse` `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_plant` `rikenbrc_jcm` ← RIKEN BRC's own endpoint (~400 graphs, each catalogue mirrored in a `_brso` twin: pin its own graph); can call RDF Portal via `SERVICE` |
 
 **One database ≠ one graph.** A database alone on its endpoint still serves many graphs
 (GlyCosmos ~150, PubChem 69, PDB 46, DDBJ 43, IDSM 39), so co-tenancy is a property of

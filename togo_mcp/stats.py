@@ -354,13 +354,12 @@ _AMBIGUOUS_PREFIX_QNAMES: dict[str, dict[str, frozenset[str]]] = {
             "MPO_00103", "MPO_00104"
         }),
     },
-    # mccv: is SHARED by the culture collections (NBRC, JCM; both type strains
-    # as brso:BiologicalResource with MCCV properties). Terms both MIEs use
-    # credit neither; a term only one of them documents credits that one.
+    # mccv: is SHARED by the culture collections (NBRC, JCM, and rikenbrc_jcm —
+    # the current JCM catalogue on RIKEN BRC's endpoint, same MCCV properties).
+    # Terms several MIEs use credit none; a term only one documents credits that one.
     "mccv": {
         "jcm": frozenset({
-            "MCCV_000011", "MCCV_000014", "MCCV_000019", "MCCV_000023", "MCCV_000026",
-            "MCCV_000033", "MCCV_000041", "MCCV_000071"
+            "MCCV_000019", "MCCV_000041", "MCCV_000071"
         }),
         "nbrc": frozenset({
             "MCCV_000007", "MCCV_000008", "MCCV_000043", "MCCV_000044", "MCCV_000046",

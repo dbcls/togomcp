@@ -1,0 +1,211 @@
+# MIE v3 — RIKEN BRC JCM microbial strain catalogue, LATEST version (graph xsearch_jcm), 2026-11-12.
+# Served from RIKEN BRC's own endpoint (knowledge.brc.riken.jp, endpoint_name rikenbrc), NOT RDF Portal.
+# Sibling of the `jcm` database (RDF Portal, BRSO-harmonised xsearch_jcm_brso): SAME strain IRIs, newer data here.
+mie_spec: 3
+database: rikenbrc_jcm
+
+discovery:
+  title: RIKEN BRC JCM (latest) — Japan Collection of Microorganisms, current catalogue at RIKEN BRC
+  description: >
+    The CURRENT catalogue of ~21.7k microbial strains (bacteria, archaea, fungi, yeasts, algae) of the RIKEN BRC
+    Japan Collection of Microorganisms, served by RIKEN BRC itself — about 2,200 more strains than the `jcm`
+    database on RDF Portal. Same MCCV fields: accepted name, synonyms, type-strain status, category, growth
+    temperature and medium, isolation source, deposit history, equivalent strains, INSDC and PubMed links.
+    Prefer this for up-to-date strain lookup; use `jcm` to join with NBRC or other NBRP collections.
+  keywords: [culture collection, biological resource, microbial strain, jcm, riken brc, latest catalogue,
+             bacteria, archaea, fungi, yeast, type strain, isolation source, genomic dna, strain equivalence]
+  categories: [microbe, biological resource]
+
+endpoint: https://knowledge.brc.riken.jp/sparql   # RIKEN BRC's own Virtuoso — ~400 named graphs; endpoint_name rikenbrc
+base_uri: http://metadb.riken.jp/db/rikenbrc_jcm_microbe/   # strain IRI = base + JCM_<n> (identical to `jcm`)
+graphs:
+  primary: http://metadb.riken.jp/db/xsearch_jcm
+  co_hosted:
+    xsearch_jcm_brso: >
+      DUPLICATE + INFLATION. The BRSO re-modelling of the same strains (same IRIs, 21,612 typed
+      brso:BiologicalResource) re-declares the MCCV predicates: unpinned rows ×2.00 (gotcha graph_pin). This
+      local copy is far more current than the `jcm` graph on RDF Portal (19,452), but still 50 strains behind
+      (example strains_newer_than_brso).
+    xsearch_dnabank: >
+      JOIN (example xdb_dnabank_genomic_dna). rikenbrc_dnabank's 'Genomic DNA, microbe' clones name their
+      source strain only in text ('… JCM 5708T'); the JCM number is turned into this graph's strain IRI.
+    xsearch_animal / xsearch_cell / xsearch_plant: "Other RIKEN BRC catalogues on the same endpoint — they bleed into any unpinned brs:/xs: pattern."
+
+entity_counts:                       # graph-pinned COUNT(DISTINCT), ?s rdfs:subClassOf mic:mic_1 — 2026-11-12
+  strains: 21660                     # 21,658 with name, label and category (JCM_37168, JCM_37989 are bare records)
+  type_strains: 10479                # mccv:MCCV_000017
+  by_category: {Bacteria_MCCV_000040: 14624, Fungi_MCCV_000042: 3169, Yeasts_MCCV_000043: 3013, Archaea_MCCV_000041: 823, Algae_MCCV_000044: 29}
+  strains_with_INSDC: 11911          # mccv:MCCV_000077
+  compared_with_jcm: "`jcm` (RDF Portal, xsearch_jcm_brso): 19,452 strains, 9,495 type strains on 2026-11-10"
+  date: "2026-11-12"
+
+global_gotchas:
+  - id: graph_pin
+    say: >
+      GRAPH IS MANDATORY: wrap every pattern in GRAPH <http://metadb.riken.jp/db/xsearch_jcm>. The co-hosted
+      xsearch_jcm_brso repeats the same strains with the same MCCV predicates, so an unpinned query returns
+      ×2.00 the rows (43,270 vs 21,658 strain labels).
+    check:
+      kind: ratio
+      date: "2026-11-12"
+      unpinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { ?s <http://purl.jp/bio/10/mccv#MCCV_000010> ?l . FILTER(STRSTARTS(STR(?s), "http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_")) }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?s <http://purl.jp/bio/10/mccv#MCCV_000010> ?l } }
+      expect: {ratio: 1.998, tolerance: 0.02}
+  - id: anchor_differs_from_jcm
+    say: >
+      The `jcm` MIE anchors strains with `?s a brso:BiologicalResource` — that matches NOTHING here. In this graph a
+      strain is an rdfs:Class with `rdfs:subClassOf mic:mic_1` (21,660; mic:mic_1 ⊑ mccv:MCCV_000001). Queries
+      copied from `jcm` must swap the anchor (and the graph); the MCCV predicates themselves are the same.
+    check:
+      kind: absent
+      date: "2026-11-12"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> } } LIMIT 1
+  - id: same_strains_as_jcm
+    say: >
+      `rikenbrc_jcm` and `jcm` describe the SAME strains under the SAME IRIs (…/rikenbrc_jcm_microbe/JCM_<n>).
+      Never add their counts or union their rows as if they were two collections. For current numbers use this
+      database (21,660 strains); for joins with NBRC, MoG+ or other RDF Portal data use `jcm`.
+    check:
+      kind: count
+      date: "2026-11-12"
+      query: |
+        SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?s <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/mic_1> } }
+      expect: {value: 21660}
+  - id: typed_string_literals
+    say: >
+      String values are typed ^^xsd:string (as in `jcm`): `mccv:MCCV_000030 "Seawater"` → 0 rows,
+      `"Seawater"^^xsd:string` → 60 strains. Write the typed form or compare STR(?x) = "…".
+    check:
+      kind: zero_rows
+      date: "2026-11-12"
+      query: |
+        SELECT ?x WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?x <http://purl.jp/bio/10/mccv#MCCV_000030> "Seawater" } } LIMIT 1
+  - id: equivalent_strain_nodes
+    say: >
+      mccv:MCCV_000024 points at 66,663 equivalent-strain blank nodes typed mic:mic_2 (each with mccv:MCCV_000026
+      'ABB 0301' and often mccv:MCCV_000025 a catalogue URL) — they are other collections' numbers for the same
+      strain, not strains. Never count `?x a mic:mic_2` or anything under mccv:MCCV_000001 as strains.
+    check:
+      kind: count
+      date: "2026-11-12"
+      query: |
+        SELECT (COUNT(DISTINCT ?x) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?x a <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/mic_2> } }
+      expect: {value: 66663}
+
+examples:
+  - id: strain_record
+    intent: core metadata for one strain by its IRI (same IRI as in `jcm`)
+    question: "What are the accepted name, category, type-strain status and deposit history of JCM 19485 in the current RIKEN BRC catalogue?"
+    complexity: basic
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      SELECT ?label ?name ?category ?isType ?history ?page WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm> {
+          <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_19485>
+              mccv:MCCV_000010 ?label ; mccv:MCCV_000012 ?name ; mccv:MCCV_000038 ?category ;
+              mccv:MCCV_000027 ?history ; foaf:page ?page .
+          OPTIONAL { <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_19485> mccv:MCCV_000017 ?isType }
+        }
+      }
+    verified: {row_count: 1, has_values: ["JCM 19485", "Rhodococcus aerolatus Hwang et al. 2015", "MCCV_000040", "<-- Y. Y. Yang PAMC 27367"], date: "2026-11-12"}
+    teaches: "Strain IRI = …/rikenbrc_jcm_microbe/JCM_<n>; mccv:MCCV_000010 = 'JCM <n>'; MCCV_000012 = accepted name with author (one per strain); MCCV_000027 = deposit history; foaf:page = the JCM catalogue page; MCCV_000017 = type strain (1) when present."
+    traps_avoided:
+      - say: "mccv:MCCV_000011 is a name LIST (current name plus synonyms): 24,451 values on 21,660 strains (×1.13). For one name per strain use mccv:MCCV_000012."
+        check:
+          kind: ratio
+          date: "2026-11-12"
+          numerator: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?s <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/mic_1> ; <http://purl.jp/bio/10/mccv#MCCV_000011> ?n11 } }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?s <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/mic_1> } }
+          expect: {ratio: 1.1289, tolerance: 0.01}
+
+  - id: category_counts
+    intent: the SET-LEVEL category route — strains per organism category, with a label from the resource type
+    question: "How many strains of each organism category does the current JCM catalogue hold?"
+    complexity: aggregation
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      PREFIX mic:  <http://metadb.riken.jp/db/rikenbrc_jcm_microbe/>
+      SELECT ?category ?label (COUNT(DISTINCT ?s) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm> {
+          ?s rdfs:subClassOf mic:mic_1 ; mccv:MCCV_000038 ?category ; xs:resourceTypeLink ?rt .
+          OPTIONAL { ?rt rdfs:label ?label FILTER(LANG(?label) = "en") }
+        }
+      } GROUP BY ?category ?label ORDER BY DESC(?n)
+    verified: {row_count: 5, has_values: ["MCCV_000040", "Bacteria", 14624, "Archaea", 823], date: "2026-11-12"}
+    teaches: "mccv:MCCV_000038 is the 5-value category enum (Bacteria 040 · Archaea 041 · Fungi 042 · Yeasts 043 · Algae 044); labels come from the parallel xs:resourceTypeLink. Compare `jcm`: 13,076 Bacteria there vs 14,624 here."
+
+  - id: isolation_habitat
+    intent: strains by isolation source — the sample-node path and the typed literal
+    question: "How many current JCM strains were isolated from seawater?"
+    complexity: basic
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+      SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm> {
+          ?s mccv:MCCV_000028 ?sample . ?sample mccv:MCCV_000030 "Seawater"^^xsd:string .
+        }
+      }
+    verified: {n: 60, date: "2026-11-12"}
+    teaches: "Isolation sample = strain mccv:MCCV_000028 → sample node (…/mic_6_<n>) with mccv:MCCV_000030 (source text, xsd:string) and mccv:MCCV_000072 (habitat class). For partial matches use FILTER(CONTAINS(LCASE(STR(?src)), 'sea'))."
+
+  - id: strains_newer_than_brso
+    intent: what the newest data adds — strains in this graph that the co-hosted BRSO copy does not have yet
+    question: "How many strains in the current JCM catalogue are not yet in the BRSO-converted copy?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm> { ?s mccv:MCCV_000010 ?label }
+        FILTER NOT EXISTS { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> } }
+      }
+    verified: {n: 50, date: "2026-11-12"}
+    teaches: "Same IRIs in both graphs make an anti-join trivial. The local BRSO copy (21,612) is 50 strains behind; the `jcm` graph on RDF Portal (19,452) is ~2,200 behind — that gap can only be measured in two steps across endpoints."
+
+  - id: xdb_dnabank_genomic_dna
+    intent: same-endpoint cross-catalogue join where the link is TEXT — build the strain IRI from the JCM number
+    question: "For how many JCM strains does the RIKEN BRC DNA Bank distribute genomic DNA, and how many of them are type strains?"
+    complexity: cross_db
+    endpoint_name: rikenbrc
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      SELECT (COUNT(DISTINCT ?clone) AS ?dna_clones) (COUNT(DISTINCT ?strain) AS ?jcm_strains) (COUNT(DISTINCT ?typ) AS ?type_strains) WHERE {
+        { SELECT ?clone ?strain WHERE {
+            GRAPH <http://metadb.riken.jp/db/xsearch_dnabank> {
+              ?clone xs:resourceTypeLink xs:resource_type_dnabank29 ; rdfs:label ?l .
+              FILTER(REGEX(STR(?l), "JCM [0-9]+", "")) }
+            BIND(IRI(CONCAT("http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_", REPLACE(STR(?l), "^.*JCM ([0-9]+).*$", "$1"))) AS ?strain) } }
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm> {
+          ?strain mccv:MCCV_000012 ?name .
+          OPTIONAL { ?strain mccv:MCCV_000017 ?t . BIND(?strain AS ?typ) }
+        }
+      }
+    verified: {row_count: 1, has_values: [1067, 852], date: "2026-11-12"}
+    teaches: "rikenbrc_dnabank resource type 'Genomic DNA, microbe' (resource_type_dnabank29, set code JCM_DNA; 1,070 clones) names the source strain only in its label ('Genomic DNA of Streptococcus sanguinis JCM 5708T'). Extract the number with REPLACE inside a subquery, BIND the strain IRI, then join this graph — 1,067 clones resolve. Works the same against `jcm` on RDF Portal only if run there; this example needs both graphs on one endpoint."
+
+id_join_map:
+  stable_anchor: >
+    Strain = http://metadb.riken.jp/db/rikenbrc_jcm_microbe/JCM_<n> — identical in `jcm`; mccv:MCCV_000010 'JCM <n>'.
+  same_endpoint_joins:
+    xsearch_dnabank: "JCM number parsed from the clone label → strain IRI (example xdb_dnabank_genomic_dna)"
+    xsearch_jcm_brso: "same IRIs — anti-join for strains newer than the BRSO copy (example strains_newer_than_brso)"
+  xrefs:
+    jcm: "SAME strain IRIs as the `jcm` database (RDF Portal) — two-step only (different endpoints); never sum counts"
+    nbrc: "equivalent-strain node mccv:MCCV_000026 'NBRC <n>' — the NBRC join itself is documented in `jcm` (example xdb_nbrc), on RDF Portal"
+    taxonomy: "mccv:MCCV_000023 → NCBI taxon IRIs (10,603 triples; obo/NCBITaxon_N form among them)"
+    insdc: "mccv:MCCV_000077 <https://identifiers.org/insdc:ACCESSION> (11,911 strains)"
+    pubmed: "cito:citesAsAuthority <http://rdf.ncbi.nlm.nih.gov/pubmed/N> and dcterms:references <http://identifiers.org/pubmed/N>"
+
+schema_delta:
+  - "Culture condition: strain mccv:MCCV_000073 → node with mccv:MCCV_000014 → temperature node (rdf:value + brs:brs_hasUnit UO_0000027 °C) and medium links mccv:MCCV_000018 / _000019 → <http://purl.jp/bio/11/gm/JCM_M<n>> (dcterms:identifier, rdfs:seeAlso the JCM medium page)."
+  - "foaf:thumbnail / foaf:depiction: colony images for 14,543 strains. mccv:MCCV_000033 application text (1,472), mccv:MCCV_000034 biosafety level ('BSL 2', 1,640)."

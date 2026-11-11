@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 55 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 56 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -10,7 +10,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **biological resource** — `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_mouse` `rikenbrc_plant`
+- **biological resource** — `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_jcm` `rikenbrc_mouse` `rikenbrc_plant`
 - **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
 - **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `rikenbrc_cell` `togovar`
 - **drug_target** — `chembl` `idsm`
@@ -20,7 +20,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **glycan** — `glycosmos`
 - **literature** — `lotus` `pubmed` `pubtator`
 - **materials** — `supercon`
-- **microbe** — `amrportal` `bacdive` `bh26microbes` `jcm` `mediadive` `nbrc`
+- **microbe** — `amrportal` `bacdive` `bh26microbes` `jcm` `mediadive` `nbrc` `rikenbrc_jcm`
 - **model organism** — `rikenbrc_mouse` `rikenbrc_plant`
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
@@ -126,6 +126,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: biological resource, cell line, ips cell, disease-specific ips cell, intractable disease, es cell, hybridoma, ebv-transformed b cell, cell bank, cell line donor, culture condition, cellosaurus, riken brc, bioresource
 - **rikenbrc_dnabank** — RIKEN BRC DNA — RIKEN BioResource Research Center DNA material catalogue. Catalogue of ~170k DNA materials distributed by the RIKEN BRC DNA Bank — human cDNA clone sets (GNP, NRCD), NIA/NIH mouse cDNA, marmoset cDNA, S. _(categories: biological resource, gene)_  
   keywords: biological resource, dna clone, cdna clone, plasmid, expression vector, bac clone, orfeome, fluorescent protein vector, genomic dna, gene resource, ncbi gene, riken brc, bioresource
+- **rikenbrc_jcm** — RIKEN BRC JCM (latest) — Japan Collection of Microorganisms, current catalogue at RIKEN BRC. The CURRENT catalogue of ~21.7k microbial strains (bacteria, archaea, fungi, yeasts, algae) of the RIKEN BRC Japan Collection of Microorganisms, served by RIKEN BRC itself — about 2,200 more strains… _(categories: biological resource, microbe)_  
+  keywords: culture collection, biological resource, microbial strain, jcm, riken brc, latest catalogue, bacteria, archaea, fungi, yeast, type strain, isolation source, genomic dna, strain equivalence
 - **rikenbrc_mouse** — RIKEN BRC Mouse — RIKEN BioResource Research Center mouse strain catalogue. Catalogue of ~6.9k mouse strains distributed by the RIKEN BioResource Research Center (RBRC numbers) — strain name, description, resource type (targeted, transgenic, CRISPR, ENU, spontaneous, inbred,… _(categories: biological resource, model organism)_  
   keywords: biological resource, mouse strain, model organism, mutant mouse, transgenic, knockout, crispr, cre driver, mammalian phenotype, human ortholog, riken brc, bioresource, strain availability
 - **rikenbrc_plant** — RIKEN BRC Plant — RIKEN BioResource Research Center experimental plant catalogue. Catalogue of ~612k plant resources distributed by the RIKEN BRC Experimental Plant Division — Arabidopsis full-length cDNA (RAFL) clones, full-length cDNA/EST clones of Physcomitrella, Brachypodium,… _(categories: biological resource, model organism)_  
