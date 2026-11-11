@@ -329,9 +329,28 @@ _DIRECTIVE_PATTERNS = (
     # which none of the patterns above caught.
     r"\bBEFORE\b", r"\bcall it with\b",
 )
-# Longest served description allowed. run_sparql is ~2,550 by itself because it
-# lists the live database/endpoint registry; the rest were trimmed to fit in 2.27.
+# Longest served description allowed, counting only the written text. run_sparql
+# embeds three lists generated from endpoints.csv (the `database` keys, the
+# endpoint_name keys and the external endpoints with their URLs); they grow by
+# design with every database and are excluded before measuring, so the ceiling
+# guards the prose rather than the registry. The rest were trimmed to fit in 2.27.
 _MAX_DESCRIPTION_CHARS = 2800
+
+
+def _written_text(description: str) -> str:
+    from togo_mcp.server import (
+        ENDPOINT_NAMES,
+        EXTERNAL_ENDPOINT_LIST,
+        SPARQL_ENDPOINT_KEYS,
+    )
+
+    for generated in (
+        ", ".join(SPARQL_ENDPOINT_KEYS),
+        ", ".join(ENDPOINT_NAMES),
+        EXTERNAL_ENDPOINT_LIST,
+    ):
+        description = description.replace(generated, "")
+    return description
 
 
 def test_no_tool_description_issues_directives(assembled_tools) -> None:
@@ -350,9 +369,9 @@ def test_no_tool_description_issues_directives(assembled_tools) -> None:
 
 def test_tool_descriptions_stay_under_the_length_ceiling(assembled_tools) -> None:
     long = {
-        t.name: len(t.description or "")
+        t.name: n
         for t in assembled_tools
-        if len(t.description or "") > _MAX_DESCRIPTION_CHARS
+        if (n := len(_written_text(t.description or ""))) > _MAX_DESCRIPTION_CHARS
     }
     assert not long, (
         f"descriptions over {_MAX_DESCRIPTION_CHARS} characters: {long}. Move history "
@@ -372,3 +391,15 @@ def test_run_sparql_database_parameter_states_the_mie_dependency(assembled_tools
     assert run.startswith("Results depend on this database's MIE file (get_MIE_file"), run[:80]
     assert "get_MIE_file" not in mie, mie[:80]
     assert not [p for p in _DIRECTIVE_PATTERNS if _re.search(p, run)], "directive wording"
+
+
+def test_length_ceiling_strips_the_generated_registry_lists(assembled_tools) -> None:
+    """Guard the exclusion itself: if a list stops matching the served text (say,
+    a separator changes), nothing is stripped and the ceiling silently goes back
+    to counting the registry. Each list must actually be present in run_sparql."""
+    from togo_mcp.server import ENDPOINT_NAMES, EXTERNAL_ENDPOINT_LIST, SPARQL_ENDPOINT_KEYS
+
+    desc = next(t.description for t in assembled_tools if t.name == "run_sparql")
+    for generated in (", ".join(SPARQL_ENDPOINT_KEYS), ", ".join(ENDPOINT_NAMES), EXTERNAL_ENDPOINT_LIST):
+        assert generated and generated in desc
+    assert len(_written_text(desc)) < len(desc) - 500

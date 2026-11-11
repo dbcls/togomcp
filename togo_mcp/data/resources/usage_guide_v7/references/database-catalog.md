@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 51 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 56 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -10,16 +10,18 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
+- **biological resource** — `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_jcm` `rikenbrc_mouse` `rikenbrc_plant`
 - **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
-- **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
+- **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `rikenbrc_cell` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `rikenbrc_dnabank` `tismed` `wikipathways`
 - **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `jogo` `marpolbase` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `lotus` `pubmed` `pubtator`
 - **materials** — `supercon`
-- **microbe** — `amrportal` `bacdive` `bh26microbes` `jcm` `mediadive` `nbrc`
+- **microbe** — `amrportal` `bacdive` `bh26microbes` `jcm` `mediadive` `nbrc` `rikenbrc_jcm`
+- **model organism** — `rikenbrc_mouse` `rikenbrc_plant`
 - **ontology** — `chebi` `go` `hco` `lipidmaps` `mco` `mesh` `mondo` `nando` `ontology` `swisslipids`
 - **pathway** — `reactome` `wikipathways`
 - **physics** — `supercon`
@@ -120,6 +122,16 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: pathway, reaction, biopax, signaling, metabolism, protein, complex, small molecule, catalyst, enzyme, ec number, modification, phosphorylation, cellular location, gene ontology, species
 - **rhea** — Rhea — Annotated Biochemical Reactions. Expert-curated, atom-balanced biochemical reactions (18,854 master reactions) with ChEBI-linked participants, EC-number and GO cross-references, transport/location annotations, and PubMed citations;… _(categories: reaction)_  
   keywords: biochemical reaction, enzyme, substrate, product, cofactor, ec number, stoichiometry, mass balance, chebi, metabolite, transport, directional reaction, catalysis
+- **rikenbrc_cell** — RIKEN BRC Cell — RIKEN BioResource Research Center cell line catalogue. Catalogue of ~9.9k cell lines distributed by the RIKEN BRC Cell Bank (RCB, HPS, AES, HEV … numbers) — human iPS cell lines from patients with ALS, Rett syndrome and other intractable diseases, genera… _(categories: biological resource, disease)_  
+  keywords: biological resource, cell line, ips cell, disease-specific ips cell, intractable disease, es cell, hybridoma, ebv-transformed b cell, cell bank, cell line donor, culture condition, cellosaurus, riken brc, bioresource
+- **rikenbrc_dnabank** — RIKEN BRC DNA — RIKEN BioResource Research Center DNA material catalogue. Catalogue of ~170k DNA materials distributed by the RIKEN BRC DNA Bank — human cDNA clone sets (GNP, NRCD), NIA/NIH mouse cDNA, marmoset cDNA, S. _(categories: biological resource, gene)_  
+  keywords: biological resource, dna clone, cdna clone, plasmid, expression vector, bac clone, orfeome, fluorescent protein vector, genomic dna, gene resource, ncbi gene, riken brc, bioresource
+- **rikenbrc_jcm** — RIKEN BRC JCM (latest) — Japan Collection of Microorganisms, current catalogue at RIKEN BRC. The CURRENT catalogue of ~21.7k microbial strains (bacteria, archaea, fungi, yeasts, algae) of the RIKEN BRC Japan Collection of Microorganisms, served by RIKEN BRC itself — about 2,200 more strains… _(categories: biological resource, microbe)_  
+  keywords: culture collection, biological resource, microbial strain, jcm, riken brc, latest catalogue, bacteria, archaea, fungi, yeast, type strain, isolation source, genomic dna, strain equivalence
+- **rikenbrc_mouse** — RIKEN BRC Mouse — RIKEN BioResource Research Center mouse strain catalogue. Catalogue of ~6.9k mouse strains distributed by the RIKEN BioResource Research Center (RBRC numbers) — strain name, description, resource type (targeted, transgenic, CRISPR, ENU, spontaneous, inbred,… _(categories: biological resource, model organism)_  
+  keywords: biological resource, mouse strain, model organism, mutant mouse, transgenic, knockout, crispr, cre driver, mammalian phenotype, human ortholog, riken brc, bioresource, strain availability
+- **rikenbrc_plant** — RIKEN BRC Plant — RIKEN BioResource Research Center experimental plant catalogue. Catalogue of ~612k plant resources distributed by the RIKEN BRC Experimental Plant Division — Arabidopsis full-length cDNA (RAFL) clones, full-length cDNA/EST clones of Physcomitrella, Brachypodium,… _(categories: biological resource, model organism)_  
+  keywords: biological resource, arabidopsis, raf l cdna, full-length cdna, ds transposon line, fox line, natural accession, ecotype, physcomitrella, brachypodium, plant cell line, agi code, riken brc
 - **supercon** — SuperCon — NIMS Superconducting Materials Database. Curated experimental records for oxide and metallic superconductors (NIMS), extracted from ~7,249 journal articles: critical temperature (Tc and variants), critical magnetic fields, crystal structure… _(categories: materials, physics)_  
   keywords: superconductor, superconducting material, critical temperature, tc, critical field, cuprate, oxide, inorganic compound, crystal structure, lattice parameter, materials informatics, nims, physical property, experimental measurement
 - **swisslipids** — SwissLipids. Expert-curated lipid reference knowledge base of ~778,000 lipids arranged in a six-level classification hierarchy, with molecular formula, charge, SMILES/InChI, fatty-acid composition by sn-position,… _(categories: compound, ontology)_  
