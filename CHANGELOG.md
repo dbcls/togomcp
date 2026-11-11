@@ -13,13 +13,15 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.32.0] - 2026-11-11
+
 Five new databases on a new external endpoint. MINOR: adds `database=` `rikenbrc_mouse`, `rikenbrc_cell`,
 `rikenbrc_dnabank`, `rikenbrc_plant`, `rikenbrc_jcm` and `endpoint_name="rikenbrc"`; no tool, parameter or
 return shape changed. All five are RIKEN BioResource Research Center catalogues served from RIKEN BRC's own
 Virtuoso (https://knowledge.brc.riken.jp/sparql), not RDF Portal — the eighth external endpoint. Contributed by
 Tatsuya Kushida (#294–#298, merged as #298).
 
-<!-- whatsnew: YYYY-MM-DD | Five new databases from RIKEN BRC's own SPARQL endpoint: mouse strains (<code>rikenbrc_mouse</code>), cell lines including disease-specific human iPS cells (<code>rikenbrc_cell</code>), DNA materials (<code>rikenbrc_dnabank</code>), plant resources (<code>rikenbrc_plant</code>) and the current JCM microbial strain catalogue (<code>rikenbrc_jcm</code>). -->
+<!-- whatsnew: 2026-11-11 | Five new databases from RIKEN BRC's own SPARQL endpoint: mouse strains (<code>rikenbrc_mouse</code>), cell lines including disease-specific human iPS cells (<code>rikenbrc_cell</code>), DNA materials (<code>rikenbrc_dnabank</code>), plant resources (<code>rikenbrc_plant</code>) and the current JCM microbial strain catalogue (<code>rikenbrc_jcm</code>). -->
 
 ### Added
 
@@ -3951,7 +3953,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.31.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.32.0...HEAD
+[2.32.0]: https://github.com/dbcls/togomcp/compare/v2.31.0...v2.32.0
 [2.31.0]: https://github.com/dbcls/togomcp/compare/v2.30.0...v2.31.0
 [2.30.0]: https://github.com/dbcls/togomcp/compare/v2.29.4...v2.30.0
 [2.29.4]: https://github.com/dbcls/togomcp/compare/v2.29.3...v2.29.4
