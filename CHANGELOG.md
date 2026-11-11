@@ -13,6 +13,21 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+Second RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_mouse` entry below). MINOR:
+adds `database="rikenbrc_cell"`.
+
+<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_cell</code> — RIKEN BRC's catalogue of about 9,900 cell lines, including disease-specific human iPS cells, with donor disease linked to MONDO and NANDO, collections, culture conditions and Cellosaurus cross-references. -->
+
+### Added
+
+- **RIKEN BRC Cell** (`database="rikenbrc_cell"`, ~9.9k cell lines, graph `xsearch_cell`). Its MIE carries 7
+  verified examples, including disease lookup anchored on MONDO IRIs, a MONDO subtree expanded on `primary`
+  via `SERVICE`, and a same-endpoint join to the co-hosted Cellosaurus copy (lines flagged as misidentified).
+  Five header gotchas: the graph pin (×1.99 unpinned through `xsearch_cell_brso`), cell-line IRIs that are
+  either `cell:cell_<number>` or `obo:CLO_` (join on `dct:identifier`), per-predicate literal forms, literals
+  that print identically but do not join across graphs (re-type with `STRDT`), and Virtuoso's SP031 errors.
+- `references/endpoints.md`: `rikenbrc` → `primary` verified for `SERVICE`; `rikenbrc` → SIB fails.
+
 New database on a new external endpoint. MINOR: adds `database="rikenbrc_mouse"` and
 `endpoint_name="rikenbrc"`; no tool, parameter or return shape changed. The RIKEN BRC mouse strain
 catalogue is served from RIKEN BRC's own endpoint (https://knowledge.brc.riken.jp/sparql), the first
@@ -36,7 +51,7 @@ of five RIKEN BRC catalogues planned there (cell lines, DNA, plants and the late
 ### Changed
 
 - The generated database catalog (`02b_database_catalog.md`, `references/database-catalog.md`) is
-  regenerated: 52 databases, with new categories `biological resource` and `model organism`.
+  regenerated: 53 databases, with new categories `biological resource` and `model organism`.
 
 ## [2.31.0] - 2026-11-11
 

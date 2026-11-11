@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 52 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 53 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -10,9 +10,9 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **biological resource** — `rikenbrc_mouse`
+- **biological resource** — `rikenbrc_cell` `rikenbrc_mouse`
 - **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
-- **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
+- **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `rikenbrc_cell` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
 - **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
@@ -122,6 +122,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: pathway, reaction, biopax, signaling, metabolism, protein, complex, small molecule, catalyst, enzyme, ec number, modification, phosphorylation, cellular location, gene ontology, species
 - **rhea** — Rhea — Annotated Biochemical Reactions. Expert-curated, atom-balanced biochemical reactions (18,854 master reactions) with ChEBI-linked participants, EC-number and GO cross-references, transport/location annotations, and PubMed citations;… _(categories: reaction)_  
   keywords: biochemical reaction, enzyme, substrate, product, cofactor, ec number, stoichiometry, mass balance, chebi, metabolite, transport, directional reaction, catalysis
+- **rikenbrc_cell** — RIKEN BRC Cell — RIKEN BioResource Research Center cell line catalogue. Catalogue of ~9.9k cell lines distributed by the RIKEN BRC Cell Bank (RCB, HPS, AES, HEV … numbers) — human iPS cell lines from patients with ALS, Rett syndrome and other intractable diseases, genera… _(categories: biological resource, disease)_  
+  keywords: biological resource, cell line, ips cell, disease-specific ips cell, intractable disease, es cell, hybridoma, ebv-transformed b cell, cell bank, cell line donor, culture condition, cellosaurus, riken brc, bioresource
 - **rikenbrc_mouse** — RIKEN BRC Mouse — RIKEN BioResource Research Center mouse strain catalogue. Catalogue of ~6.9k mouse strains distributed by the RIKEN BioResource Research Center (RBRC numbers) — strain name, description, resource type (targeted, transgenic, CRISPR, ENU, spontaneous, inbred,… _(categories: biological resource, model organism)_  
   keywords: biological resource, mouse strain, model organism, mutant mouse, transgenic, knockout, crispr, cre driver, mammalian phenotype, human ortholog, riken brc, bioresource, strain availability
 - **supercon** — SuperCon — NIMS Superconducting Materials Database. Curated experimental records for oxide and metallic superconductors (NIMS), extracted from ~7,249 journal articles: critical temperature (Tc and variants), critical magnetic fields, crystal structure… _(categories: materials, physics)_  
