@@ -28,7 +28,7 @@ count looks inflated (it hurt scores when called routinely: 16.73 vs. 17.59 with
 **Third route, from a few verified callers only: `SERVICE` federation.** Some endpoints
 can send part of a query to another endpoint in a `SERVICE <url> { … }` block — verified
 2026-09-15: WikiPathways → UniProt on SIB, IDSM → Rhea, SwissLipids → Rhea, and RDF
-Portal's `ebi` → LIPID MAPS; 2026-09-17: `microbes` → UniProt on SIB. Run the query on the
+Portal's `ebi` → LIPID MAPS; 2026-09-17: `microbes` → UniProt on SIB; 2026-11-11: `rikenbrc` (RIKEN BRC, `database=rikenbrc_mouse`) → NCBI Gene on RDF Portal's `ncbi`. Run the query on the
 **calling** endpoint (`database=wikipathways` / `idsm` / `swisslipids` / `bh26microbes`; for the LIPID MAPS join,
 `database=lipidmaps` with `endpoint_name=ebi`), not the one inside
 `SERVICE`: routed to the remote endpoint instead it fails or returns 0 rows. The direction

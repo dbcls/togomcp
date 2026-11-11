@@ -1,0 +1,267 @@
+# MIE v3 — RIKEN BRC Experimental Animal Division mouse strain catalogue (graph xsearch_animal), 2026-11-11.
+# Served from RIKEN BRC's own endpoint (knowledge.brc.riken.jp), NOT RDF Portal.
+mie_spec: 3
+database: rikenbrc_mouse
+
+discovery:
+  title: RIKEN BRC Mouse — RIKEN BioResource Research Center mouse strain catalogue
+  description: >
+    Catalogue of ~6.9k mouse strains distributed by the RIKEN BioResource Research Center (RBRC numbers) —
+    strain name, description, resource type (targeted, transgenic, CRISPR, ENU, spontaneous, inbred, congenic …),
+    carried genes/alleles with MGI and NCBI Gene links and human orthologs, Mammalian Phenotype (MP) annotations,
+    research applications, preservation status, depositor, references and health-check records.
+  keywords: [biological resource, mouse strain, model organism, mutant mouse, transgenic, knockout, crispr,
+             cre driver, mammalian phenotype, human ortholog, riken brc, bioresource, strain availability]
+  categories: [model organism, biological resource]
+
+endpoint: https://knowledge.brc.riken.jp/sparql   # RIKEN BRC's own Virtuoso — ~400 named graphs; endpoint_name rikenbrc
+base_uri: http://metadb.riken.jp/db/rikenbrc_mouse/   # strain IRI = base + RBRC<5 digits> (also RBRC-GD…, RBRC-GSC…)
+graphs:
+  primary: http://metadb.riken.jp/db/xsearch_animal
+  co_hosted:
+    xsearch_animal_brso: >
+      DUPLICATE + INFLATION. The same strains (same IRIs) re-modelled in BRSO, re-declaring most predicates
+      (sio:SIO_001279 51,154 vs 28,389; brs:brs_hasGenomicFeature, xs:humanOrtholog, rdfs:seeAlso …). An unpinned
+      query reads both and multiplies rows (gotcha graph_pin). Never pin it together with the primary graph.
+    mouse_test / rat_test / medaka_test / zebra_test / xsearch_plant(_brso): >
+      SCOPE BLEED on sio:SIO_001279 (18,260 / 161 / 492 / 469 / 217+434) — foreign or test subjects join an
+      unpinned phenotype query.
+    ontology/MP: >
+      JOIN. The MP terms the strains point at carry NO label and NO hierarchy in the primary graph; labels and
+      rdfs:subClassOf live here (examples phenotype_top, enum_phenotype_subtree). Pin it on the ontology leg only.
+    xsearch_cell / xsearch_dnabank / xsearch_jcm / xsearch_plant: >
+      Other RIKEN BRC catalogues (cells, DNA, microbes, plants) on the same endpoint and same brs: schema — they
+      bleed into any unpinned brs:/xs: pattern. NB xsearch_jcm here is NOT the RDF Portal `jcm` graph.
+
+entity_counts:                       # graph-pinned COUNT(DISTINCT), ?st rdfs:subClassOf mus:Strain — 2026-11-11
+  strains: 6864
+  strains_with_MP_annotation: 4335   # 4,743 distinct MP terms
+  strains_with_MGI_gene: 5707
+  strains_with_human_ortholog: 4517
+  strains_with_PubMed_reference: 4684
+  strains_with_health_certificate: 2403   # 44,085 mus:HealthCertificate records
+  by_preservation: {frozen_sperm_StrainStatus_3: 4954, frozen_embryos_StrainStatus_2: 4155, live_mice_StrainStatus_1: 127}
+  organism: "Mus musculus 6,799; M. m. molossinus 33; M. m. musculus 14; other Mus subspecies/species 18"
+  date: "2026-11-11"
+
+global_gotchas:
+  - id: graph_pin
+    say: >
+      GRAPH IS MANDATORY: wrap every pattern in GRAPH <http://metadb.riken.jp/db/xsearch_animal>. The endpoint holds
+      ~400 graphs; xsearch_animal_brso repeats the same strains and mouse_test etc. add more, so an unpinned
+      phenotype lookup returns ×2.60 the rows (686 vs 264 for MP_0001262) and even COUNT(DISTINCT) is wrong
+      (268 vs 264 strains).
+    check:
+      kind: ratio
+      date: "2026-11-11"
+      unpinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { ?st <http://semanticscience.org/resource/SIO_001279> ?ph . ?ph <http://semanticscience.org/resource/SIO_000255> <http://purl.obolibrary.org/obo/MP_0001262> }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st <http://semanticscience.org/resource/SIO_001279> ?ph . ?ph <http://semanticscience.org/resource/SIO_000255> <http://purl.obolibrary.org/obo/MP_0001262> } }
+      expect: {ratio: 2.598, tolerance: 0.05}
+  - id: strains_are_classes
+    say: >
+      A strain is an rdfs:Class with `rdfs:subClassOf mus:Strain` — `?st a mus:Strain` matches nothing. Anchor
+      strains with `?st rdfs:subClassOf mus:Strain` (6,864).
+    check:
+      kind: absent
+      date: "2026-11-11"
+      query: |
+        SELECT ?st WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st a <http://metadb.riken.jp/db/rikenbrc_mouse/Strain> } } LIMIT 1
+  - id: literal_forms
+    say: >
+      Literal form is fixed PER PREDICATE and mixed across the graph. Typed ^^xsd:string: gene symbols/names
+      (skos:altLabel, rdfs:label on brs:brs_gene), strain rdfs:label, xs:application, dct:identifier, donorDNA.
+      Language-tagged @en/@ja: dc:description, strainDevelopment, colonyMaintenance, foaf:name, organization,
+      termsAndConditions, expectedDelivery. A plain "…" literal matches NEITHER — it silently returns 0 rows.
+      Write "Pax6"^^xsd:string, or FILTER(STR(?x) = "…"). The @ja tag is not reliable for script (some @ja
+      values are English), so do not use LANG to pick Japanese text.
+    check:
+      kind: zero_rows
+      date: "2026-11-11"
+      query: |
+        SELECT ?g WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?g a <http://metadb.riken.jp/db/bioresource_schema/brs_gene> ; <http://www.w3.org/2004/02/skos/core#altLabel> "Pcdhg" } } LIMIT 1
+  - id: duplicated_gene_nodes
+    say: >
+      Gene/allele data are blank nodes repeated per strain AND per source: a strain carries one genomic-feature
+      node per provenance (xs:provenance "ead" or "imsr"), and every xref exists in 2 IRI forms
+      (identifiers.org/ncbigene/N and www.ncbi.nlm.nih.gov/gene/N; http://identifiers.org/mgi/MGI:N and
+      https://identifiers.org/MGI:N). Always COUNT(DISTINCT ?st) and filter xrefs to ONE prefix.
+
+examples:
+  - id: strain_record
+    intent: core metadata for one strain by its RBRC IRI (the cheapest query)
+    question: "What is RBRC01273, what type of resource is it, how is it preserved and who deposited it?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      PREFIX mus:  <http://metadb.riken.jp/db/rikenbrc_mouse/>
+      SELECT ?id ?label ?page ?desc ?rtype ?status ?depositor WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_animal> {
+          VALUES ?st { mus:RBRC01273 }
+          ?st rdfs:subClassOf mus:Strain ; dct:identifier ?id ; rdfs:label ?label ; foaf:page ?page .
+          OPTIONAL { ?st dc:description ?desc FILTER(LANG(?desc) = "en") }
+          OPTIONAL { ?st xs:resourceTypeLink ?rtype }
+          OPTIONAL { ?st brs:brs_preservationStatus ?status }
+          OPTIONAL { ?st brs:brs_depositedBy/foaf:name ?depositor FILTER(LANG(?depositor) = "en") }
+        }
+      }
+    verified: {row_count: 1, has_values: ["RBRC01273", "sey (small eye) DBA/2 x B6", "resource_type_spontaneous_mutation", "StrainStatus_2"], date: "2026-11-11"}
+    teaches: "Strain IRI = mus:RBRC<nnnnn>; dct:identifier 'RBRC01273'; foaf:page = catalogue page. dc:description is @en + @ja. Preservation (brs_preservationStatus) and availability (brs_strainAvailability) are multi-valued enum IRIs: StrainStatus_1 live mice, _2 frozen embryos, _3 frozen sperm."
+
+  - id: strains_by_gene_symbol
+    intent: find strains carrying a gene by its symbol — the xsd:string literal form and DISTINCT
+    question: "Which RIKEN BRC mouse strains carry a Pax6 allele?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      SELECT DISTINCT ?st ?label WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_animal> {
+          ?st brs:brs_hasGenomicFeature/brs:brs_hasGene ?g ; rdfs:label ?label .
+          ?g skos:altLabel "Pax6"^^xsd:string .
+        }
+      } ORDER BY ?st
+    verified: {row_count: 9, has_values: ["RBRC01273", "RBRC05945", "ICR.Cg-Pax6<tm1Ued>"], date: "2026-11-11"}
+    teaches: "strain → brs:brs_hasGenomicFeature → brs:brs_hasGene (blank node, a brs:brs_gene); symbol = skos:altLabel, full name = rdfs:label, MGI ID = dct:identifier 'MGI:97490'. The allele hangs off the same feature node via brs:brs_hasAllele. Symbols are case-sensitive mouse symbols."
+    traps_avoided:
+      - say: "Without DISTINCT the same strain repeats once per provenance node (ead/imsr): 14 rows for 9 strains (×1.56)."
+        check:
+          kind: ratio
+          date: "2026-11-11"
+          numerator: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st <http://metadb.riken.jp/db/bioresource_schema/brs_hasGenomicFeature>/<http://metadb.riken.jp/db/bioresource_schema/brs_hasGene> ?g . ?g <http://www.w3.org/2004/02/skos/core#altLabel> "Pax6"^^<http://www.w3.org/2001/XMLSchema#string> } }
+          denominator: |
+            SELECT (COUNT(DISTINCT ?st) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st <http://metadb.riken.jp/db/bioresource_schema/brs_hasGenomicFeature>/<http://metadb.riken.jp/db/bioresource_schema/brs_hasGene> ?g . ?g <http://www.w3.org/2004/02/skos/core#altLabel> "Pax6"^^<http://www.w3.org/2001/XMLSchema#string> } }
+          expect: {ratio: 1.556, tolerance: 0.02}
+
+  - id: strains_by_mgi_id
+    intent: the literal-free gene anchor — match the MGI xref IRI instead of a symbol
+    question: "How many strains carry an allele of MGI:97490?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      SELECT (COUNT(DISTINCT ?st) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_animal> {
+          ?st brs:brs_hasGenomicFeature/brs:brs_hasGene/rdfs:seeAlso <http://identifiers.org/mgi/MGI:97490> .
+        }
+      }
+    verified: {n: 9, date: "2026-11-11"}
+    teaches: "brs_gene rdfs:seeAlso carries MGI (http://identifiers.org/mgi/MGI:N), NCBI Gene (http://identifiers.org/ncbigene/N) and OMA (https://omabrowser.org/oma/info/MOUSEnnnnn) IRIs — an IRI match sidesteps the literal-form trap. Non-mouse elements (loxP, neo, Frt, reporters) are brs_gene nodes without MGI links."
+
+  - id: phenotype_top
+    intent: the SET-LEVEL phenotype route + aggregation — MP annotations per strain, labels from the co-hosted MP graph
+    question: "Which Mammalian Phenotype terms are annotated to the most RIKEN BRC mouse strains?"
+    complexity: aggregation
+    sparql: |
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?mp ?label (COUNT(DISTINCT ?st) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st sio:SIO_001279/sio:SIO_000255 ?mp }
+        OPTIONAL { GRAPH <http://metadb.riken.jp/ontology/MP> { ?mp rdfs:label ?label } }
+      } GROUP BY ?mp ?label ORDER BY DESC(?n) ?mp LIMIT 10
+    verified: {min_rows: 10, has_values: ["MP_0002873", "normal phenotype", 816, "MP_0001262", 264], date: "2026-11-11"}
+    teaches: "strain sio:SIO_001279 (has phenotype) → blank node (a sio:SIO_010056) sio:SIO_000255 → obo:MP_nnnnnnn. MP labels are NOT in the primary graph — take them from GRAPH <http://metadb.riken.jp/ontology/MP> (plain-literal match works there). 'normal phenotype' / 'no abnormal phenotype detected' are real annotations: exclude them when asking for abnormal phenotypes."
+
+  - id: enum_phenotype_subtree
+    intent: all strains with any phenotype under an MP branch — hierarchy from the MP graph, annotations from the primary
+    question: "How many strains have a behavior/neurological phenotype (MP_0005386 or any descendant)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?st) AS ?strains) (COUNT(DISTINCT ?mp) AS ?terms) WHERE {
+        GRAPH <http://metadb.riken.jp/ontology/MP> { ?mp rdfs:subClassOf* obo:MP_0005386 }
+        GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st sio:SIO_001279/sio:SIO_000255 ?mp }
+      }
+    verified: {has_values: [692, 276], date: "2026-11-11"}
+    teaches: "Annotations are to specific MP terms; 'all strains with an X phenotype' needs rdfs:subClassOf* over GRAPH <…/ontology/MP>, then the annotation leg pinned to xsearch_animal. Find a branch IRI by label in the MP graph first."
+
+  - id: enum_resource_type
+    intent: the SET-LEVEL strain-type route — xs:resourceTypeLink and its rdfs:subClassOf hierarchy
+    question: "How many mutant strains of each kind (targeted, transgenic, CRISPR, chemically induced …) are there?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      SELECT ?type ?label (COUNT(DISTINCT ?st) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_animal> {
+          ?st xs:resourceTypeLink ?type .
+          ?type rdfs:subClassOf* xs:resource_type_mutant_strain .
+          OPTIONAL { ?type rdfs:label ?label FILTER(LANG(?label) = "en") }
+        }
+      } GROUP BY ?type ?label ORDER BY DESC(?n)
+    verified: {row_count: 10, has_values: ["resource_type_targeting", 2491, "resource_type_CRISPR", 702, "Chemically induced strain"], date: "2026-11-11"}
+    teaches: "xs:resourceTypeLink points at LEAF types; parents are xs:resource_type_mutant_strain (genetically altered), _breeding_type (inbred, congenic, consomic, RI …) and _genetic_background (wild derived). Type labels are @en/@ja."
+    traps_avoided:
+      - say: "Do not sum the per-type rows for a total: some strains carry 2 types, so the 10 rows add to 6,354 while the branch holds 6,273 distinct strains. Count the branch directly with COUNT(DISTINCT ?st) and no GROUP BY."
+        check:
+          kind: count
+          date: "2026-11-11"
+          query: |
+            SELECT (COUNT(DISTINCT ?st) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st <http://metadb.riken.jp/terms/xsearch#resourceTypeLink> ?t . ?t <http://www.w3.org/2000/01/rdf-schema#subClassOf>* <http://metadb.riken.jp/terms/xsearch#resource_type_mutant_strain> } }
+          expect: {value: 6273}
+
+  - id: enum_application
+    intent: the SET-LEVEL research-use route — xs:application controlled strings (Cre driver, disease models …)
+    question: "How many strains are listed as Cre driver lines?"
+    complexity: basic
+    sparql: |
+      PREFIX xs:  <http://metadb.riken.jp/terms/xsearch#>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      SELECT (COUNT(DISTINCT ?st) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st xs:application "Cre driver"^^xsd:string }
+      }
+    verified: {n: 343, date: "2026-11-11"}
+    teaches: "xs:application is a ~28-value controlled list (xsd:string): system tags ('Cre/loxP system' 1,818, 'Fluorescent Proteins/lacZ System', 'FLP/frt system', 'Tet system', 'Cre driver'), research areas ('Neurobiology Research', 'Cancer Research', 'Mouse Models for Human Disease' …) and covid19_* tags. List values with GROUP BY ?app. Cre/loxP etc. are NOT resource types — xs:resource_type_cre_loxp exists but no strain links to it."
+
+  - id: xdb_ncbigene_human_ortholog
+    intent: cross-endpoint join — strain genes → human ortholog → NCBI Gene on RDF Portal via SERVICE
+    question: "For strains carrying Pax6, what is the human ortholog's NCBI Gene symbol and name?"
+    complexity: cross_db
+    endpoint_name: rikenbrc
+    sparql: |
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      SELECT ?hg ?hsym ?hdesc (COUNT(DISTINCT ?st) AS ?strains) WHERE {
+        { SELECT DISTINCT ?st ?hg WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_animal> {
+            ?st brs:brs_hasGenomicFeature/brs:brs_hasGene ?g . ?g skos:altLabel "Pax6"^^xsd:string ; xs:humanOrtholog ?hg .
+            FILTER(STRSTARTS(STR(?hg), "http://identifiers.org/ncbigene/")) } } }
+        SERVICE <https://rdfportal.org/ncbi/sparql> { GRAPH <http://rdfportal.org/dataset/ncbigene> { ?hg rdfs:label ?hsym ; dct:description ?hdesc } }
+      } GROUP BY ?hg ?hsym ?hdesc
+    verified: {row_count: 1, has_values: ["PAX6", "paired box 6", 9], date: "2026-11-11"}
+    teaches: "Run on THIS endpoint (database=rikenbrc_mouse); it can call RDF Portal via SERVICE. Bind the join key locally first in a DISTINCT subquery, keep only the identifiers.org/ncbigene/ form (= ncbigene's base_uri), then cross. xs:humanOrtholog hangs off the mouse brs_gene node."
+
+id_join_map:
+  stable_anchor: >
+    Strain = http://metadb.riken.jp/db/rikenbrc_mouse/RBRC<nnnnn> (also RBRC-GD<nnnnnn> for 102 ENU gene-driven
+    lines, RBRC-GSC<nnnn> for RIKEN GSC lines); dct:identifier repeats the RBRC number as a string; foaf:page =
+    https://brc.riken.jp/mus/RBRC<nnnnn>. Strain names (rdfs:label) are not unique keys.
+  same_endpoint_joins:
+    ontology/MP: "obo:MP_nnnnnnn IRIs from sio:SIO_000255 — labels and rdfs:subClassOf only in GRAPH <http://metadb.riken.jp/ontology/MP>"
+  xrefs:
+    ncbigene: "brs_gene rdfs:seeAlso <http://identifiers.org/ncbigene/N> (mouse gene) and xs:humanOrtholog <http://identifiers.org/ncbigene/N> (human) — both also as https://www.ncbi.nlm.nih.gov/gene/N; SERVICE to https://rdfportal.org/ncbi/sparql works (example xdb_ncbigene_human_ortholog)"
+    mgi: "brs_gene rdfs:seeAlso <http://identifiers.org/mgi/MGI:N> (+ https://identifiers.org/MGI:N); dct:identifier 'MGI:N'"
+    oma: "brs_gene xs:xrefOMA <https://omabrowser.org/oma/info/MOUSEnnnnn> and xs:xrefOMAHuman <…/HUMANnnnnn> — same IRI form as the `oma` MIE (sib endpoint)"
+    pubmed: "strain mus:references → blank node rdfs:seeAlso <http://rdf.ncbi.nlm.nih.gov/pubmed/N> (= pubmed base_uri; also https://www.ncbi.nlm.nih.gov/pubmed/N), dct:identifier = PMID string"
+    taxonomy: "nbrp:organism → blank node obo:RO_0002162 <http://purl.obolibrary.org/obo/NCBITaxon_N> (OBO form, not identifiers.org)"
+  bridged_via_togoid: [uniprot, ensembl, hgnc]
+
+schema_delta:
+  - "mus:HealthCertificate: health-check records — brs:brs_indicatesStrain → strain, mus:examdate (xsd:date), mus:examcategory (@en/@ja), mus:healthCertificateFile (PDF URL)."
+  - "Per-strain strings (xsd:string): mus:ESCellLine, mus:donorDNA, mus:genotype, mus:h-2Haplotype; mus:isRecombinant is xsd:boolean. The bio-safety predicate IRI ends in an encoded space: <http://metadb.riken.jp/db/rikenbrc_mouse/bioSafetyLevel%20> ('P1A', 'P2A')."
+  - "brs:brs_strainTypeLink → mus:straintype_N and brs:brs_geneticBackground → mus:geneticBackground_N are catalogue-internal enums; prefer xs:resourceTypeLink for type questions."
+  - "xs:label on genomic-feature nodes is an HTML <div> rendering for the web UI — never parse it; use the brs_gene / brs_allele nodes."

@@ -13,6 +13,31 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+New database on a new external endpoint. MINOR: adds `database="rikenbrc_mouse"` and
+`endpoint_name="rikenbrc"`; no tool, parameter or return shape changed. The RIKEN BRC mouse strain
+catalogue is served from RIKEN BRC's own endpoint (https://knowledge.brc.riken.jp/sparql), the first
+of five RIKEN BRC catalogues planned there (cell lines, DNA, plants and the latest JCM follow).
+
+<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_mouse</code> — RIKEN BRC's catalogue of about 6,900 mouse strains with genes and alleles, Mammalian Phenotype annotations, human orthologs and research applications, served from RIKEN BRC's own SPARQL endpoint. -->
+
+### Added
+
+- **RIKEN BRC Mouse** (`database="rikenbrc_mouse"`, ~6.9k strains, graph `xsearch_animal`) on the new
+  `rikenbrc` endpoint. Its MIE carries 8 verified examples, including MP enumeration through the
+  co-hosted MP ontology graph, resource-type and research-application enumeration, and a `SERVICE`
+  join to NCBI Gene on RDF Portal's `ncbi` endpoint (human orthologs). Four header gotchas, each with a
+  `check:`: the mandatory graph pin (the endpoint holds ~400 graphs and a `_brso` twin of the same
+  strains, ×2.60 unpinned), strains modelled as `rdfs:subClassOf mus:Strain` rather than `rdf:type`,
+  per-predicate literal forms (`^^xsd:string` vs `@en`/`@ja`; a plain literal matches neither), and
+  duplicated gene nodes and xref IRI forms.
+- `rikenbrc_mouse` registered in `endpoints.csv`; `rikenbrc` added to the Usage Guide endpoint table,
+  and `references/endpoints.md` lists `rikenbrc` → `ncbi` as a verified `SERVICE` caller.
+
+### Changed
+
+- The generated database catalog (`02b_database_catalog.md`, `references/database-catalog.md`) is
+  regenerated: 52 databases, with new categories `biological resource` and `model organism`.
+
 ## [2.31.0] - 2026-11-11
 
 New database. MINOR: adds `database="cellosaurus"`; no tool, parameter or return shape changed.
