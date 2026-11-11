@@ -13,6 +13,20 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+Third RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_cell` and `rikenbrc_mouse`
+entries below). MINOR: adds `database="rikenbrc_dnabank"`.
+
+<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_dnabank</code> — RIKEN BRC's catalogue of about 170,000 DNA materials (human and mouse cDNA clone sets, genome clones, vectors) linked to NCBI Gene, joinable in one query with RIKEN BRC mouse strains. -->
+
+### Added
+
+- **RIKEN BRC DNA** (`database="rikenbrc_dnabank"`, ~170k clones, graph `xsearch_dnabank`). Its MIE carries 5
+  verified examples, including a same-endpoint cross-catalogue join that returns, in one query, the DNA clones
+  of a human gene and the `rikenbrc_mouse` strains carrying its mouse ortholog (shared NCBI Gene IRIs). Five
+  header gotchas: the graph pin (×2.00 unpinned through `xsearch_dnabank_brso`), clones modelled as
+  `rdfs:subClassOf dna:DNAResource`, `^^xsd:string` literals, free-text organism labels, and resource-type
+  labels that collide (group by IRI and set code).
+
 Second RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_mouse` entry below). MINOR:
 adds `database="rikenbrc_cell"`.
 
@@ -51,7 +65,7 @@ of five RIKEN BRC catalogues planned there (cell lines, DNA, plants and the late
 ### Changed
 
 - The generated database catalog (`02b_database_catalog.md`, `references/database-catalog.md`) is
-  regenerated: 53 databases, with new categories `biological resource` and `model organism`.
+  regenerated: 54 databases, with new categories `biological resource` and `model organism`.
 
 ## [2.31.0] - 2026-11-11
 

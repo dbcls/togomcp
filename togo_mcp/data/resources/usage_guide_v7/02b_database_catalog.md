@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 53 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
+All 54 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -8,12 +8,12 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
-- **biological resource** — `rikenbrc_cell` `rikenbrc_mouse`
+- **biological resource** — `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_mouse`
 - **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
 - **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `rikenbrc_cell` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
-- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
+- **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `rikenbrc_dnabank` `tismed` `wikipathways`
 - **genomics** — `bh26microbes` `fantabio` `gwascatalog` `hco` `hgnc` `jogo` `marpolbase` `mco` `mogplus` `oma` `togovar`
 - **glycan** — `glycosmos`
 - **literature** — `lotus` `pubmed` `pubtator`
@@ -77,6 +77,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **reactome** — Reactome Pathway Database. Expert-curated biological pathways and reactions in BioPAX Level 3: hierarchical pathways, biochemical reacti… _[pathway, reaction, biopax, signaling, metabolism, protein]_
 - **rhea** — Rhea. Expert-curated, atom-balanced biochemical reactions (18,854 master reactions) with ChEBI-linked participants,… _[biochemical reaction, enzyme, substrate, product, cofactor, ec number]_
 - **rikenbrc_cell** — RIKEN BRC Cell. Catalogue of ~9.9k cell lines distributed by the RIKEN BRC Cell Bank (RCB, HPS, AES, HEV … numbers) — human i… _[biological resource, cell line, ips cell, disease-specific ips cell, intractable disease, es cell]_
+- **rikenbrc_dnabank** — RIKEN BRC DNA. Catalogue of ~170k DNA materials distributed by the RIKEN BRC DNA Bank — human cDNA clone sets (GNP, NRCD), N… _[biological resource, dna clone, cdna clone, plasmid, expression vector, bac clone]_
 - **rikenbrc_mouse** — RIKEN BRC Mouse. Catalogue of ~6.9k mouse strains distributed by the RIKEN BioResource Research Center (RBRC numbers) — strain… _[biological resource, mouse strain, model organism, mutant mouse, transgenic, knockout]_
 - **supercon** — SuperCon. Curated experimental records for oxide and metallic superconductors (NIMS), extracted from ~7,249 journal art… _[superconductor, superconducting material, critical temperature, tc, critical field, cuprate]_
 - **swisslipids** — SwissLipids. Expert-curated lipid reference knowledge base of ~778,000 lipids arranged in a six-level classification hiera… _[lipid, lipidomics, fatty acid, glycerophospholipid, sphingolipid, sterol]_
