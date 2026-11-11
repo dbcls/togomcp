@@ -1,0 +1,219 @@
+# MIE v3 — RIKEN BRC Experimental Plant Division catalogue (graph xsearch_plant), 2026-11-12.
+# Served from RIKEN BRC's own endpoint (knowledge.brc.riken.jp, endpoint_name rikenbrc), NOT RDF Portal.
+mie_spec: 3
+database: rikenbrc_plant
+
+discovery:
+  title: RIKEN BRC Plant — RIKEN BioResource Research Center experimental plant catalogue
+  description: >
+    Catalogue of ~612k plant resources distributed by the RIKEN BRC Experimental Plant Division — Arabidopsis
+    full-length cDNA (RAFL) clones, full-length cDNA/EST clones of Physcomitrella, Brachypodium, Striga, poplar,
+    cassava, tobacco and other plants, Arabidopsis Ds transposon-tagged, FOX and TF-GR lines, TAC clones,
+    natural accessions with collection country, and plant cell lines — with the carried gene (AGI code,
+    NCBI Gene, OMA) and organism.
+  keywords: [biological resource, arabidopsis, raf l cdna, full-length cdna, ds transposon line, fox line,
+             natural accession, ecotype, physcomitrella, brachypodium, plant cell line, agi code, riken brc]
+  categories: [biological resource, model organism]
+
+endpoint: https://knowledge.brc.riken.jp/sparql   # RIKEN BRC's own Virtuoso — ~400 named graphs; endpoint_name rikenbrc
+base_uri: http://metadb.riken.jp/db/rikenbrc_plant/   # resource IRI = base + <catalogue number> (pda…, pdp…, psh…, sja…)
+graphs:
+  primary: http://metadb.riken.jp/db/xsearch_plant
+  co_hosted:
+    xsearch_plant_brso: >
+      DUPLICATE + INFLATION. The same resources (same IRIs) re-modelled in BRSO and re-declaring the catalogue
+      predicates: an unpinned query returns exactly ×2.00 the rows (gotcha graph_pin) — over 612k resources
+      that also doubles the cost of every scan.
+    xsearch_dnabank: >
+      JOIN (example xdb_dnabank_arabidopsis). rikenbrc_dnabank's gene nodes carry the same
+      <http://identifiers.org/ncbigene/N> IRIs, so plant resources and DNA clones join in one query on IRIs.
+    xsearch_animal / xsearch_cell / xsearch_jcm: "Other RIKEN BRC catalogues on the same brs:/xs: schema — they bleed into any unpinned brs:/xs: pattern."
+
+entity_counts:                       # graph-pinned COUNT(DISTINCT), ?s rdfs:subClassOf pl:PlantResource — 2026-11-12
+  resources: 612133                  # 612,131 with dct:identifier and xs:resourceTypeLink
+  resources_with_gene: 296826
+  by_resource_type: {RAFL_clone: 246207, Physcomitrella_cDNA: 149363, Brachypodium_cDNA: 39746, Striga_cDNA: 35197,
+                     Poplar_cDNA: 23100, Tobacco_EST: 22183, Ds_line: 20574, Cassava_cDNA: 19450, FOX_line: 7031,
+                     TF-GR_line: 5643, TAC_clone: 4648, natural_accession: 1018, cell_line: 80}
+  by_organism: "Arabidopsis thaliana 291,520; Physcomitrella patens 149,363; Brachypodium distachyon 39,746; Striga hermonthica 35,197; Populus nigra 23,100"
+  date: "2026-11-12"
+
+global_gotchas:
+  - id: graph_pin
+    say: >
+      GRAPH IS MANDATORY: wrap every pattern in GRAPH <http://metadb.riken.jp/db/xsearch_plant>. The endpoint holds
+      ~400 graphs and xsearch_plant_brso repeats every resource, so an unpinned query returns ×2.00 the rows
+      (41,148 vs 20,574 for the Ds lines).
+    check:
+      kind: ratio
+      date: "2026-11-12"
+      unpinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { ?s <http://metadb.riken.jp/terms/xsearch#resourceTypeLink> <http://metadb.riken.jp/terms/xsearch#resource_type_Ds_line> }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_plant> { ?s <http://metadb.riken.jp/terms/xsearch#resourceTypeLink> <http://metadb.riken.jp/terms/xsearch#resource_type_Ds_line> } }
+      expect: {ratio: 2.0, tolerance: 0.02}
+  - id: resources_are_classes
+    say: >
+      A resource is an rdfs:Class with `rdfs:subClassOf pl:PlantResource` — `?s a pl:PlantResource` matches
+      nothing. Anchor resources with `?s rdfs:subClassOf pl:PlantResource` (612,133).
+    check:
+      kind: absent
+      date: "2026-11-12"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_plant> { ?s a <http://metadb.riken.jp/db/rikenbrc_plant/PlantResource> } } LIMIT 1
+  - id: literal_forms
+    say: >
+      dct:identifier (catalogue number and the gene's AGI code), rdfs:label, skos:altLabel and the catalogue
+      prefixes are typed ^^xsd:string — a plain "psh00182" or "AT1G01060" matches 0 rows. Resource-type labels
+      are @en/@ja. Write "…"^^xsd:string or FILTER(STR(?x) = "…").
+    check:
+      kind: zero_rows
+      date: "2026-11-12"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_plant> { ?s <http://purl.org/dc/terms/identifier> "psh00182" } } LIMIT 1
+  - id: altlabel_is_pipe_joined
+    say: >
+      A gene node's skos:altLabel packs every synonym into ONE string separated by '|'
+      ("T8K22.11|T8K22_11", "F23E12.190|F23E12_190|high chlorophyll fluorescence phenotype 244"), so an exact
+      match on one synonym returns 0 rows. Match the AGI code on dct:identifier, the NCBI Gene IRI on
+      rdfs:seeAlso, or use FILTER(CONTAINS(STR(?alt), "…")) — which finds 7 resources for T8K22.11.
+    check:
+      kind: zero_rows
+      date: "2026-11-12"
+      query: |
+        SELECT ?g WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_plant> { ?g <http://www.w3.org/2004/02/skos/core#altLabel> "T8K22.11"^^<http://www.w3.org/2001/XMLSchema#string> } } LIMIT 1
+  - id: country_predicate
+    say: >
+      A natural accession's collection country sits under a placeholder-looking predicate:
+      accession mccv:MCCV_000072 → site node <http://test/country> "Germany" (771 sites). Use that exact IRI;
+      country names are free text ('Czech Republico').
+
+examples:
+  - id: resource_record
+    intent: core record for one resource by catalogue number
+    question: "What is RIKEN BRC plant resource psh00182 — which resource type, organism and tagged gene?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      PREFIX nbrp: <http://nbrp.jp/ontology/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX pl:   <http://metadb.riken.jp/db/rikenbrc_plant/>
+      SELECT ?s ?name ?type ?typeLabel ?species ?taxon ?agi ?gene WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_plant> {
+          ?s rdfs:subClassOf pl:PlantResource ; dct:identifier "psh00182"^^xsd:string ; rdfs:label ?name ; xs:resourceTypeLink ?type .
+          OPTIONAL { ?type rdfs:label ?typeLabel FILTER(LANG(?typeLabel) = "en") }
+          OPTIONAL { ?s nbrp:organism ?o . ?o rdfs:label ?species ; obo:RO_0002162 ?taxon }
+          OPTIONAL { ?s brs:brs_hasGenomicFeature/brs:brs_hasGene ?g . ?g dct:identifier ?agi ; rdfs:seeAlso ?gene .
+                     FILTER(STRSTARTS(STR(?gene), "http://identifiers.org/ncbigene/")) }
+        }
+      }
+    verified: {row_count: 1, has_values: ["psh00182", "54-0858-1", "resource_type_Ds_line", "Arabidopsis thaliana", "NCBITaxon_3702", "AT2G02590", "814789"], date: "2026-11-12"}
+    teaches: "Catalogue number = dct:identifier; its series is also in xs:CatalogNoPrefix ('psh') and xs:CatalogNoPrefixPlus ('psh0'). foaf:page = the plant.rtc.riken.jp detail page. Gene node = resource → brs:brs_hasGenomicFeature → brs:brs_hasGene (blank node): dct:identifier and usually rdfs:label = AGI code for Arabidopsis (other species carry their own IDs or names), rdfs:seeAlso NCBI Gene (two IRI forms) + OMA. Organism node carries rdfs:label, skos:altLabel (incl. Japanese) and obo:RO_0002162 NCBITaxon."
+
+  - id: resources_by_agi
+    intent: every resource carrying one Arabidopsis gene, split by resource type (clones vs tagged lines)
+    question: "Which RIKEN BRC resources are available for Arabidopsis AT1G01060 (LHY) — cDNA clones, Ds lines, others?"
+    complexity: intermediate
+    sparql: |
+      PREFIX dct: <http://purl.org/dc/terms/>
+      PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+      PREFIX brs: <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX xs:  <http://metadb.riken.jp/terms/xsearch#>
+      SELECT ?type (COUNT(DISTINCT ?s) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_plant> {
+          ?s brs:brs_hasGenomicFeature/brs:brs_hasGene ?g ; xs:resourceTypeLink ?type .
+          ?g dct:identifier "AT1G01060"^^xsd:string .
+        }
+      } GROUP BY ?type ORDER BY DESC(?n)
+    verified: {row_count: 3, has_values: ["resource_type_RAFL_clone", 19, "resource_type_Ds_line", 8, "resource_type_TF_clone", 1], date: "2026-11-12"}
+    teaches: "The AGI code is the gene anchor for Arabidopsis (uppercase, ^^xsd:string). One gene typically has several RAFL cDNA clones plus Ds insertion lines and, for transcription factors, TF clones / TF-GR lines — group by xs:resourceTypeLink to separate DNA from seed stocks."
+
+  - id: resource_type_counts
+    intent: the SET-LEVEL resource-type route — xs:resourceTypeLink with its parent class
+    question: "What kinds of plant resources does RIKEN BRC distribute, and how many of each?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      SELECT ?type ?parent ?label (COUNT(DISTINCT ?s) AS ?n) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_plant> {
+          ?s xs:resourceTypeLink ?type .
+          OPTIONAL { ?type rdfs:subClassOf ?parent }
+          OPTIONAL { ?type rdfs:label ?label FILTER(LANG(?label) = "en") }
+        }
+      } GROUP BY ?type ?parent ?label ORDER BY DESC(?n) ?type LIMIT 10
+    verified: {min_rows: 10, has_values: ["resource_type_RAFL_clone", "resource_type_cDNA_clone", 246207, "resource_type_Ds_line", "resource_type_mutant_line", 20574], date: "2026-11-12"}
+    teaches: "21 leaf types under parents resource_type_cDNA_clone, _genomic_clone, _mutant_line, _wildtype_derived_line, _plant_resource and _DNA%20material (note the encoded space; also resource_type_TF-GR%20Line). This full aggregate over 612k resources completes well inside the timeout — when pinned."
+
+  - id: resources_by_organism
+    intent: species route through the organism node's NCBITaxon
+    question: "For which plant species does RIKEN BRC hold the most resources?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX nbrp: <http://nbrp.jp/ontology/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX pl:   <http://metadb.riken.jp/db/rikenbrc_plant/>
+      SELECT ?taxon (SAMPLE(STR(?name)) AS ?species) (COUNT(DISTINCT ?s) AS ?resources) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_plant> {
+          ?s rdfs:subClassOf pl:PlantResource ; nbrp:organism ?o .
+          OPTIONAL { ?o obo:RO_0002162 ?taxon }
+          OPTIONAL { ?o rdfs:label ?name }
+        }
+      } GROUP BY ?taxon ORDER BY DESC(?resources) ?taxon LIMIT 9
+    verified: {min_rows: 9, has_values: ["NCBITaxon_3702", 291520, "NCBITaxon_3218", 149363, "Brachypodium distachyon"], date: "2026-11-12"}
+    teaches: "Here (unlike rikenbrc_dnabank) the organism node carries obo:RO_0002162 for almost every resource, so group by the taxon IRI; a few minor species have a label only."
+
+  - id: accessions_by_country
+    intent: natural accessions (ecotypes) by collection country — the test-namespace predicate
+    question: "From which countries do the Arabidopsis natural accessions at RIKEN BRC come?"
+    complexity: aggregation
+    sparql: |
+      PREFIX xs:   <http://metadb.riken.jp/terms/xsearch#>
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      SELECT ?country (COUNT(DISTINCT ?s) AS ?accessions) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_plant> {
+          ?s xs:resourceTypeLink xs:resource_type_natural_accession ; mccv:MCCV_000072 ?site .
+          ?site <http://test/country> ?country .
+        }
+      } GROUP BY ?country ORDER BY DESC(?accessions) ?country LIMIT 8
+    verified: {min_rows: 8, has_values: ["Germany", 193, "Japan", 175, "Spain", 44], date: "2026-11-12"}
+    teaches: "mccv:MCCV_000072 links an accession to its collection-site node; the country is <http://test/country> (see gotcha country_predicate). 1,018 natural accessions, 771 with a site."
+
+  - id: xdb_dnabank_arabidopsis
+    intent: same-endpoint cross-catalogue join — Arabidopsis genes present in both the plant and the DNA catalogue
+    question: "Which Arabidopsis genes are carried both by RIKEN BRC DNA Bank clones and by RIKEN BRC plant resources, and how many of each?"
+    complexity: cross_db
+    endpoint_name: rikenbrc
+    sparql: |
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?ng) AS ?shared_genes) (COUNT(DISTINCT ?c) AS ?dna_clones) (COUNT(DISTINCT ?p) AS ?plant_resources) WHERE {
+        { SELECT DISTINCT ?c ?ng WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_dnabank> {
+            ?c brs:brs_hasGenomicFeature/brs:brs_hasGene ?g . ?g obo:RO_0002162 obo:NCBITaxon_3702 ; rdfs:seeAlso ?ng .
+            FILTER(STRSTARTS(STR(?ng), "http://identifiers.org/ncbigene/")) } } }
+        GRAPH <http://metadb.riken.jp/db/xsearch_plant> { ?p brs:brs_hasGenomicFeature/brs:brs_hasGene/rdfs:seeAlso ?ng }
+      }
+    verified: {row_count: 1, has_values: [10, 67, 602], date: "2026-11-12"}
+    teaches: "Start from the smaller catalogue (67 Arabidopsis clones in rikenbrc_dnabank) in a DISTINCT subquery, then join the NCBI Gene IRI into this graph. Both legs pinned to their own graph; IRIs join directly."
+
+id_join_map:
+  stable_anchor: >
+    Resource = http://metadb.riken.jp/db/rikenbrc_plant/<catalogue number>; dct:identifier repeats the number
+    (xsd:string); xs:CatalogNoPrefix gives its series. Arabidopsis genes: AGI code on the gene node's dct:identifier.
+  same_endpoint_joins:
+    xsearch_dnabank: "gene node rdfs:seeAlso <http://identifiers.org/ncbigene/N> = rikenbrc_dnabank gene rdfs:seeAlso — example xdb_dnabank_arabidopsis"
+  xrefs:
+    ncbigene: "gene node rdfs:seeAlso <http://identifiers.org/ncbigene/N> (= `ncbigene` base_uri) and https://www.ncbi.nlm.nih.gov/gene/N — filter to one prefix"
+    oma: "gene node rdfs:seeAlso <https://omabrowser.org/oma/info/ARATHnnnnn>"
+    taxonomy: "organism node obo:RO_0002162 obo:NCBITaxon_N"
+    pubmed: "resource cito:citesAsAuthority <http://rdf.ncbi.nlm.nih.gov/pubmed/N> and dct:references <http://identifiers.org/pubmed/N> (233 resources)"
+
+schema_delta:
+  - "Phenotypes are sparse: sio:SIO_001279 on 217 resources; brs:brs_memo (989, xsd:string) holds free-text notes such as 'Phenotype: GUS expression in the root …'."
+  - "nbrp:depositedBy → depositor node (890 resources)."

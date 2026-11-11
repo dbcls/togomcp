@@ -13,6 +13,19 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+Fourth RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_dnabank`, `rikenbrc_cell` and
+`rikenbrc_mouse` entries below). MINOR: adds `database="rikenbrc_plant"`.
+
+<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_plant</code> — RIKEN BRC's catalogue of about 612,000 plant resources (Arabidopsis RAFL cDNA clones, Ds and FOX lines, natural accessions, cDNA clones of other plants) searchable by AGI code and NCBI Gene. -->
+
+### Added
+
+- **RIKEN BRC Plant** (`database="rikenbrc_plant"`, ~612k resources, graph `xsearch_plant`). Its MIE carries 6
+  verified examples, including resources per AGI code split by resource type, natural accessions by country and a
+  same-endpoint join to `rikenbrc_dnabank` on NCBI Gene IRIs. Five header gotchas: the graph pin (×2.00 unpinned
+  through `xsearch_plant_brso`), resources modelled as `rdfs:subClassOf pl:PlantResource`, `^^xsd:string`
+  literals, pipe-joined synonym strings in `skos:altLabel`, and the `<http://test/country>` predicate.
+
 Third RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_cell` and `rikenbrc_mouse`
 entries below). MINOR: adds `database="rikenbrc_dnabank"`.
 
@@ -65,7 +78,7 @@ of five RIKEN BRC catalogues planned there (cell lines, DNA, plants and the late
 ### Changed
 
 - The generated database catalog (`02b_database_catalog.md`, `references/database-catalog.md`) is
-  regenerated: 54 databases, with new categories `biological resource` and `model organism`.
+  regenerated: 55 databases, with new categories `biological resource` and `model organism`.
 
 ## [2.31.0] - 2026-11-11
 
