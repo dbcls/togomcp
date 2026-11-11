@@ -142,7 +142,7 @@ async def togomcp_usage_guide() -> str:
     with ≥3 consecutive run_sparql calls score ~1.1 points lower, and SPARQL
     written before the MIE schema was read accounts for ~95% of silent SPARQL
     failures. Most RDF Portal endpoints host MANY databases (primary: 22, ebi: 6,
-    ncbi: 5, sib: 4) and every endpoint hosts many GRAPHS; an unpinned query reads
+    ncbi: 5, sib: 5) and every endpoint hosts many GRAPHS; an unpinned query reads
     all of them, so a co-hosted graph can supply a predicate that looks native and
     return a plausible, correctly-shaped, wrong number with no error. The guide's
     CO-TENANCY section describes the graph pins that prevent this.

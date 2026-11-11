@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 50 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 51 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -11,7 +11,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
 - **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
-- **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
+- **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
 - **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
@@ -28,7 +28,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **sequence** — `ddbj` `ensembl`
 - **structure** — `bmrb` `pdb`
 - **taxonomy** — `bgee` `lotus` `taxonomy`
-- **variant** — `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
+- **variant** — `cellosaurus` `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
 
 **All databases** (alphabetical):
 
@@ -44,6 +44,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: nmr, nuclear magnetic resonance, chemical shift, resonance assignment, relaxation, t1, t2, heteronuclear noe, residual dipolar coupling, coupling constant, order parameter, sample conditions, spectrometer, field strength, metabolite, metabolomics, nmr-star
 - **brenda** — BRENDA (Braunschweig Enzyme Database). Manually curated enzyme data classified by EC number: enzyme instances (one per organism), EC-class definitions, inhibitors/activators/cofactors, substrates/products, reactions, tissue and subcellula… _(categories: enzymology, protein, reaction)_  
   keywords: enzyme, ec number, enzymatic reaction, substrate, product, inhibitor, activator, cofactor, biochemistry, catalysis, inchi, inchikey, tissue expression, subcellular localization
+- **cellosaurus** — Cellosaurus — cell line knowledge resource. Curated records for ~169,000 cell lines (cancer, transformed, iPSC/ESC, hybridoma and more) from ~900 species, with donor disease (NCIt/Orphanet), origin site (UBERON), cell type (CL), sequence varia… _(categories: disease, variant)_  
+  keywords: cell line, cancer cell line, ipsc, embryonic stem cell, hybridoma, misidentified cell line, contamination, str profile, cell line mutation, gene knockout, donor disease, tissue of origin, cell type, depmap, cell authentication
 - **chebi** — ChEBI — Chemical Entities of Biological Interest. OWL ontology of 224k+ chemical entities (small molecules, ions, radicals, functional groups) with a rdfs:subClassOf class hierarchy, molecular properties (formula/mass/InChI/SMILES/charge) in the che… _(categories: compound, ontology)_  
   keywords: chemical entity, small molecule, metabolite, lipid, amino acid, ion, radical, functional group, biological role, drug, molecular formula, inchi, smiles, ontology, hierarchy, chebi, compound
 - **chembl** — ChEMBL RDF. Manually curated bioactive molecules with drug-like properties: ~1.9M compounds, 1.9M assays, 21M+ bioactivity measurements (IC50/Ki/…), drug targets, mechanisms of action, and disease indications —… _(categories: compound, drug_target)_  

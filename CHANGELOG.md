@@ -13,6 +13,42 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.31.0] - 2026-11-11
+
+New database. MINOR: adds `database="cellosaurus"`; no tool, parameter or return shape changed.
+Cellosaurus (SIB's cell line knowledge resource) is the first cell-line database in TogoMCP. It was
+chosen from the production tool-call log (2026-07-27 to 11-10): about 15 sessions went looking for
+cell-line data, querying the Cell Line Ontology graph or TogoID's Cellosaurus labels directly, with
+no MIE to steer them. Other candidates on RDF Portal were rejected as frozen snapshots
+(Expression Atlas ~2017, EBI BioSamples 2019-11, RefEx 2015).
+
+<!-- whatsnew: 2026-11-11 | New database: <code>cellosaurus</code> — SIB's cell line knowledge resource, about 169,000 cell lines with donor disease, tissue of origin, mutations, STR profiles, misidentification warnings and links to DepMap, COSMIC and ChEMBL. -->
+
+### Added
+
+- **Cellosaurus** (168,970 cell lines, data dated 2026-06-25) as a new database
+  (`database="cellosaurus"`, sib endpoint, graph `http://rdfportal.org/dataset/cellosaurus`).
+  Its MIE carries 12 verified examples and 9 executable checks. They cover what an agent
+  cannot guess about this graph:
+  - every annotation (disease, site, species, cell type, mutation) is a per-line blank node,
+    one hop away from the ontology IRI, so counting nodes is not counting genes or lines;
+  - NCIt is not on the endpoint, but Cellosaurus embeds the NCIt disease hierarchy on its own
+    Xref nodes, so "melanoma of any subtype" returns 3,006 lines where the exact term gives 2,234;
+  - names must be anchored with `cello:recommendedName`, because `rdfs:label` holds every
+    synonym ("K1" matches 10 different lines);
+  - the UniProt join has to rewrite HGNC IDs (`"HGNC:1097"` vs `…/hgnc/1097`) and is anchored on
+    the UniProt side (0.2 s). The other direction is correct, but how long it takes varies widely
+    from one run to the next.
+
+### Changed
+
+- The sib endpoint now hosts 5 databases, not 4. The count is updated in the Usage Guide's
+  endpoint table and the `run_sparql` description, and the generated database catalog is
+  regenerated.
+- `/stats` credits queries using the `cello:` prefix to Cellosaurus.
+- Intro pages (EN/JA): a Cellosaurus card, and "over 40" becomes "over 50" databases
+  (51 are registered).
+
 ## [2.30.0] - 2026-11-10
 
 New database and an MIE fix. MINOR: adds `database="jcm"`; no tool, parameter or return shape
@@ -3873,7 +3909,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.30.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.31.0...HEAD
+[2.31.0]: https://github.com/dbcls/togomcp/compare/v2.30.0...v2.31.0
 [2.30.0]: https://github.com/dbcls/togomcp/compare/v2.29.4...v2.30.0
 [2.29.4]: https://github.com/dbcls/togomcp/compare/v2.29.3...v2.29.4
 [2.29.3]: https://github.com/dbcls/togomcp/compare/v2.29.2...v2.29.3

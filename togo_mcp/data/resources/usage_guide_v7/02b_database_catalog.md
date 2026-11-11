@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 50 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
+All 51 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -9,7 +9,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
 - **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
-- **disease** — `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
+- **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
 - **gene** — `bgee` `ensembl` `fantabio` `glycosmos` `hgnc` `marpolbase` `medgen` `ncbigene` `pubcasefinder` `tismed` `wikipathways`
@@ -26,7 +26,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **sequence** — `ddbj` `ensembl`
 - **structure** — `bmrb` `pdb`
 - **taxonomy** — `bgee` `lotus` `taxonomy`
-- **variant** — `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
+- **variant** — `cellosaurus` `clinvar` `gwascatalog` `jogo` `mogplus` `togovar`
 
 **All databases** (alphabetical):
 
@@ -36,6 +36,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **bh26microbes** — BH26 Microbes. Experimental BioHackathon 2026 dataset of KofamScan KEGG Orthology (KO) assignments — with HMM score, E-value… _[kegg orthology, ko, kofamscan, functional annotation, hmm profile, prokaryotic genome]_
 - **bmrb** — BMRB. NMR spectroscopy data for biomolecules and metabolites: assigned chemical shifts, relaxation and coupling mea… _[nmr, nuclear magnetic resonance, chemical shift, resonance assignment, relaxation, t1]_
 - **brenda** — BRENDA. Manually curated enzyme data classified by EC number: enzyme instances (one per organism), EC-class definitio… _[enzyme, ec number, enzymatic reaction, substrate, product, inhibitor]_
+- **cellosaurus** — Cellosaurus. Curated records for ~169,000 cell lines (cancer, transformed, iPSC/ESC, hybridoma and more) from ~900 species… _[cell line, cancer cell line, ipsc, embryonic stem cell, hybridoma, misidentified cell line]_
 - **chebi** — ChEBI. OWL ontology of 224k+ chemical entities (small molecules, ions, radicals, functional groups) with a rdfs:subC… _[chemical entity, small molecule, metabolite, lipid, amino acid, ion]_
 - **chembl** — ChEMBL RDF. Manually curated bioactive molecules with drug-like properties: ~1.9M compounds, 1.9M assays, 21M+ bioactivit… _[compound, bioactive molecule, drug, target, bioactivity, ic50]_
 - **clinvar** — ClinVar RDF. NCBI's public archive of human genomic variants and their clinically asserted significance (pathogenic/benign… _[variant, mutation, clinical significance, pathogenic, benign, uncertain significance]_

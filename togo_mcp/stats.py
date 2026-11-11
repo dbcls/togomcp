@@ -287,6 +287,7 @@ SIGNATURE_PREFIXES = {
     "taxon": "taxonomy",        # http://identifiers.org/taxonomy/
     "nuc": "ddbj",              # http://ddbj.nig.ac.jp/ontologies/nucleotide/
     "insdc": "ddbj",
+    "cello": "cellosaurus",     # https://purl.expasy.org/cellosaurus/rdf/ontology/
 }
 
 # Prefix strings that bind to DIFFERENT namespaces in different databases, so
