@@ -361,6 +361,73 @@ examples:
             SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000077> ?a FILTER(REGEX(STRAFTER(STR(?a), "insdc:"), "^[A-Z]{4}[0-9]{8}$", "")) } }
           expect: {value: 12, tolerance: 0.02}
 
+  - id: producers_thermophilic
+    intent: strains with a recorded application (useful metabolite / enzyme) AND a high optimum growth temperature
+    question: "Which JCM strains with a documented useful product grow optimally at 60 °C or above?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      SELECT ?label ?name ?production ?tempC
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; rdfs:label ?label ;
+             mccv:MCCV_000012 ?name ; mccv:MCCV_000033 ?production ;   # application text (7.3% of strains)
+             mccv:MCCV_000073/mccv:MCCV_000014 ?t .                    # culture condition → temperature node
+          ?t sio:SIO_000221 obo:UO_0000027 ; rdf:value ?tempC .         # unit °C; value is xsd:decimal
+          FILTER(?tempC >= 60)                                          # numeric compare, no cast needed
+        }
+      }
+      ORDER BY DESC(?tempC) ?label
+    verified: {row_count: 7, has_values: ["JCM 9378", "Thermococcus profundus Kobayashi et al. 1995", "Production of Extracellular amylase", 80], date: "2026-11-11"}
+    teaches: "mccv:MCCV_000033 is free-text application ('Production of …', also 'Assay of …', some lower-case 'production of'), 1,421 strains. Combine it with the temperature path from culture_conditions; the temperature node's unit is sio:SIO_000221 obo:UO_0000027."
+    traps_avoided:
+      - say: "On RDF Portal the unit predicate is sio:SIO_000221 only. brc:brs_hasUnit (http://metadb.riken.jp/db/bioresource_schema/) is the unit predicate in the `rikenbrc_jcm` database (graph xsearch_jcm, which has no sio:SIO_000221) but is absent here, so a temperature query copied from `rikenbrc_jcm` returns 0 rows."
+        check:
+          kind: zero_rows
+          date: "2026-11-11"
+          query: |
+            SELECT ?t WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?t <http://metadb.riken.jp/db/bioresource_schema/brs_hasUnit> ?u } } LIMIT 1
+
+  - id: enzyme_producers_psychrophilic
+    intent: enzyme-producing strains (enzyme names ending in -ase in the application text) with a low optimum temperature
+    question: "Which JCM strains documented as enzyme producers grow optimally at 15 °C or below?"
+    complexity: intermediate
+    sparql: |
+      PREFIX mccv: <http://purl.jp/bio/10/mccv#>
+      PREFIX brso: <http://purl.jp/bio/10/brso/>
+      PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      SELECT ?label ?name ?production ?tempC
+      WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> {
+          ?s a brso:BiologicalResource ; rdfs:label ?label ;
+             mccv:MCCV_000012 ?name ; mccv:MCCV_000033 ?production ;
+             mccv:MCCV_000073/mccv:MCCV_000014 ?t .
+          ?t sio:SIO_000221 obo:UO_0000027 ; rdf:value ?tempC .
+          FILTER(?tempC <= 15)
+          FILTER(REGEX(STR(?production), "[a-z]ases?([^a-z]|$)", "i"))          # a word ending in -ase(s)
+          FILTER(!REGEX(STR(?production), "(^|[^a-z])(base|release|increase|decrease|phase|disease)s?([^a-z]|$)", "i"))
+        }
+      }
+      ORDER BY ?tempC ?label
+    verified: {row_count: 2, has_values: ["JCM 14208", "Production of Pullulanase", "JCM 9426", 15], date: "2026-11-11"}
+    teaches: "Enzyme producers = MCCV_000033 containing a word ending in -ase(s), minus non-enzyme words such as 'disease' (219 strains collection-wide). 'Production of Amylose' (JCM 9425, 9430) is a polysaccharide, not amylase, and is correctly excluded."
+    traps_avoided:
+      - say: "CONTAINS(…, 'ase') is not an enzyme filter: it also matches words with -ase- inside them ('production of Azaserine'), adding 4 strains that name no enzyme; anchor the match at the word end as this example does."
+        check:
+          kind: count
+          date: "2026-11-11"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_jcm_brso> { ?s a <http://purl.jp/bio/10/brso/BiologicalResource> ; <http://purl.jp/bio/10/mccv#MCCV_000033> ?p FILTER(CONTAINS(LCASE(STR(?p)), "ase") && !REGEX(STR(?p), "[a-z]ases?([^a-z]|$)", "i")) } }
+          expect: {value: 4, tolerance: 0}
+
   - id: xdb_taxonomy
     intent: "cross-DB: JCM strains → NCBI Taxonomy scientific name + rank in the co-hosted ontology/taxonomy graph"
     question: "What are the NCBI scientific names and ranks of JCM archaea strains?"
@@ -454,7 +521,7 @@ schema_delta:
   - "Equivalent strains: mccv:MCCV_000024 → blank node (a mccv:MCCV_000001) carrying mccv:MCCV_000026 = the other collection's number ('DSM 20669', typed string; 77.7% of strains, 64,341 nodes). Prefix by collection: DSM 6,868 · NBRC 5,163 · ATCC 5,068 · IFO 3,845 · IAM 3,340 · CBS 3,170. mccv:MCCV_000025 (catalogue URL) is on 11,936 of them."
   - "PubMed: dcterms:references and cito:citesAsAuthority carry the SAME PMIDs, each as identifiers.org/pubmed/N and rdf.ncbi.nlm.nih.gov/pubmed/N (36.2% of strains)."
   - "brso:organism → [ a sio:SIO_010000 ; obo:RO_0002162 <taxon> ] restates mccv:MCCV_000023 on the same 9,080 strains; prefer the direct link."
-  - "mccv:MCCV_000033 application text ('Production of …'; 7.3%) is a sparse typed string. foaf:depiction / foaf:thumbnail give JCM micrograph URLs (36.4%)."
+  - "foaf:depiction / foaf:thumbnail give JCM micrograph URLs (36.4%)."
   - "MCCV, MPO and brso terms carry NO rdfs:label anywhere on the endpoint (D query, 0 rows) — use the IRIs documented here; MCCV v0.97 (purl.jp/bio/01/mccv#, same local IDs) defines 000014 optimum growth temperature · 017 is type strain · 018 growth medium · 019 rehydration fluid · 023 related taxonomy · 024/026 other-collection info/number · 028 isolated from · 030 isolation source description · 038 organism category · 071 environmental feature · 072 sampled from · 073 culture condition; 000077 is not in v0.97."
   - "Medium IRIs gm:JCM_M<n> (purl.jp/bio/11/gm/, 1,025 distinct) carry a label and the JCM medium page; none is shared with MediaDive (purl.dsmz.de/mediadive/medium/) or NBRC (…/nbrc/medium/)."
 
