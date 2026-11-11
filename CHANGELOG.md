@@ -36,8 +36,9 @@ no MIE to steer them. Other candidates on RDF Portal were rejected as frozen sna
     Xref nodes, so "melanoma of any subtype" returns 3,006 lines where the exact term gives 2,234;
   - names must be anchored with `cello:recommendedName`, because `rdfs:label` holds every
     synonym ("K1" matches 10 different lines);
-  - the UniProt join has to rewrite HGNC IDs (`"HGNC:1097"` vs `…/hgnc/1097`) and must be
-    anchored on the UniProt side (0.2 s, versus no answer within 180 s the other way round).
+  - the UniProt join has to rewrite HGNC IDs (`"HGNC:1097"` vs `…/hgnc/1097`) and is anchored on
+    the UniProt side (0.2 s). The other direction is correct, but how long it takes varies widely
+    from one run to the next.
 
 ### Changed
 

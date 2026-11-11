@@ -372,7 +372,7 @@ examples:
         }
       } GROUP BY ?hgnc ?status ORDER BY ?status
     verified: {row_count: 2, has_values: ["HGNC:1097", "Natural", 1698, "Edited", 10], date: "2026-11-11"}
-    teaches: "Anchor on the UniProt side and turn its HGNC IRI into Cellosaurus' accession string; the bound string then hits the indexed cello:accession literal and the join returns in well under a second. Swap P15056 for any reviewed human protein, or bind a UniProt set first (keyword, GO) for a family-level count."
+    teaches: "Anchor on the UniProt side and turn its HGNC IRI into Cellosaurus' accession string; the bound string then hits the indexed cello:accession literal (0.2 s). Swap P15056 for any reviewed human protein, or bind a UniProt set first (keyword, GO) for a family-level count."
     traps_avoided:
       - say: "The two databases spell HGNC differently: Cellosaurus 'HGNC:1097' (string), UniProt <http://purl.uniprot.org/hgnc/1097> (no 'HGNC:' prefix). Concatenating the Cellosaurus string straight into a UniProt IRI (…/hgnc/HGNC:1097) matches nothing."
         check:
@@ -381,26 +381,7 @@ examples:
           query: |
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             SELECT ?p WHERE { GRAPH <http://sparql.uniprot.org/uniprot> { <http://purl.uniprot.org/uniprot/P15056> rdfs:seeAlso ?o . FILTER(?o = <http://purl.uniprot.org/hgnc/HGNC:1097>) } } LIMIT 1
-      - say: "Start from UniProt, not from Cellosaurus. The reverse direction — take K-562's mutated genes, build each UniProt IRI with BIND(IRI(CONCAT(…, STRAFTER(?hgnc, \"HGNC:\")))) and join — did not return within 180 s in two consecutive runs on 2026-11-11, while the bound-literal direction above takes 0.2 s. (Measured with the CORRECT prefix rewrite; the wrong '…/hgnc/HGNC:' form returns 0 rows quickly, which looks like a clean empty answer.) For many genes, collect the HGNC strings first, then run one UniProt-anchored query with them in VALUES."
-        check:
-          kind: error
-          date: "2026-11-11"
-          expect: {timeout_s: 60}
-          query: |
-            PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX up: <http://purl.uniprot.org/core/>
-            SELECT ?hgnc ?symbol ?protein (COUNT(DISTINCT ?cl) AS ?lines) WHERE {
-              GRAPH <http://rdfportal.org/dataset/cellosaurus> {
-                ?cl cello:primaryAccession "CVCL_0004" ; cello:hasSequenceVariationInfo ?svi .
-                ?svi cello:hasTarget ?mut .
-                ?mut a cello:GeneMutation ; cello:ofGene ?gene .
-                ?gene rdfs:label ?symbol ; cello:isIdentifiedByXref ?gx .
-                ?gx cello:database <https://purl.expasy.org/cellosaurus/rdf/db/HGNC> ; cello:accession ?hgnc .
-              }
-              BIND(IRI(CONCAT("http://purl.uniprot.org/hgnc/", STRAFTER(?hgnc, "HGNC:"))) AS ?hgncIri)
-              GRAPH <http://sparql.uniprot.org/uniprot> { ?protein rdfs:seeAlso ?hgncIri ; up:reviewed true . }
-            } GROUP BY ?hgnc ?symbol ?protein ORDER BY ?symbol
+      - "Prefer this UniProt-anchored direction. The reverse — build each UniProt IRI from a Cellosaurus HGNC string with BIND(IRI(CONCAT(…, STRAFTER(?hgnc, \"HGNC:\")))) and join — is correct but has an unstable query plan, so its runtime swings by orders of magnitude between identical runs. Do not read slowness there as a wrong query, and do not read speed as correctness: the WRONG '…/hgnc/HGNC:' form answers fast with nothing. For several genes, collect the HGNC strings first and put them in VALUES in a UniProt-anchored query."
 
 schema_delta:
   - "cello:hasGeneKnockout → GeneKnockout node: cello:ofGene (gene node, as in enum_mutation) + cello:hasGenomeModificationMethod (an IRI such as cello:CRISPR, cello:ZFN, cello:TALEN). 32,710 knockouts on 31,991 lines."
