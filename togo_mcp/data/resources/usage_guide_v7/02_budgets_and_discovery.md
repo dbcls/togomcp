@@ -73,7 +73,7 @@ is the bold row label.
 | **primary** | 22 | `mesh` `go` `taxonomy` `mondo` `nando` `bacdive` `mediadive` `brenda` `hgnc` `jpostdb` `massbank` `nbrc` `mogplus` `jcm` `hco` `mco` `ontology` `fantabio` `pubcasefinder` `jogo` `tismed` `lotus` |
 | **ebi** | 6 | `chembl` `chebi` `reactome` `ensembl` `amrportal` `gwascatalog` |
 | **ncbi** | 5 | `clinvar` `pubmed` `pubtator` `ncbigene` `medgen` |
-| **sib** | 4 | `uniprot` `rhea` `bgee` **`oma`** |
+| **sib** | 5 | `uniprot` `rhea` `bgee` **`oma`** `cellosaurus` |
 | **pubchem** | 1 | `pubchem` |
 | **pdb** | 2 | `pdb` `bmrb` |
 | **ddbj** | 1 | `ddbj` |

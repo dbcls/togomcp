@@ -1,0 +1,427 @@
+# MIE v3 — Cellosaurus (cell line knowledge resource, SIB). New database, authored 2026-11-11.
+# Format: togo_mcp/data/docs/MIE_v3_spec.md. Every count/result below was run live on the SIB endpoint 2026-11-11.
+# Data snapshot: the graph's ontology node carries dcterms:modified 2026-06-25 (owl:versionInfo "… 2026-06-25 … prod").
+mie_spec: 3                        # format version — see MIE_v3_spec.md §2
+database: cellosaurus
+
+discovery:
+  title: Cellosaurus — cell line knowledge resource
+  description: >
+    Curated records for ~169,000 cell lines (cancer, transformed, iPSC/ESC, hybridoma and more) from
+    ~900 species, with donor disease (NCIt/Orphanet), origin site (UBERON), cell type (CL), sequence
+    variations, gene knockouts, STR profiles, misidentification/contamination warnings, parent–child
+    lineage and cross-references to DepMap, COSMIC, ChEMBL, ATCC and other cell line catalogues.
+  keywords: [cell line, cancer cell line, ipsc, embryonic stem cell, hybridoma, misidentified cell line,
+             contamination, str profile, cell line mutation, gene knockout, donor disease, tissue of origin,
+             cell type, depmap, cell authentication]
+  categories: [disease, variant]
+
+endpoint: https://rdfportal.org/sib/sparql      # SIB endpoint — SHARED with UniProt, Bgee, OMA, Rhea
+base_uri: https://purl.expasy.org/cellosaurus/rdf/
+graphs:
+  primary: http://rdfportal.org/dataset/cellosaurus   # the only graph holding cvcl/ and xref/ IRIs
+  co_hosted:                                          # 2g reverse probe run 2026-11-11 (see header comment of each)
+    own_entities_probed_clean: >
+      PROBED CLEAN on the entity legs (2026-11-11): reverse probe (?p unbound) on a cell line
+      (cvcl/CVCL_0030), an NCIt Xref node and the class cello:CancerCellLine found every triple in the
+      cellosaurus graph only. No co-tenant re-types or re-labels a Cellosaurus IRI, so a pinned
+      `?cl a cello:CancerCellLine` and an unpinned one agree.
+    ontology_label_hub: >
+      HUB-LABEL INFLATION (kind 1). Cellosaurus points at ontology IRIs (UBERON_, CL_, NCBITaxon_) but
+      does NOT declare them — their rdfs:label lives in bgee + ontology/{uberon,cl,clo,efo,pro,…}. Reading
+      a site/cell-type/species label by joining the IRI to rdfs:label returns one row per labelling graph
+      (×5 for UBERON lung, measured; see gotcha labels_live_on_the_node). Fix: read the label off the
+      Cellosaurus annotation node, inside the graph.
+    uniprot: >
+      CROSS-DB JOIN target (example xdb_uniprot_hgnc). Human genes join through the HGNC accession, which
+      the two databases spell differently ("HGNC:1097" vs <http://purl.uniprot.org/hgnc/1097>). Transgene
+      nodes (cello:GeneticIntegration) carry a direct <http://purl.uniprot.org/uniprot/…> IRI instead.
+    efo: >
+      SCOPE BLEED on name lookups (kind 3): ontology/efo labels its own cell-line classes with the same
+      strings ("HeLa", "MCF-7"), so an unpinned `?s rdfs:label "HeLa"` returns an EFO class next to the
+      Cellosaurus record. Pin the graph and anchor with cello:recommendedName (example lookup_by_name).
+    bgee: "Gene-expression calls keyed by the same UBERON/CL IRIs Cellosaurus points at — a possible tissue-level join; no Cellosaurus IRI overlap."
+    oma_rhea_mesh_goa: "No Cellosaurus IRI overlap, no documented join. purl.jp/bio/11/goa is an EMPTY stub."
+    absent_here: >
+      NCIt and ChEBI are NOT on this endpoint — `<http://purl.obolibrary.org/obo/NCIT_C3224> ?p ?o`
+      returns 0 rows in every graph. The disease hierarchy you need is embedded in Cellosaurus itself
+      (example enum_disease_subtree); ChEBI labels are on the cello:ChemicalEntity node.
+
+entity_counts:                       # graph-pinned COUNT(DISTINCT), live 2026-11-11
+  cell_lines: 168970                 # subjects of cello:primaryAccession (== every cell-line class combined)
+  with_donor_disease: 80174          # lines with ≥1 cello:derivedFromIndividualWithDisease
+  with_sequence_variation: 37643     # lines with ≥1 cello:hasSequenceVariationInfo
+  with_str_profile: 10073
+  problematic: 1391                  # lines with cello:hasProblematicCellLineComment (misidentified/contaminated)
+  human_lines: 124256                # species node → NCBITaxon_9606
+
+global_gotchas:
+  - id: annotations_are_blank_nodes
+    say: >
+      Disease, species, origin site, cell type, resistance and every sequence variation hang off the cell
+      line as a PER-LINE BLANK NODE, never as a shared ontology IRI. The ontology term is one hop further:
+      `?cl cello:derivedFromSite ?node . ?node cello:isIdentifiedByIRI <UBERON_…>` (same for
+      derivedFromIndividualWithDisease → NCIT_/Orphanet_, derivedFromIndividualBelongingToSpecies →
+      NCBITaxon_, derivedFromCellType → CL_, hasResistance → CHEBI_). `?cl cello:derivedFromSite
+      <UBERON_…>` returns nothing. Consequence for counting: annotation nodes are not entities —
+      `?g a cello:Gene ; rdfs:label "TP53"` is 16,876 gene NODES for 3 distinct genes (HGNC, a dog VGNC,
+      one UniProt). Count cell lines, or count the HGNC accession, never the node.
+    check:
+      kind: count
+      date: "2026-11-11"
+      query: |
+        PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT (COUNT(?g) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?g a cello:Gene ; rdfs:label "TP53" ; cello:isIdentifiedByXref ?x . ?x cello:accession ?acc } }
+      expect: {value: 16876, tolerance: 0.05}
+  - id: labels_live_on_the_node
+    say: >
+      The human-readable label of a disease/site/cell type/species is on the Cellosaurus annotation node
+      (`?node rdfs:label`), INSIDE the graph. Joining the ontology IRI to rdfs:label instead pulls it from
+      every co-hosted ontology that declares it: cancer lines from lung (UBERON_0002048) with a site label =
+      17,420 rows that way vs 3,484 from the node (×5.0), no error, same speed.
+    check:
+      kind: ratio
+      date: "2026-11-11"
+      unpinned: |
+        PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> { ?cl cello:derivedFromSite ?s . ?s cello:isIdentifiedByIRI ?u } ?u <http://www.w3.org/2000/01/rdf-schema#label> ?l . FILTER(?u = <http://purl.obolibrary.org/obo/UBERON_0002048>) }
+      pinned: |
+        PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> { ?cl cello:derivedFromSite ?s . ?s cello:isIdentifiedByIRI <http://purl.obolibrary.org/obo/UBERON_0002048> ; <http://www.w3.org/2000/01/rdf-schema#label> ?l } }
+      expect: {ratio: 5.0, tolerance: 0.05}
+  - id: plain_literals
+    say: >
+      Every string here (accessions, names, HGVS, zygosity, variationStatus, inCollection, the "true" of
+      cello:discontinued) is a PLAIN literal: `cello:accession "C3224"` matches, `"C3224"^^xsd:string`
+      returns 0 rows. cello:discontinued is the string "true", not a boolean.
+    check:
+      kind: zero_rows
+      date: "2026-11-11"
+      query: |
+        PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?x WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> { ?x cello:accession "C3224"^^xsd:string } } LIMIT 1
+
+examples:
+  - id: lookup_by_name
+    intent: resolve a cell-line name to its record (accession, category, species, donor sex/age)
+    question: "What is the Cellosaurus accession of K-562, what kind of line is it, and from which donor?"
+    complexity: basic
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?cl ?acc ?type ?species ?sex ?age WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?cl cello:recommendedName "K-562" ;          # unique per line; rdfs:label is NOT (synonyms)
+              cello:primaryAccession ?acc ;
+              a ?type ;                                # one category class per line
+              cello:derivedFromIndividualBelongingToSpecies ?sp .
+          ?sp rdfs:label ?species .
+          OPTIONAL { ?cl cello:derivedFromIndividualWithSex ?sex }   # 89% coverage
+          OPTIONAL { ?cl cello:derivedFromIndividualAtAge ?age }     # 86%; a string like "53Y", "30Y6M"
+        }
+      }
+    verified: {row_count: 1, has_values: ["CVCL_0004", "CancerCellLine", "Homo sapiens (Human)", "53Y"], date: "2026-11-11"}
+    teaches: "Anchor a line by cello:recommendedName (unique; homonyms are disambiguated as 'CM-2 [Human ESC]') or by cello:primaryAccession 'CVCL_xxxx'. The IRI is https://purl.expasy.org/cellosaurus/rdf/cvcl/<accession>. The line's rdf:type IS its category (CancerCellLine, InducedPluripotentStemCell, Hybridoma, …); there is no common CellLine superclass asserted."
+    traps_avoided:
+      - say: "rdfs:label / cello:name / skos:altLabel hold EVERY synonym, so they collide across lines: `rdfs:label \"K1\"` matches 10 different cell lines (mouse, rat, horse, human…). Use recommendedName or the accession; fall back to rdfs:label only to find candidates, then show recommendedName + species."
+        check:
+          kind: count
+          date: "2026-11-11"
+          query: |
+            PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(DISTINCT ?cl) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> { ?cl cello:primaryAccession ?a ; rdfs:label "K1" } }
+          expect: {value: 10, tolerance: 0.2}
+      - "Names are case-sensitive and variant spellings are separate synonyms (\"HeLa\", \"Hela\", \"HELA\" are three labels of one line). cello:accession also carries SECONDARY accessions; cello:primaryAccession is the one-per-line key."
+
+  - id: line_annotations
+    intent: read a line's donor disease, origin site, cell type and species as label + ontology IRI
+    question: "From which disease, tissue and species was K-562 derived, as ontology terms?"
+    complexity: intermediate
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?facet ?label ?iri WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          VALUES ?facet { cello:derivedFromIndividualWithDisease cello:derivedFromSite
+                          cello:derivedFromCellType cello:derivedFromIndividualBelongingToSpecies }
+          <https://purl.expasy.org/cellosaurus/rdf/cvcl/CVCL_0004> ?facet ?node .   # ?node is a blank node
+          ?node rdfs:label ?label .                         # label read off the node — not from the ontology
+          OPTIONAL { ?node cello:isIdentifiedByIRI ?iri }   # NCIT_/Orphanet_/UBERON_/CL_/NCBITaxon_ IRI
+        }
+      } ORDER BY ?facet ?iri
+    verified: {row_count: 4, has_values: ["NCIT_C9110", "Orphanet_521", "UBERON_0000175", "NCBITaxon_9606"], date: "2026-11-11"}
+    teaches: "Each facet is a blank node carrying rdfs:label + cello:isIdentifiedByIRI (+ cello:isIdentifiedByXref to an Xref node with cello:accession). Missing facets are simply absent — K-562 has no cell-type node (31% of lines have one)."
+    traps_avoided:
+      - say: "Disease is POLYMORPHIC: a line usually gets one node per vocabulary — K-562 has an NCIt node (NCIT_C9110) AND an Orphanet node (Orphanet_521). 124,953 disease nodes cover 80,174 lines (×1.56), so `COUNT(*)` over derivedFromIndividualWithDisease is not a line count; use COUNT(DISTINCT ?cl) and FILTER the IRI namespace when you group by disease."
+        check:
+          kind: ratio
+          date: "2026-11-11"
+          numerator: |
+            PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> { ?cl cello:derivedFromIndividualWithDisease ?d } }
+          denominator: |
+            PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+            SELECT (COUNT(DISTINCT ?cl) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> { ?cl cello:derivedFromIndividualWithDisease ?d } }
+          expect: {ratio: 1.5585, tolerance: 0.05}
+      - "Origin site is UBERON for animals but PO_ for 57 plant lines, and 408 site nodes have no IRI at all (free-text label only, e.g. a site Cellosaurus could not map)."
+
+  - id: enum_disease_subtree
+    intent: enumerate ALL lines whose donor disease falls under an NCIt term, descendants included
+    question: "How many cell lines come from a melanoma of any subtype?"
+    complexity: intermediate
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT (COUNT(DISTINCT ?cl) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?top cello:database <https://purl.expasy.org/cellosaurus/rdf/db/NCIt> ;
+               cello:accession "C3224" .                    # NCIt Melanoma, as a Cellosaurus Xref node
+          ?term rdfs:more_specific_than ?top .              # MATERIALIZED closure, includes ?top itself
+          ?d cello:isIdentifiedByXref ?term .
+          ?cl cello:derivedFromIndividualWithDisease ?d .
+        }
+      }
+    verified: {n: 3006, date: "2026-11-11"}
+    teaches: "Cellosaurus embeds the NCIt disease hierarchy on its own Xref nodes: rdfs:more_specific_than is the reflexive-transitive closure (no property path needed), cello:more_specific_than the direct parents (use `cello:more_specific_than*` for the same 3,006). Find the Xref node by cello:database <…/db/NCIt> + cello:accession 'Cnnnn'."
+    traps_avoided:
+      - say: "Matching only the exact IRI (`?d cello:isIdentifiedByIRI obo:NCIT_C3224`) gives 2,234 lines and misses every subtype (acral, uveal, mucosal …). And there is NO NCIt ontology on this endpoint to expand it with — NCIT_C3224 has 0 triples in every graph."
+        check:
+          kind: count
+          date: "2026-11-11"
+          query: |
+            PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+            SELECT (COUNT(DISTINCT ?cl) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+              ?cl cello:derivedFromIndividualWithDisease ?d . ?d cello:isIdentifiedByIRI <http://purl.obolibrary.org/obo/NCIT_C3224> } }
+          expect: {value: 2234, tolerance: 0.05}
+
+  - id: enum_by_site
+    intent: enumerate lines by tissue of origin and category (typed class + UBERON IRI on the site node)
+    question: "How many cancer cell lines were derived from lung?"
+    complexity: basic
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      SELECT (COUNT(DISTINCT ?cl) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?cl a cello:CancerCellLine ;
+              cello:derivedFromSite ?s .
+          ?s cello:isIdentifiedByIRI <http://purl.obolibrary.org/obo/UBERON_0002048> .   # lung
+        }
+      }
+    verified: {n: 2879, date: "2026-11-11"}
+    teaches: "Category = rdf:type class; tissue = UBERON IRI on the site node. Swap the class (InducedPluripotentStemCell, Hybridoma, …) or the IRI. This is an exact-term match: lines filed under a sub-part (e.g. a bronchus term) are not included — Cellosaurus carries no UBERON hierarchy, so expand descendants with OLS4:getDescendants and put the IRIs in a VALUES block."
+
+  - id: enum_mutation
+    intent: enumerate ALL lines carrying a given variant in a given gene (HGNC-anchored)
+    question: "How many cell lines naturally carry the BRAF p.Val600Glu mutation?"
+    complexity: advanced
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      SELECT (COUNT(DISTINCT ?cl) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?gx cello:database <https://purl.expasy.org/cellosaurus/rdf/db/HGNC> ;
+              cello:accession "HGNC:1097" .                 # BRAF, by HGNC ID — not by symbol
+          ?gene cello:isIdentifiedByXref ?gx .
+          ?mut a cello:GeneMutation ;
+               cello:ofGene ?gene ;
+               cello:hgvs "p.Val600Glu" .                   # protein-level HGVS; a c. form is also present
+          ?svi cello:hasTarget ?mut ;
+               cello:variationStatus "Natural" .            # vs "Edited" / "Corrected" (engineered)
+          ?cl cello:hasSequenceVariationInfo ?svi .
+        }
+      }
+    verified: {n: 1274, date: "2026-11-11"}
+    teaches: "Path: cell line → hasSequenceVariationInfo (bnode: variationStatus, hasSource) → hasTarget (GeneMutation | GeneFusion | GeneDeletion | RepeatExpansion | Gene{Duplication,Triplication,…}) → ofGene (bnode) → isIdentifiedByXref (HGNC/MGI/VGNC Xref node). cello:hgvs is multi-valued — each mutation carries its p. AND c. notation (151,486 values on 79,884 mutations); cello:zygosity is 'Heterozygous' / 'Homozygous' / 'Unspecified'."
+    traps_avoided:
+      - "Matching the gene by symbol (`?gene rdfs:label \"BRAF\"`) also hits the dog BRAF (VGNC:38514) and other species' homologues; gene nodes are per-occurrence blank nodes, so anchor on the HGNC (human), MGI (mouse) or RGD (rat) accession."
+      - say: "Omit the variationStatus filter and you add the lines where the variant was introduced by genome editing (status 'Edited', 962 records corpus-wide) or repaired ('Corrected', 751)."
+        check:
+          kind: count
+          date: "2026-11-11"
+          query: |
+            PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/cellosaurus> { ?s cello:variationStatus "Edited" } }
+          expect: {value: 962, tolerance: 0.1}
+
+  - id: enum_problematic
+    intent: list misidentified / contaminated lines (the cell-authentication route)
+    question: "Which cell lines are flagged as misidentified, and why?"
+    complexity: basic
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?cl ?name ?note WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?cl cello:hasProblematicCellLineComment ?c ;
+              cello:recommendedName ?name .
+          ?c rdfs:comment ?note .
+          FILTER(STRSTARTS(?note, "Misidentified"))    # also "Contaminated", "Misidentified/contaminated"
+        }
+      } ORDER BY ?name LIMIT 20
+    verified: {min_rows: 20, has_values: ["ACCNS"], date: "2026-11-11"}
+    teaches: "cello:hasProblematicCellLineComment marks every problematic line (1,391); its free-text rdfs:comment states the true identity and the PubMed evidence. The STRSTARTS filter on the comment is the only categorisation available — there is no typed misidentified/contaminated flag."
+    traps_avoided:
+      - "Problems are inherited down the lineage: derived lines (e.g. the 'Abcam U-87MG … KO' series) carry their own comment pointing at the parent. To check a line before use, test the line AND its cello:hasParentCellLine ancestors."
+
+  - id: lineage_children
+    intent: walk parent → derived lines (knockouts, subclones, engineered derivatives)
+    question: "How many cell lines were derived from K-562?"
+    complexity: basic
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      SELECT (COUNT(DISTINCT ?child) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?child cello:hasParentCellLine <https://purl.expasy.org/cellosaurus/rdf/cvcl/CVCL_0004> .
+        }
+      }
+    verified: {n: 425, date: "2026-11-11"}
+    teaches: "cello:hasParentCellLine (child → parent) and its inverse cello:hasChildCellLine are both asserted IRIs; use `hasParentCellLine+` for all generations. cello:derivedFromSameIndividualAs links sibling lines from the same donor (not a lineage)."
+
+  - id: xref_by_database
+    intent: get a line's identifiers in external resources (DepMap, ChEMBL, EFO, BTO, CLO, …)
+    question: "What are K-562's DepMap, ChEMBL, EFO, BTO and CLO identifiers?"
+    complexity: basic
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      SELECT ?db ?id WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          VALUES ?dbIri { <https://purl.expasy.org/cellosaurus/rdf/db/DepMap>
+                          <https://purl.expasy.org/cellosaurus/rdf/db/ChEMBL-Cells>
+                          <https://purl.expasy.org/cellosaurus/rdf/db/EFO>
+                          <https://purl.expasy.org/cellosaurus/rdf/db/BTO>
+                          <https://purl.expasy.org/cellosaurus/rdf/db/CLO> }
+          <https://purl.expasy.org/cellosaurus/rdf/cvcl/CVCL_0004> cello:seeAlsoXref ?x .
+          ?x cello:database ?dbIri ; cello:accession ?id .
+          BIND(STRAFTER(STR(?dbIri), "/db/") AS ?db)
+        }
+      } ORDER BY ?db ?id
+    verified: {row_count: 10, has_values: ["ACH-000551", "CHEMBL3308378", "EFO_0002067", "BTO_0000664"], date: "2026-11-11"}
+    teaches: "Xrefs are nodes: cello:seeAlsoXref → ?x with cello:database <…/rdf/db/NAME> (an IRI; 117 resources on cell lines) and cello:accession (plain string). Reverse it to resolve an external ID: `?x cello:database <…/db/DepMap> ; cello:accession \"ACH-000551\" . ?cl cello:seeAlsoXref ?x` → K-562. Leave the database out of VALUES only if you want all of them — COSMIC alone lists 50+ sample IDs for K-562."
+    traps_avoided:
+      - "A database can map MANY ids to one line: K-562 has six CLO ids (CLO_0007050, CLO_0007059, CLO_0024880, …), one per CLO class for a K-562 variant. Do not assume one row per database."
+
+  - id: count_by_category
+    intent: total lines per category, graph-pinned and DISTINCT (the aggregation recipe)
+    question: "How many cell lines does Cellosaurus hold, by category?"
+    complexity: aggregation
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      SELECT ?type (COUNT(DISTINCT ?cl) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?cl cello:primaryAccession ?acc ; a ?type .
+        }
+      } GROUP BY ?type ORDER BY DESC(?n)
+    verified: {row_count: 14, has_values: ["TransformedCellLine", 53337, "CancerCellLine", 43514], total_lines: 168970, date: "2026-11-11"}
+    teaches: "cello:primaryAccession selects exactly the cell lines (168,970) — use it as the 'is a cell line' test, since the 14 category classes have no shared superclass. Each line has exactly one type, so the per-class counts sum to the total."
+
+  - id: count_by_species
+    intent: lines per donor species via the NCBITaxon IRI on the species node
+    question: "Which species contribute the most cell lines?"
+    complexity: aggregation
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?taxon (SAMPLE(?name) AS ?species) (COUNT(DISTINCT ?cl) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?cl cello:primaryAccession ?acc ;
+              cello:derivedFromIndividualBelongingToSpecies ?sp .
+          ?sp cello:isIdentifiedByIRI ?taxon ; rdfs:label ?name .
+        }
+      } GROUP BY ?taxon ORDER BY DESC(?n) LIMIT 10
+    verified: {min_rows: 10, has_values: ["NCBITaxon_9606", 124256, "NCBITaxon_10090", 31354], date: "2026-11-11"}
+    teaches: "Species is NCBITaxon (obo) — NOT the UniProt taxonomy namespace used by the co-hosted UniProt/Bgee graphs. Hybrid lines carry two species nodes (170,416 nodes on 168,970 lines), so a line can count under both species."
+
+  - id: enum_resistance
+    intent: enumerate lines resistant to a compound (ChEBI IRI on the resistance node)
+    question: "How many cell lines are resistant to cisplatin?"
+    complexity: basic
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      SELECT (COUNT(DISTINCT ?cl) AS ?n) WHERE {
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?cl cello:hasResistance ?r .
+          ?r cello:isIdentifiedByIRI <http://purl.obolibrary.org/obo/CHEBI_27899> .   # cisplatin
+        }
+      }
+    verified: {n: 245, date: "2026-11-11"}
+    teaches: "cello:hasResistance → cello:ChemicalEntity node with rdfs:label + isIdentifiedByIRI (CHEBI_ for 14,007 nodes; a few UniProt or NCIt IRIs for biologics)."
+
+  - id: xdb_uniprot_hgnc
+    intent: "cross-DB: UniProt protein → its HGNC ID → Cellosaurus lines mutated in that gene"
+    question: "How many cell lines carry a mutation in the gene encoding UniProt P15056 (BRAF)?"
+    complexity: cross_db
+    endpoint_name: sib
+    sparql: |
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?hgnc ?status (COUNT(DISTINCT ?cl) AS ?lines) WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          <http://purl.uniprot.org/uniprot/P15056> rdfs:seeAlso ?h .
+          FILTER(STRSTARTS(STR(?h), "http://purl.uniprot.org/hgnc/"))      # …/hgnc/1097
+        }
+        BIND(CONCAT("HGNC:", STRAFTER(STR(?h), "http://purl.uniprot.org/hgnc/")) AS ?hgnc)   # → "HGNC:1097"
+        GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+          ?gx cello:database <https://purl.expasy.org/cellosaurus/rdf/db/HGNC> ; cello:accession ?hgnc .
+          ?gene cello:isIdentifiedByXref ?gx .
+          ?mut a cello:GeneMutation ; cello:ofGene ?gene .
+          ?svi cello:hasTarget ?mut ; cello:variationStatus ?status .
+          ?cl cello:hasSequenceVariationInfo ?svi .
+        }
+      } GROUP BY ?hgnc ?status ORDER BY ?status
+    verified: {row_count: 2, has_values: ["HGNC:1097", "Natural", 1698, "Edited", 10], date: "2026-11-11"}
+    teaches: "Anchor on the UniProt side and turn its HGNC IRI into Cellosaurus' accession string; the bound string then hits the indexed cello:accession literal and the join returns in well under a second. Swap P15056 for any reviewed human protein, or bind a UniProt set first (keyword, GO) for a family-level count."
+    traps_avoided:
+      - say: "The two databases spell HGNC differently: Cellosaurus 'HGNC:1097' (string), UniProt <http://purl.uniprot.org/hgnc/1097> (no 'HGNC:' prefix). Concatenating the Cellosaurus string straight into a UniProt IRI (…/hgnc/HGNC:1097) matches nothing."
+        check:
+          kind: zero_rows
+          date: "2026-11-11"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?p WHERE { GRAPH <http://sparql.uniprot.org/uniprot> { <http://purl.uniprot.org/uniprot/P15056> rdfs:seeAlso ?o . FILTER(?o = <http://purl.uniprot.org/hgnc/HGNC:1097>) } } LIMIT 1
+      - say: "Start from UniProt, not from Cellosaurus. The reverse direction — take K-562's mutated genes, build each UniProt IRI with BIND(IRI(CONCAT(…, STRAFTER(?hgnc, \"HGNC:\")))) and join — did not return within 180 s in two consecutive runs on 2026-11-11, while the bound-literal direction above takes 0.2 s. (Measured with the CORRECT prefix rewrite; the wrong '…/hgnc/HGNC:' form returns 0 rows quickly, which looks like a clean empty answer.) For many genes, collect the HGNC strings first, then run one UniProt-anchored query with them in VALUES."
+        check:
+          kind: error
+          date: "2026-11-11"
+          expect: {timeout_s: 60}
+          query: |
+            PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX up: <http://purl.uniprot.org/core/>
+            SELECT ?hgnc ?symbol ?protein (COUNT(DISTINCT ?cl) AS ?lines) WHERE {
+              GRAPH <http://rdfportal.org/dataset/cellosaurus> {
+                ?cl cello:primaryAccession "CVCL_0004" ; cello:hasSequenceVariationInfo ?svi .
+                ?svi cello:hasTarget ?mut .
+                ?mut a cello:GeneMutation ; cello:ofGene ?gene .
+                ?gene rdfs:label ?symbol ; cello:isIdentifiedByXref ?gx .
+                ?gx cello:database <https://purl.expasy.org/cellosaurus/rdf/db/HGNC> ; cello:accession ?hgnc .
+              }
+              BIND(IRI(CONCAT("http://purl.uniprot.org/hgnc/", STRAFTER(?hgnc, "HGNC:"))) AS ?hgncIri)
+              GRAPH <http://sparql.uniprot.org/uniprot> { ?protein rdfs:seeAlso ?hgncIri ; up:reviewed true . }
+            } GROUP BY ?hgnc ?symbol ?protein ORDER BY ?symbol
+
+schema_delta:
+  - "cello:hasGeneKnockout → GeneKnockout node: cello:ofGene (gene node, as in enum_mutation) + cello:hasGenomeModificationMethod (an IRI such as cello:CRISPR, cello:ZFN, cello:TALEN). 32,710 knockouts on 31,991 lines."
+  - "cello:hasGeneticIntegration → GeneticIntegration node: cello:ofGene → a gene node whose cello:isIdentifiedByIRI is a direct <http://purl.uniprot.org/uniprot/…> IRI (34,786 transgenes — GFP, neo, Cas9 …); human genes elsewhere have only the HGNC Xref."
+  - "cello:hasShortTandemRepeatProfile → ShortTandemRepeatProfile → cello:includesObservation (<https://schema.org/Observation> nodes) → marker + allele values; 10,073 lines. Use it to compare authentication profiles."
+  - "Comment families, each a node with rdfs:comment: hasCharacteristicsComment, hasCautionComment, hasKaryotypicInfoComment, hasVirologyComment, hasSenescenceComment, hasDonorInfoComment, hasMiscellaneousInfoComment, hasAnecdotalComment, hasBiotechnologyComment."
+  - "cello:hasOmicsInfo → node with <https://schema.org/category> ('Genomics', 'Transcriptomics', 'Proteomics', …) — which omics data exist for a line (16,624 lines)."
+  - "cello:inCollection (string, e.g. 'COSMIC cell lines project', 'NCI-60') and cello:inGroup (string, e.g. 'Space-flown cell line (cellonaut)') — set-membership routes; match the exact plain string."
+  - "cello:hasDiscontinuationRecord — catalogue items no longer sold; the matching Xref node carries cello:discontinued \"true\" (a string)."
+  - "Registration records use the VERBATIM misspelled predicate cello:hasRegistationRecord (sic, no 'r') + cello:registeredName."
+  - "Hybridomas: cello:hasMoAbTarget → node typed cello:Protein (10,615) or cello:ChemicalEntity (2,605), and cello:hasMoAbIsotype."
+
+id_join_map:
+  stable_anchor: "cello:primaryAccession 'CVCL_xxxx' ↔ IRI https://purl.expasy.org/cellosaurus/rdf/cvcl/CVCL_xxxx; cello:recommendedName is the unique human key. owl:sameAs points to the Wikidata item (153,630 lines)."
+  same_endpoint_joins:
+    uniprot: "HGNC string ↔ UniProt hgnc IRI (prefix rewrite) for mutated/knocked-out human genes — example xdb_uniprot_hgnc; transgene nodes carry the UniProt IRI directly (schema_delta)."
+    bgee: "Site/cell-type nodes' UBERON_/CL_ IRIs equal Bgee's genex:AnatomicalEntity IRIs (obo namespace) — direct IRI join for tissue-level expression."
+  xrefs:
+    ontologies: "cello:isIdentifiedByIRI on annotation nodes — NCIT_ / Orphanet_ (disease), UBERON_ / PO_ (site), CL_ (cell type), NCBITaxon_ (species), CHEBI_ (compounds). NCIt/ChEBI are not on this endpoint (ChEBI is on ebi)."
+    catalogues: "cello:seeAlsoXref → Xref node {cello:database <…/rdf/db/NAME>, cello:accession}: Wikidata 153,632; Coriell 44,370; GEO 34,760; CLO 34,125; Cosmic 17,992; BioSamples 11,167; BioSample 9,316; ATCC 5,698; DepMap 1,908; ChEMBL-Cells 1,580; PubChem_Cell_line 1,555; EFO 1,779; BTO 2,438."
+    variants: "GeneMutation nodes link ClinVar via cello:isIdentifiedByXref (56,258 of 79,884)."
+    literature: "cello:references → https://purl.expasy.org/cellosaurus/rdf/pub/… publication nodes (fabio:JournalArticle / PatentDocument) — 90,292 lines cite ≥1."
+  bridged_via_togoid:
+    - "cellosaurus ↔ ncit_disease / orphanet_phenotype / other TogoID datasets (togoid_convertId) — for routes this graph does not hold"
