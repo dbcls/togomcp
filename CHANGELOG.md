@@ -13,6 +13,50 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.32.0] - 2026-11-11
+
+Five new databases on a new external endpoint. MINOR: adds `database=` `rikenbrc_mouse`, `rikenbrc_cell`,
+`rikenbrc_dnabank`, `rikenbrc_plant`, `rikenbrc_jcm` and `endpoint_name="rikenbrc"`; no tool, parameter or
+return shape changed. All five are RIKEN BioResource Research Center catalogues served from RIKEN BRC's own
+Virtuoso (https://knowledge.brc.riken.jp/sparql), not RDF Portal — the eighth external endpoint. Contributed by
+Tatsuya Kushida (#294–#298, merged as #298).
+
+<!-- whatsnew: 2026-11-11 | Five new databases from RIKEN BRC's own SPARQL endpoint: mouse strains (<code>rikenbrc_mouse</code>), cell lines including disease-specific human iPS cells (<code>rikenbrc_cell</code>), DNA materials (<code>rikenbrc_dnabank</code>), plant resources (<code>rikenbrc_plant</code>) and the current JCM microbial strain catalogue (<code>rikenbrc_jcm</code>). -->
+
+### Added
+
+- **RIKEN BRC Mouse** (`rikenbrc_mouse`, ~6.9k strains, graph `xsearch_animal`): genes and alleles, Mammalian
+  Phenotype annotations (labels and hierarchy from the co-hosted MP graph), human orthologs, research
+  applications. 8 verified examples, including a `SERVICE` join to NCBI Gene on RDF Portal's `ncbi`.
+- **RIKEN BRC Cell** (`rikenbrc_cell`, ~9.9k cell lines, graph `xsearch_cell`): disease-specific human iPS
+  cells, hybridomas, ES gene-trap clones; donor disease linked to MONDO / NANDO / Orphanet, Cellosaurus
+  cross-references. 7 verified examples, including a MONDO subtree expanded on `primary` via `SERVICE`.
+- **RIKEN BRC DNA** (`rikenbrc_dnabank`, ~170k clones, graph `xsearch_dnabank`): human and mouse cDNA clone
+  sets, genome clones, vectors, with the carried gene on NCBI Gene. Shares NCBI Gene IRIs with
+  `rikenbrc_mouse`, so one query returns a human gene's clones and the strains carrying its mouse ortholog.
+- **RIKEN BRC Plant** (`rikenbrc_plant`, ~612k resources, graph `xsearch_plant`): Arabidopsis RAFL cDNA, Ds /
+  FOX / TF-GR lines, TAC clones, natural accessions, cDNA of other plants; genes by AGI code and NCBI Gene.
+- **RIKEN BRC JCM, latest** (`rikenbrc_jcm`, ~21.7k strains, graph `xsearch_jcm`): the current JCM catalogue,
+  about 2,200 strains more than `jcm` on RDF Portal, same strain IRIs and MCCV fields but a different strain
+  anchor (`rdfs:subClassOf mic:mic_1`, not `brso:BiologicalResource`).
+- The gotcha every one of these MIEs leads with: each catalogue has a `_brso` twin graph holding the same
+  resources, so an unpinned query returns ×2 the rows (×2.60 for mouse phenotypes). Pin the catalogue's graph.
+- Usage Guide: `rikenbrc` row in the endpoint table; `references/endpoints.md` lists `rikenbrc` → `ncbi` and
+  → `primary` as verified `SERVICE` callers (`rikenbrc` → SIB fails). Generated catalog: 56 databases, new
+  categories `biological resource` and `model organism`.
+
+### Changed
+
+- `jcm` and `rikenbrc_jcm` describe the SAME strains. They are kept side by side for now: `rikenbrc_jcm` for
+  current lookups and counts, `jcm` for joins with NBRC / MoG+ / other RDF Portal data. Both MIEs carry a header
+  gotcha (`jcm`: new `latest_catalogue_is_rikenbrc_jcm`) saying they must never be summed.
+- `stats._AMBIGUOUS_PREFIX_QNAMES["mccv"]`: five MCCV terms that were exclusive to `jcm` are now shared with
+  `rikenbrc_jcm` and no longer credit it.
+- The `run_sparql` description-length ceiling (2,800) now counts only written text: the three lists generated
+  from `endpoints.csv` (database keys, endpoint names, external endpoints with URLs) are excluded, since they grow
+  by design with every database. The five new keys had pushed the served description to 3,000 characters; its
+  written text is 1,872. The external-endpoint URLs stay in the description as the data-flow disclosure.
+
 ## [2.31.0] - 2026-11-11
 
 New database. MINOR: adds `database="cellosaurus"`; no tool, parameter or return shape changed.
@@ -3909,7 +3953,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.31.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.32.0...HEAD
+[2.32.0]: https://github.com/dbcls/togomcp/compare/v2.31.0...v2.32.0
 [2.31.0]: https://github.com/dbcls/togomcp/compare/v2.30.0...v2.31.0
 [2.30.0]: https://github.com/dbcls/togomcp/compare/v2.29.4...v2.30.0
 [2.29.4]: https://github.com/dbcls/togomcp/compare/v2.29.3...v2.29.4

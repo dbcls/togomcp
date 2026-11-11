@@ -301,26 +301,30 @@ SPARQL_ENDPOINT_KEYS = list(SPARQL_ENDPOINT.keys())
 
 # Where a query actually goes, for tool descriptions. Most databases live on RDF
 # Portal, but not all: GlyCosmos, TogoVar, WikiPathways, IDSM, LIPID MAPS,
-# SwissLipids and MarpolBase run their own endpoints. A description that said
-# "queries RDF Portal" would misstate the data flow for those, so this is built from
-# the registry — a new external endpoint is named the moment its CSV row lands.
+# SwissLipids, MarpolBase and RIKEN BRC run their own endpoints. A description that
+# said "queries RDF Portal" would misstate the data flow for those, so this is built
+# from the registry — a new external endpoint is named the moment its CSV row lands.
+# The URLs stay in the description on purpose: it is the data-flow disclosure the
+# Connectors Directory review asked for (172e861).
 _RDF_PORTAL_HOST = "rdfportal.org"
 
 
-def _endpoint_hosting_summary() -> str:
+def _external_endpoint_list() -> str:
     external: dict[str, list[str]] = {}
     for db_name, info in SPARQL_ENDPOINT.items():
         if httpx.URL(info["url"]).host != _RDF_PORTAL_HOST:
             external.setdefault(info["url"], []).append(db_name)
-    parts = "; ".join(f"{', '.join(dbs)} ({url})" for url, dbs in external.items())
-    return (
-        "Queries go to the SPARQL endpoint registered for `database`: RDF Portal "
-        "(https://rdfportal.org/, operated by DBCLS) for most databases, and the "
-        f"databases' own public endpoints for {parts}."
-    )
+    return "; ".join(f"{', '.join(dbs)} ({url})" for url, dbs in external.items())
 
 
-ENDPOINT_HOSTING_SUMMARY = _endpoint_hosting_summary()
+# Generated from endpoints.csv; grows with every external database. The tool-
+# description length test excludes it (and the database/endpoint_name lists).
+EXTERNAL_ENDPOINT_LIST = _external_endpoint_list()
+ENDPOINT_HOSTING_SUMMARY = (
+    "Queries go to the SPARQL endpoint registered for `database`: RDF Portal "
+    "(https://rdfportal.org/, operated by DBCLS) for most databases, and the "
+    f"databases' own public endpoints for {EXTERNAL_ENDPOINT_LIST}."
+)
 
 
 def resolve_endpoint_url(database: str, endpoint_name: str, endpoint_url: str) -> str:

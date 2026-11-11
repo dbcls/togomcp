@@ -1,0 +1,260 @@
+# MIE v3 — RIKEN BRC Cell Engineering Division cell line catalogue (graph xsearch_cell), 2026-11-11.
+# Served from RIKEN BRC's own endpoint (knowledge.brc.riken.jp, endpoint_name rikenbrc), NOT RDF Portal.
+mie_spec: 3
+database: rikenbrc_cell
+
+discovery:
+  title: RIKEN BRC Cell — RIKEN BioResource Research Center cell line catalogue
+  description: >
+    Catalogue of ~9.9k cell lines distributed by the RIKEN BRC Cell Bank (RCB, HPS, AES, HEV … numbers) —
+    human iPS cell lines from patients with ALS, Rett syndrome and other intractable diseases, general human
+    and animal cell lines, hybridomas, mouse ES gene-trap clones and EBV-transformed B cell lines — with
+    donor sex, age and disease (MONDO, NANDO and Orphanet links), species, collection, culture and freezing
+    conditions, references and Cellosaurus cross-references.
+  keywords: [biological resource, cell line, ips cell, disease-specific ips cell, intractable disease,
+             es cell, hybridoma, ebv-transformed b cell, cell bank, cell line donor, culture condition,
+             cellosaurus, riken brc, bioresource]
+  categories: [biological resource, disease]
+
+endpoint: https://knowledge.brc.riken.jp/sparql   # RIKEN BRC's own Virtuoso — ~400 named graphs; endpoint_name rikenbrc
+base_uri: http://metadb.riken.jp/db/rikenbrc_cell/   # cell line IRI = base + cell_<cell number>, OR an obo:CLO_ IRI (see gotcha mixed_subject_iris)
+graphs:
+  primary: http://metadb.riken.jp/db/xsearch_cell
+  co_hosted:
+    xsearch_cell_brso: >
+      DUPLICATE + INFLATION. The same lines (same IRIs) re-modelled in BRSO and re-declaring the catalogue
+      predicates (cell_0000057: 4,489 vs 4,514 rows for human iPS). Unpinned queries double the rows (gotcha
+      graph_pin) and add 5 lines that are no longer in the primary graph.
+    cellosaurusRDF: >
+      JOIN, but STALE. A local copy of Cellosaurus (dcterms:modified 2025-08-14; the `cellosaurus` database
+      on RDF Portal is 2026-06-25). Same-endpoint join on the cell number (example xdb_cellosaurus_problematic)
+      — current flags need the `cellosaurus` database (two-step, see id_join_map).
+    xsearch_animal / xsearch_dnabank / xsearch_jcm / xsearch_plant: "Other RIKEN BRC catalogues on the same brs:/xs: schema — they bleed into any unpinned brs:/xs: pattern."
+
+entity_counts:                       # graph-pinned COUNT(DISTINCT), ?s rdfs:subClassOf cell:cell_0000053 — 2026-11-11
+  cell_lines: 9937                   # each with exactly one dct:identifier (cell number)
+  by_collection: {human_iPS_cell_grouping_2: 4514, general_cell_lines_grouping_7: 3087, mouse_ES_gene_trap_grouping_9: 1747,
+                  EBV_B_Japanese_grouping_6: 245, Sonoda_Tajima_grouping_5: 150, animal_ES_grouping_8: 110,
+                  Goto_Werner_grouping_4: 37, human_ES_grouping_1: 23, mouse_iPS_grouping_10: 11, MSC_grouping_3: 1}
+  lines_with_donor_node: 8059
+  lines_with_donor_disease: 3782
+  lines_with_MONDO_link: 2406        # 165 MONDO terms
+  lines_with_NANDO_link: 2648        # 184 NANDO terms
+  lines_with_Cellosaurus_link: 4521  # 4,478 distinct CVCL accessions
+  by_species_commonname: "human 2,987; mouse 2,214; mouse x mouse (hybridoma) 193; rat 179; avian 85; hamster 59; dog 54; ~40 other names"
+  date: "2026-11-11"
+
+global_gotchas:
+  - id: graph_pin
+    say: >
+      GRAPH IS MANDATORY: wrap every pattern in GRAPH <http://metadb.riken.jp/db/xsearch_cell>. The endpoint holds
+      ~400 graphs and xsearch_cell_brso repeats the same lines, so an unpinned lookup returns ×1.99 the rows
+      (9,003 vs 4,514 for the human-iPS collection) and COUNT(DISTINCT) still over-counts (4,519 vs 4,514).
+    check:
+      kind: ratio
+      date: "2026-11-11"
+      unpinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { ?s <http://metadb.riken.jp/db/rikenbrc_cell/cell_0000057> <http://metadb.riken.jp/db/rikenbrc_cell/cell_grouping_2> }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_cell> { ?s <http://metadb.riken.jp/db/rikenbrc_cell/cell_0000057> <http://metadb.riken.jp/db/rikenbrc_cell/cell_grouping_2> } }
+      expect: {ratio: 1.994, tolerance: 0.03}
+  - id: mixed_subject_iris
+    say: >
+      A cell line is an rdfs:Class with `rdfs:subClassOf cell:cell_0000053` (9,937) — but its IRI is EITHER
+      cell:cell_<number> (cell:cell_RCB0307, cell:cell_HPS0046) OR an OBO CLO IRI (obo:CLO_0050856 = Hep G2,
+      RCB1648; ~1,600 lines). Never build the IRI from a cell number: match `dct:identifier "RCB1648"^^xsd:string`
+      instead, and anchor sets with `?s rdfs:subClassOf cell:cell_0000053`, never with `a`.
+    check:
+      kind: absent
+      date: "2026-11-11"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_cell> { ?s <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://metadb.riken.jp/db/rikenbrc_cell/cell_0000053> ; <http://purl.org/dc/terms/identifier> "RCB1648"^^<http://www.w3.org/2001/XMLSchema#string> . FILTER(STRSTARTS(STR(?s), "http://metadb.riken.jp/db/rikenbrc_cell/")) } } LIMIT 1
+  - id: literal_forms
+    say: >
+      dct:identifier and rdfs:label are typed ^^xsd:string — a plain "RCB1648" or "Hep G2" matches 0 rows.
+      dc:description, brs_developedBy, collection and species labels and disease-node labels are @en/@ja (the @ja value is sometimes the same English text, so filter LANG = "en" to avoid duplicate rows). Write "…"^^xsd:string or FILTER(STR(?x) = "…").
+    check:
+      kind: zero_rows
+      date: "2026-11-11"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_cell> { ?s <http://purl.org/dc/terms/identifier> "RCB1648" } } LIMIT 1
+  - id: cross_graph_literal_join
+    say: >
+      Two literals that print identically do NOT join across graphs on this Virtuoso: cellosaurusRDF's
+      cello:accession "RCB1648" and this graph's dct:identifier "RCB1648" (both xsd:string) give 0 rows when
+      shared as one variable. Re-type one side first — BIND(STRDT(STR(?acc), xsd:string) AS ?id) — then match
+      `?s dct:identifier ?id` (example xdb_cellosaurus_problematic). FILTER(STR(?a) = STR(?b)) also works but scans.
+    check:
+      kind: zero_rows
+      date: "2026-11-11"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/cellosaurusRDF> { ?x <https://purl.expasy.org/cellosaurus/rdf/ontology/accession> ?id . FILTER(STR(?id) = "RCB1648") } GRAPH <http://metadb.riken.jp/db/xsearch_cell> { ?s <http://purl.org/dc/terms/identifier> ?id } } LIMIT 1
+  - id: virtuoso_sp031
+    say: >
+      This Virtuoso rejects some valid SPARQL with "SP031 … sparp_gp_deprecate()" (HTTP 400): seen when a UNION
+      branch combines FILTER with BIND, and with BIND inside OPTIONAL. Split such a query into one query per
+      branch instead of rewriting it repeatedly; GROUP BY on a BIND-computed key can also return ungrouped rows.
+
+examples:
+  - id: line_record
+    intent: core record for one cell line, anchored on its cell number (works for both IRI forms)
+    question: "What is RIKEN BRC cell line RCB1648, which collection is it in, and what is its Cellosaurus ID?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dc:   <http://purl.org/dc/elements/1.1/>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+      PREFIX cell: <http://metadb.riken.jp/db/rikenbrc_cell/>
+      SELECT ?s ?label ?collection ?species ?cvcl ?desc WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_cell> {
+          ?s rdfs:subClassOf cell:cell_0000053 ; dct:identifier "RCB1648"^^xsd:string ; rdfs:label ?label .
+          OPTIONAL { ?s cell:cell_0000057/rdfs:label ?collection FILTER(LANG(?collection) = "en") }
+          OPTIONAL { ?s cell:cell_0000055/rdfs:label ?species FILTER(LANG(?species) = "en") }
+          OPTIONAL { ?s rdfs:seeAlso ?cvcl FILTER(STRSTARTS(STR(?cvcl), "http://purl.obolibrary.org/obo/Cellosaurus#")) }
+          OPTIONAL { ?s dc:description ?desc FILTER(LANG(?desc) = "en") }
+        }
+      }
+    verified: {row_count: 1, has_values: ["CLO_0050856", "Hep G2", "Cell lines derived from human and other animals", "_human", "CVCL_0027"], date: "2026-11-11"}
+    teaches: "Cell number = dct:identifier (xsd:string); catalogue page = foaf:page https://cellbank.brc.riken.jp/cell_bank/CellInfo/?cellNo=<number>&lang=En. cell_0000057 = collection, cell_0000055 = species common name (labels start with '_'). The Cellosaurus link is rdfs:seeAlso <http://purl.obolibrary.org/obo/Cellosaurus#CVCL_xxxx> — NOT the https://purl.expasy.org/cellosaurus/rdf/cvcl/ IRI of the `cellosaurus` database; join on the accession string. dc:description embeds HTML links. Collection and species labels exist as @en and @ja with the same text — filter LANG = 'en' on each, or the row doubles."
+
+  - id: collection_counts
+    intent: the SET-LEVEL collection route — cell_0000057 and its 10 bilingual collection classes
+    question: "How many cell lines does each RIKEN BRC Cell Bank collection hold?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX cell: <http://metadb.riken.jp/db/rikenbrc_cell/>
+      SELECT ?grp ?label (COUNT(DISTINCT ?s) AS ?lines) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_cell> {
+          ?s rdfs:subClassOf cell:cell_0000053 ; cell:cell_0000057 ?grp .
+          OPTIONAL { ?grp rdfs:label ?label FILTER(LANG(?label) = "en") }
+        }
+      } GROUP BY ?grp ?label ORDER BY DESC(?lines)
+    verified: {row_count: 10, has_values: ["cell_grouping_2", "Human iPS cell lines", 4514, "cell_grouping_9", 1747], date: "2026-11-11"}
+    teaches: "Collections: grouping_2 human iPS, _7 general human/animal lines, _9 mouse ES gene-trap clones, _6 EBV B lines from Japanese donors, _5 Sonoda-Tajima (South American minorities), _8 animal ES/germline stem cells, _4 Goto (Werner syndrome), _1 human ES, _10 mouse iPS, _3 MSC. 12 lines have no collection."
+
+  - id: lines_by_mondo_disease
+    intent: lines whose donor had a disease — anchored on the MONDO IRI, never on the disease-name string
+    question: "How many RIKEN BRC cell lines come from donors with amyotrophic lateral sclerosis, and in which collection?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX cell: <http://metadb.riken.jp/db/rikenbrc_cell/>
+      SELECT ?grp ?label (COUNT(DISTINCT ?s) AS ?lines) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_cell> {
+          ?s rdfs:subClassOf cell:cell_0000053 ; brs:brs_derivedFrom ?smp ; cell:cell_0000057 ?grp .
+          ?smp obo:BFO_0000050 ?donor .
+          ?donor cell:cell_0000054 ?dis . ?dis rdfs:seeAlso obo:MONDO_0004976 .
+          OPTIONAL { ?grp rdfs:label ?label FILTER(LANG(?label) = "en") }
+        }
+      } GROUP BY ?grp ?label
+    verified: {row_count: 1, has_values: ["cell_grouping_2", "Human iPS cell lines", 250], date: "2026-11-11"}
+    teaches: "Path: line → brs:brs_derivedFrom → sample node (brs_hasSourceTissue 'skin') → obo:BFO_0000050 → donor cell:cell_Donor_<number> (brs_hasGender PATO, obo:RO_0002162 NCBITaxon, brs_indicatesStage age) → cell:cell_0000054 → disease: a name literal, an ORDO IRI, and a blank node with rdfs:label + rdfs:seeAlso MONDO / NANDO / Orphanet IRIs. The donor node is per LINE (cell_Donor_HPS0150), not per person."
+    traps_avoided:
+      - say: "Matching the disease name string finds 69 ALS lines; the MONDO IRI finds 250 — names vary ('ALS', 'familial ALS', …). Anchor diseases on MONDO_ or NANDO_ IRIs."
+        check:
+          kind: count
+          date: "2026-11-11"
+          query: |
+            SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/xsearch_cell> { ?s <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://metadb.riken.jp/db/rikenbrc_cell/cell_0000053> ; <http://metadb.riken.jp/db/bioresource_schema/brs_derivedFrom> ?smp . ?smp <http://purl.obolibrary.org/obo/BFO_0000050> ?d . ?d <http://metadb.riken.jp/db/rikenbrc_cell/cell_0000054> ?b . ?b <http://www.w3.org/2000/01/rdf-schema#label> "amyotrophic lateral sclerosis (ALS)"@en } }
+          expect: {value: 69}
+
+  - id: top_donor_diseases
+    intent: aggregation over donor diseases by their curated label
+    question: "Which donor diseases are represented by the most RIKEN BRC cell lines?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX cell: <http://metadb.riken.jp/db/rikenbrc_cell/>
+      SELECT ?disease (COUNT(DISTINCT ?s) AS ?lines) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_cell> {
+          ?s rdfs:subClassOf cell:cell_0000053 ; brs:brs_derivedFrom ?smp . ?smp obo:BFO_0000050 ?donor .
+          ?donor cell:cell_0000054 ?dis . ?dis rdfs:label ?disease . FILTER(LANG(?disease) = "en")
+        }
+      } GROUP BY ?disease ORDER BY DESC(?lines) ?disease LIMIT 10
+    verified: {min_rows: 10, has_values: ["amyotrophic lateral sclerosis (ALS)", 69, "Rett syndrome", 23], date: "2026-11-11"}
+    teaches: "The disease blank node's rdfs:label is the curated name; skos:altLabel holds a Japanese disease group ('ライソゾーム病'), NANDO_hasNotificationNumber the designated-intractable-disease number. Label counts split one disease across spellings — use this for browsing, MONDO for counting. The field also holds donor statuses that are not diseases ('atomic bomb survivor')."
+
+  - id: species_counts
+    intent: the SET-LEVEL species route — cell_0000055 common-name classes
+    question: "From which species do the RIKEN BRC cell lines come, and how many from each?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX cell: <http://metadb.riken.jp/db/rikenbrc_cell/>
+      SELECT ?sp ?name (COUNT(DISTINCT ?s) AS ?lines) WHERE {
+        GRAPH <http://metadb.riken.jp/db/xsearch_cell> {
+          ?s rdfs:subClassOf cell:cell_0000053 ; cell:cell_0000055 ?sp .
+          OPTIONAL { ?sp rdfs:label ?name FILTER(LANG(?name) = "en") }
+        }
+      } GROUP BY ?sp ?name ORDER BY DESC(?lines) ?sp LIMIT 8
+    verified: {min_rows: 8, has_values: ["cell_commonname_C48", "_human", 2987, "_mouse", 2214], date: "2026-11-11"}
+    teaches: "cell_0000055 is the catalogue's species grouping for general cell lines (labels prefixed '_', hybrids such as '_mouse x mouse' for hybridomas). It is set on 5,910 of 9,937 lines (only 1,749 of 4,514 human iPS lines) — for the rest read the donor's obo:RO_0002162 NCBITaxon. Labels exist as @en and @ja with the same text: filter LANG = 'en'."
+
+  - id: xdb_mondo_subtree
+    intent: cross-endpoint — expand a MONDO branch on RDF Portal via SERVICE, then count donor lines here
+    question: "How many RIKEN BRC cell lines come from donors with any lysosomal storage disease (MONDO_0002561 or a descendant)?"
+    complexity: cross_db
+    endpoint_name: rikenbrc
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX brs:  <http://metadb.riken.jp/db/bioresource_schema/>
+      PREFIX cell: <http://metadb.riken.jp/db/rikenbrc_cell/>
+      SELECT (COUNT(DISTINCT ?s) AS ?lines) (COUNT(DISTINCT ?m) AS ?mondo_terms) WHERE {
+        SERVICE <https://rdfportal.org/primary/sparql> {
+          SELECT DISTINCT ?m WHERE { GRAPH <http://rdfportal.org/ontology/mondo> { ?m rdfs:subClassOf* obo:MONDO_0002561 } } }
+        GRAPH <http://metadb.riken.jp/db/xsearch_cell> {
+          ?s rdfs:subClassOf cell:cell_0000053 ; brs:brs_derivedFrom ?smp . ?smp obo:BFO_0000050 ?donor .
+          ?donor cell:cell_0000054 ?dis . ?dis rdfs:seeAlso ?m .
+        }
+      }
+    verified: {has_values: [83, 3], date: "2026-11-11"}
+    teaches: "Run on this endpoint (database=rikenbrc_cell). Expand the hierarchy remotely in a DISTINCT subquery (the `mondo` MIE: graph http://rdfportal.org/ontology/mondo), then join the MONDO IRIs locally — IRIs join fine across SERVICE; literals do not (gotcha cross_graph_literal_join). Disease blank nodes often list a specific term AND its ancestor, so count lines with DISTINCT."
+
+  - id: xdb_cellosaurus_problematic
+    intent: same-endpoint join to the co-hosted Cellosaurus copy — re-type the accession before matching
+    question: "Which cell lines currently in the RIKEN BRC catalogue are flagged as misidentified or contaminated in Cellosaurus?"
+    complexity: cross_db
+    endpoint_name: rikenbrc
+    sparql: |
+      PREFIX rdfs:  <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dct:   <http://purl.org/dc/terms/>
+      PREFIX xsd:   <http://www.w3.org/2001/XMLSchema#>
+      PREFIX cell:  <http://metadb.riken.jp/db/rikenbrc_cell/>
+      PREFIX cello: <https://purl.expasy.org/cellosaurus/rdf/ontology/>
+      SELECT ?id ?label ?cellosaurus_name WHERE {
+        { SELECT DISTINCT ?acc ?cellosaurus_name WHERE { GRAPH <http://metadb.riken.jp/db/cellosaurusRDF> {
+            ?x cello:database <https://purl.expasy.org/cellosaurus/rdf/db/RCB> ; cello:accession ?acc .
+            ?cl cello:seeAlsoXref ?x ; cello:hasProblematicCellLineComment ?pc ; cello:recommendedName ?cellosaurus_name . } } }
+        BIND(STRDT(STR(?acc), xsd:string) AS ?id)
+        GRAPH <http://metadb.riken.jp/db/xsearch_cell> { ?s rdfs:subClassOf cell:cell_0000053 ; dct:identifier ?id ; rdfs:label ?label }
+      } ORDER BY ?id
+    verified: {row_count: 18, has_values: ["RCB1648", "Hep G2", "RCB1889", "HEp-2", "RCB0994", "MA-104"], date: "2026-11-11"}
+    teaches: "Cellosaurus lists RIKEN BRC numbers as Xref nodes with cello:database <…/db/RCB>; 61 such lines are flagged locally, only 18 are still distributed (the rest are discontinued here). The copy is 2025-08-14 — for current flags query the `cellosaurus` database (same RCB Xref pattern, 67 flagged on 2026-11-11) and pass the accessions here in VALUES as \"…\"^^xsd:string."
+
+id_join_map:
+  stable_anchor: >
+    Cell number = dct:identifier (xsd:string: RCB…, HPS…, AES…, HEV…, HSC…, GMC…, HES…, APS…). The line IRI is
+    cell:cell_<number> OR an obo:CLO_ IRI, so join on the number, not the IRI. Catalogue page:
+    https://cellbank.brc.riken.jp/cell_bank/CellInfo/?cellNo=<number>&lang=En.
+  same_endpoint_joins:
+    cellosaurusRDF: "cello:accession of an Xref with cello:database <…/db/RCB> = dct:identifier — re-type with STRDT (example xdb_cellosaurus_problematic); local copy 2025-08-14"
+  xrefs:
+    cellosaurus: "rdfs:seeAlso <http://purl.obolibrary.org/obo/Cellosaurus#CVCL_xxxx> (4,521 lines). The `cellosaurus` database uses https://purl.expasy.org/cellosaurus/rdf/cvcl/CVCL_xxxx and lists RIKEN numbers as db/RCB Xrefs (4,871 lines) — join by string, two-step: SERVICE from this endpoint to SIB fails (type-conversion error / timeout)."
+    mondo: "donor disease blank node rdfs:seeAlso obo:MONDO_ (same IRI form as `mondo`); SERVICE to https://rdfportal.org/primary/sparql works (example xdb_mondo_subtree)"
+    nando: "disease node rdfs:seeAlso <http://nanbyodata.jp/ontology/NANDO_nnnnnnn> — same IRI form as `nando` (primary)"
+    orphanet: "cell:cell_0000054 → <http://www.orpha.net/ORDO/Orphanet_N> (also on the disease node)"
+    pubmed: "xs:references → blank node rdfs:seeAlso <http://rdf.ncbi.nlm.nih.gov/pubmed/N> (+ bibo:doi, dct:title); CLO-IRI lines also use cito:citesAsAuthority <…/pubmed/N>"
+    taxonomy: "donor obo:RO_0002162 obo:NCBITaxon_N (OBO form)"
+
+schema_delta:
+  - "Culture/freezing conditions are separate condition instances pointing BACK at the line with cell:cell_0000052 (condition → line): culture condition (type cell:cell_0000048) carries cell_0000040 CO2 %, cell_0000041 temperature, cell_0000042 medium, cell_0000043 passage method, cell_0000044 passage frequency, cell_0000045 feeder condition (→ cell_0000059 feeder cells, _0060 treatment, _0061 seeding density); freezing condition (cell:cell_0000049) → cell_0000046 freezing medium. Numeric values are rdf:value + brs:brs_hasUnit (UO)."
+  - "Phenotype and quality records (cell:cell_0000028 / cell:cell_0000029) are trait triples: brs:brs_indicatesEntity → line, brs:brs_indicatesTrait → trait class, brs:brs_indicatesValue → value (17,067 each); cell_0000031 links a phenotype to a CL/CLO term (e.g. ES-like → embryonic stem cell)."
+  - "Donor: brs:brs_hasGender (PATO_0000383 female / PATO_0000384 male), brs:brs_indicatesStage (age literal '1 year' + a node with rdf:value and brs_hasUnit UO), xs:isSickness 0/1, xs:donorNo, cell:cell_0000007 → cell:cell_race_* (ethnicity as recorded by the depositor). Line: brs:brs_developedBy (@en string), brs:brs_depositedBy, brs:brs_depositionYear (xsd:string), xs:resourceTypeLink."
+  - "xs:hasLabel / cell:cell_labelCategory nodes are web-UI display labels — read names from rdfs:label instead."
