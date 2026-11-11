@@ -13,93 +13,47 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
-Fifth RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_plant`, `rikenbrc_dnabank`,
-`rikenbrc_cell` and `rikenbrc_mouse` entries below). MINOR: adds `database="rikenbrc_jcm"`.
+Five new databases on a new external endpoint. MINOR: adds `database=` `rikenbrc_mouse`, `rikenbrc_cell`,
+`rikenbrc_dnabank`, `rikenbrc_plant`, `rikenbrc_jcm` and `endpoint_name="rikenbrc"`; no tool, parameter or
+return shape changed. All five are RIKEN BioResource Research Center catalogues served from RIKEN BRC's own
+Virtuoso (https://knowledge.brc.riken.jp/sparql), not RDF Portal — the eighth external endpoint. Contributed by
+Tatsuya Kushida (#294–#298, merged as #298).
 
-<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_jcm</code> — the current RIKEN BRC JCM catalogue of about 21,700 microbial strains, served by RIKEN BRC; <code>jcm</code> stays the BRSO-harmonised snapshot for joins with NBRC. -->
+<!-- whatsnew: YYYY-MM-DD | Five new databases from RIKEN BRC's own SPARQL endpoint: mouse strains (<code>rikenbrc_mouse</code>), cell lines including disease-specific human iPS cells (<code>rikenbrc_cell</code>), DNA materials (<code>rikenbrc_dnabank</code>), plant resources (<code>rikenbrc_plant</code>) and the current JCM microbial strain catalogue (<code>rikenbrc_jcm</code>). -->
 
 ### Added
 
-- **RIKEN BRC JCM, latest** (`database="rikenbrc_jcm"`, ~21.7k strains, graph `xsearch_jcm`): the current JCM
-  catalogue, about 2,200 strains more than `jcm` on RDF Portal, with the same strain IRIs and MCCV fields. Its MIE
-  carries 5 verified examples, including strains newer than the BRSO copy and a same-endpoint join that resolves
-  `rikenbrc_dnabank` genomic-DNA clones to JCM strains from the strain number in their label. Five header gotchas:
-  the graph pin (×2.00 unpinned through `xsearch_jcm_brso`), an anchor that differs from `jcm`
-  (`rdfs:subClassOf mic:mic_1`), the same-strains warning, typed literals and equivalent-strain nodes.
+- **RIKEN BRC Mouse** (`rikenbrc_mouse`, ~6.9k strains, graph `xsearch_animal`): genes and alleles, Mammalian
+  Phenotype annotations (labels and hierarchy from the co-hosted MP graph), human orthologs, research
+  applications. 8 verified examples, including a `SERVICE` join to NCBI Gene on RDF Portal's `ncbi`.
+- **RIKEN BRC Cell** (`rikenbrc_cell`, ~9.9k cell lines, graph `xsearch_cell`): disease-specific human iPS
+  cells, hybridomas, ES gene-trap clones; donor disease linked to MONDO / NANDO / Orphanet, Cellosaurus
+  cross-references. 7 verified examples, including a MONDO subtree expanded on `primary` via `SERVICE`.
+- **RIKEN BRC DNA** (`rikenbrc_dnabank`, ~170k clones, graph `xsearch_dnabank`): human and mouse cDNA clone
+  sets, genome clones, vectors, with the carried gene on NCBI Gene. Shares NCBI Gene IRIs with
+  `rikenbrc_mouse`, so one query returns a human gene's clones and the strains carrying its mouse ortholog.
+- **RIKEN BRC Plant** (`rikenbrc_plant`, ~612k resources, graph `xsearch_plant`): Arabidopsis RAFL cDNA, Ds /
+  FOX / TF-GR lines, TAC clones, natural accessions, cDNA of other plants; genes by AGI code and NCBI Gene.
+- **RIKEN BRC JCM, latest** (`rikenbrc_jcm`, ~21.7k strains, graph `xsearch_jcm`): the current JCM catalogue,
+  about 2,200 strains more than `jcm` on RDF Portal, same strain IRIs and MCCV fields but a different strain
+  anchor (`rdfs:subClassOf mic:mic_1`, not `brso:BiologicalResource`).
+- The gotcha every one of these MIEs leads with: each catalogue has a `_brso` twin graph holding the same
+  resources, so an unpinned query returns ×2 the rows (×2.60 for mouse phenotypes). Pin the catalogue's graph.
+- Usage Guide: `rikenbrc` row in the endpoint table; `references/endpoints.md` lists `rikenbrc` → `ncbi` and
+  → `primary` as verified `SERVICE` callers (`rikenbrc` → SIB fails). Generated catalog: 56 databases, new
+  categories `biological resource` and `model organism`.
 
 ### Changed
 
-- `jcm` MIE: discovery description and a new header gotcha (`latest_catalogue_is_rikenbrc_jcm`) route current
-  strain lookups to `rikenbrc_jcm` and keep NBRC/NBRP joins on `jcm`; the two must never be summed.
-- `stats._AMBIGUOUS_PREFIX_QNAMES["mccv"]`: `rikenbrc_jcm` uses the same MCCV properties as `jcm`, so five terms
-  that were exclusive to `jcm` are now shared and no longer credit it (re-derived from the MIE corpus).
-
-Fourth RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_dnabank`, `rikenbrc_cell` and
-`rikenbrc_mouse` entries below). MINOR: adds `database="rikenbrc_plant"`.
-
-<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_plant</code> — RIKEN BRC's catalogue of about 612,000 plant resources (Arabidopsis RAFL cDNA clones, Ds and FOX lines, natural accessions, cDNA clones of other plants) searchable by AGI code and NCBI Gene. -->
-
-### Added
-
-- **RIKEN BRC Plant** (`database="rikenbrc_plant"`, ~612k resources, graph `xsearch_plant`). Its MIE carries 6
-  verified examples, including resources per AGI code split by resource type, natural accessions by country and a
-  same-endpoint join to `rikenbrc_dnabank` on NCBI Gene IRIs. Five header gotchas: the graph pin (×2.00 unpinned
-  through `xsearch_plant_brso`), resources modelled as `rdfs:subClassOf pl:PlantResource`, `^^xsd:string`
-  literals, pipe-joined synonym strings in `skos:altLabel`, and the `<http://test/country>` predicate.
-
-Third RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_cell` and `rikenbrc_mouse`
-entries below). MINOR: adds `database="rikenbrc_dnabank"`.
-
-<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_dnabank</code> — RIKEN BRC's catalogue of about 170,000 DNA materials (human and mouse cDNA clone sets, genome clones, vectors) linked to NCBI Gene, joinable in one query with RIKEN BRC mouse strains. -->
-
-### Added
-
-- **RIKEN BRC DNA** (`database="rikenbrc_dnabank"`, ~170k clones, graph `xsearch_dnabank`). Its MIE carries 5
-  verified examples, including a same-endpoint cross-catalogue join that returns, in one query, the DNA clones
-  of a human gene and the `rikenbrc_mouse` strains carrying its mouse ortholog (shared NCBI Gene IRIs). Five
-  header gotchas: the graph pin (×2.00 unpinned through `xsearch_dnabank_brso`), clones modelled as
-  `rdfs:subClassOf dna:DNAResource`, `^^xsd:string` literals, free-text organism labels, and resource-type
-  labels that collide (group by IRI and set code).
-
-Second RIKEN BRC catalogue on the `rikenbrc` endpoint (stacked on the `rikenbrc_mouse` entry below). MINOR:
-adds `database="rikenbrc_cell"`.
-
-<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_cell</code> — RIKEN BRC's catalogue of about 9,900 cell lines, including disease-specific human iPS cells, with donor disease linked to MONDO and NANDO, collections, culture conditions and Cellosaurus cross-references. -->
-
-### Added
-
-- **RIKEN BRC Cell** (`database="rikenbrc_cell"`, ~9.9k cell lines, graph `xsearch_cell`). Its MIE carries 7
-  verified examples, including disease lookup anchored on MONDO IRIs, a MONDO subtree expanded on `primary`
-  via `SERVICE`, and a same-endpoint join to the co-hosted Cellosaurus copy (lines flagged as misidentified).
-  Five header gotchas: the graph pin (×1.99 unpinned through `xsearch_cell_brso`), cell-line IRIs that are
-  either `cell:cell_<number>` or `obo:CLO_` (join on `dct:identifier`), per-predicate literal forms, literals
-  that print identically but do not join across graphs (re-type with `STRDT`), and Virtuoso's SP031 errors.
-- `references/endpoints.md`: `rikenbrc` → `primary` verified for `SERVICE`; `rikenbrc` → SIB fails.
-
-New database on a new external endpoint. MINOR: adds `database="rikenbrc_mouse"` and
-`endpoint_name="rikenbrc"`; no tool, parameter or return shape changed. The RIKEN BRC mouse strain
-catalogue is served from RIKEN BRC's own endpoint (https://knowledge.brc.riken.jp/sparql), the first
-of five RIKEN BRC catalogues planned there (cell lines, DNA, plants and the latest JCM follow).
-
-<!-- whatsnew: YYYY-MM-DD | New database: <code>rikenbrc_mouse</code> — RIKEN BRC's catalogue of about 6,900 mouse strains with genes and alleles, Mammalian Phenotype annotations, human orthologs and research applications, served from RIKEN BRC's own SPARQL endpoint. -->
-
-### Added
-
-- **RIKEN BRC Mouse** (`database="rikenbrc_mouse"`, ~6.9k strains, graph `xsearch_animal`) on the new
-  `rikenbrc` endpoint. Its MIE carries 8 verified examples, including MP enumeration through the
-  co-hosted MP ontology graph, resource-type and research-application enumeration, and a `SERVICE`
-  join to NCBI Gene on RDF Portal's `ncbi` endpoint (human orthologs). Four header gotchas, each with a
-  `check:`: the mandatory graph pin (the endpoint holds ~400 graphs and a `_brso` twin of the same
-  strains, ×2.60 unpinned), strains modelled as `rdfs:subClassOf mus:Strain` rather than `rdf:type`,
-  per-predicate literal forms (`^^xsd:string` vs `@en`/`@ja`; a plain literal matches neither), and
-  duplicated gene nodes and xref IRI forms.
-- `rikenbrc_mouse` registered in `endpoints.csv`; `rikenbrc` added to the Usage Guide endpoint table,
-  and `references/endpoints.md` lists `rikenbrc` → `ncbi` as a verified `SERVICE` caller.
-
-### Changed
-
-- The generated database catalog (`02b_database_catalog.md`, `references/database-catalog.md`) is
-  regenerated: 56 databases, with new categories `biological resource` and `model organism`.
+- `jcm` and `rikenbrc_jcm` describe the SAME strains. They are kept side by side for now: `rikenbrc_jcm` for
+  current lookups and counts, `jcm` for joins with NBRC / MoG+ / other RDF Portal data. Both MIEs carry a header
+  gotcha (`jcm`: new `latest_catalogue_is_rikenbrc_jcm`) saying they must never be summed.
+- `stats._AMBIGUOUS_PREFIX_QNAMES["mccv"]`: five MCCV terms that were exclusive to `jcm` are now shared with
+  `rikenbrc_jcm` and no longer credit it.
+- The `run_sparql` description-length ceiling (2,800) now counts only written text: the three lists generated
+  from `endpoints.csv` (database keys, endpoint names, external endpoints with URLs) are excluded, since they grow
+  by design with every database. The five new keys had pushed the served description to 3,000 characters; its
+  written text is 1,872. The external-endpoint URLs stay in the description as the data-flow disclosure.
 
 ## [2.31.0] - 2026-11-11
 
