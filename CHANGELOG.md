@@ -13,6 +13,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- `jcm`: two examples (now 13) that combine the application text (`mccv:MCCV_000033`, "Production of …") with
+  the optimum growth temperature: thermophilic producers (≥ 60 °C) and psychrophilic enzyme producers (≤ 15 °C).
+  The second anchors "-ase" at the word end, since a bare `CONTAINS("ase")` also matches non-enzyme words
+  ("Azaserine"). A trap notes that a temperature query copied from `rikenbrc_jcm` (unit predicate
+  `brc:brs_hasUnit`) returns 0 rows on `jcm`, which uses `sio:SIO_000221`.
+
 ## [2.32.0] - 2026-11-11
 
 Five new databases on a new external endpoint. MINOR: adds `database=` `rikenbrc_mouse`, `rikenbrc_cell`,
