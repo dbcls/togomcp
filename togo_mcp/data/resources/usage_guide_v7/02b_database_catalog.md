@@ -1,6 +1,6 @@
 ## 📚 DATABASE CATALOG
 
-All 56 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
+All 57 RDF databases, one line each: what it is *for*, then its top keywords. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**. Full descriptions and every keyword: reference file `database-catalog.md` (see 📎 MORE DETAIL) — fetch it only if these lines do not separate your candidates.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -9,7 +9,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
 - **biological resource** — `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_jcm` `rikenbrc_mouse` `rikenbrc_plant`
-- **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
+- **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `riken_pmm` `swisslipids` `wikipathways`
 - **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `rikenbrc_cell` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
@@ -76,6 +76,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **pubtator** — PubTator Central RDF. Biomedical entity annotations text-mined from PubMed articles — Disease (MeSH) and Gene (NCBI Gene) mentions… _[annotation, text mining, named entity recognition, literature, pubmed, pmid]_
 - **reactome** — Reactome Pathway Database. Expert-curated biological pathways and reactions in BioPAX Level 3: hierarchical pathways, biochemical reacti… _[pathway, reaction, biopax, signaling, metabolism, protein]_
 - **rhea** — Rhea. Expert-curated, atom-balanced biochemical reactions (18,854 master reactions) with ChEBI-linked participants,… _[biochemical reaction, enzyme, substrate, product, cofactor, ec number]_
+- **riken_pmm** — RIKEN PMM. Experiment metadata for ~150 plant metabolomics studies (GC-MS, LC-MS, CE-MS) from RIKEN and Kazusa MetaboNot… _[metabolomics, metabolite profiling, plant metabolome, gc-ms, lc-ms, mass spectrometry]_
 - **rikenbrc_cell** — RIKEN BRC Cell. Catalogue of ~9.9k cell lines distributed by the RIKEN BRC Cell Bank (RCB, HPS, AES, HEV … numbers) — human i… _[biological resource, cell line, ips cell, disease-specific ips cell, intractable disease, es cell]_
 - **rikenbrc_dnabank** — RIKEN BRC DNA. Catalogue of ~170k DNA materials distributed by the RIKEN BRC DNA Bank — human cDNA clone sets (GNP, NRCD), N… _[biological resource, dna clone, cdna clone, plasmid, expression vector, bac clone]_
 - **rikenbrc_jcm** — RIKEN BRC JCM. The CURRENT catalogue of ~21.7k microbial strains (bacteria, archaea, fungi, yeasts, algae) of the RIKEN BRC… _[culture collection, biological resource, microbial strain, jcm, riken brc, latest catalogue]_

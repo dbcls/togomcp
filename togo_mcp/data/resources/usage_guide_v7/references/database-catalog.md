@@ -2,7 +2,7 @@
 
 ## 📚 DATABASE CATALOG — FULL
 
-All 56 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
+All 57 RDF databases, with what each is *for*. Scan by the KIND of data you need (not by entity name), pick 1–3 candidates, then `get_MIE_file(database)` before any `run_sparql`. The exact `database=` key is **bold**.
 
 Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical variants" → `clinvar` · "pathways" → `reactome` · "gnomAD" / "variants" → `togovar` · "orthologs" → `oma` · "expression" → `bgee` · "glycobiology" → `glycosmos` · "superconductor" → `supercon`.
 
@@ -11,7 +11,7 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
 - **annotation** — `bh26microbes` `marpolbase` `pubtator` `uniprot`
 - **antimicrobial** — `amrportal`
 - **biological resource** — `rikenbrc_cell` `rikenbrc_dnabank` `rikenbrc_jcm` `rikenbrc_mouse` `rikenbrc_plant`
-- **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `swisslipids` `wikipathways`
+- **compound** — `bmrb` `chebi` `chembl` `idsm` `lipidmaps` `lotus` `massbank` `pubchem` `riken_pmm` `swisslipids` `wikipathways`
 - **disease** — `cellosaurus` `clinvar` `glycosmos` `gwascatalog` `medgen` `mesh` `mondo` `nando` `pubcasefinder` `rikenbrc_cell` `togovar`
 - **drug_target** — `chembl` `idsm`
 - **enzymology** — `brenda`
@@ -122,6 +122,8 @@ Quick hints: "MANE" → `ensembl` · "drug targets" → `chembl` · "clinical va
   keywords: pathway, reaction, biopax, signaling, metabolism, protein, complex, small molecule, catalyst, enzyme, ec number, modification, phosphorylation, cellular location, gene ontology, species
 - **rhea** — Rhea — Annotated Biochemical Reactions. Expert-curated, atom-balanced biochemical reactions (18,854 master reactions) with ChEBI-linked participants, EC-number and GO cross-references, transport/location annotations, and PubMed citations;… _(categories: reaction)_  
   keywords: biochemical reaction, enzyme, substrate, product, cofactor, ec number, stoichiometry, mass balance, chebi, metabolite, transport, directional reaction, catalysis
+- **riken_pmm** — RIKEN PMM — RIKEN Plant Metabolomics MetaDatabase. Experiment metadata for ~150 plant metabolomics studies (GC-MS, LC-MS, CE-MS) from RIKEN and Kazusa MetaboNote — projects, biological samples with species, plant organ, genotype/mutant and growth con… _(categories: compound)_  
+  keywords: metabolomics, metabolite profiling, plant metabolome, gc-ms, lc-ms, mass spectrometry, experiment metadata, biological sample, plant organ, growth condition, raw data, arabidopsis, rice, tomato
 - **rikenbrc_cell** — RIKEN BRC Cell — RIKEN BioResource Research Center cell line catalogue. Catalogue of ~9.9k cell lines distributed by the RIKEN BRC Cell Bank (RCB, HPS, AES, HEV … numbers) — human iPS cell lines from patients with ALS, Rett syndrome and other intractable diseases, genera… _(categories: biological resource, disease)_  
   keywords: biological resource, cell line, ips cell, disease-specific ips cell, intractable disease, es cell, hybridoma, ebv-transformed b cell, cell bank, cell line donor, culture condition, cellosaurus, riken brc, bioresource
 - **rikenbrc_dnabank** — RIKEN BRC DNA — RIKEN BioResource Research Center DNA material catalogue. Catalogue of ~170k DNA materials distributed by the RIKEN BRC DNA Bank — human cDNA clone sets (GNP, NRCD), NIA/NIH mouse cDNA, marmoset cDNA, S. _(categories: biological resource, gene)_  

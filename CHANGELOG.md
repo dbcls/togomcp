@@ -13,6 +13,19 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- **RIKEN Plant Metabolomics MetaDatabase** (`riken_pmm`, `endpoint_name="metabobank"`, graph `plantMetabolomics`):
+  experiment metadata for 152 plant metabolomics studies (64 RIKEN `RPMMnnnn` + 88 Kazusa MetaboNote `MN_SEnnn`).
+  It covers 9,109 biological samples with species, Plant Ontology organ, genotype/mutant and growth conditions,
+  instrument and MS settings, and 14,026 downloadable raw data files. It is served from RIKEN MetaboBank's own
+  endpoint `https://metabobank.riken.jp/sparql`. The browser page `/pmm/sparql` is an HTML front end that rejects
+  POST, so TogoMCP cannot use it. The MIE has 11 verified examples, including the set-level routes by species,
+  organ, instrument and EFO experimental factor, and a same-endpoint join from a sample's gene to the co-hosted
+  TAIR GO-slim annotations. It records traps that return wrong answers without any error: Dublin Core minted
+  under `dc/dcmitype/`, BioPortal taxon IRIs, a ×2.00 `owl:Class` re-typing of every ontology hub, unlabeled PO
+  terms, and gene codes packed into one string. New database, no tool change: MINOR.
+
 ## [2.32.1] - 2026-11-11
 
 PATCH: two more verified examples in the `jcm` MIE; no tool, parameter or return shape changed. They were
