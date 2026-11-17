@@ -399,3 +399,148 @@ class TestEntrySkill:
 
     def test_has_no_references(self) -> None:
         assert set(sk.load_registry(PUBLIC)[ENTRY].files) == {"SKILL.md"}
+
+
+# --- SEP-2640 (skills/list, skills/get) ----------------------------------------
+#
+# Asserted against what a skills-extension CLIENT receives. skills/* exist only on
+# the 2026-07-28 protocol; a handshake-protocol client gets resources + _manifest.
+
+
+def _run_sep(calls, *, local: bool = False, mode: str = "auto"):
+    from fastmcp import Client
+    from fastmcp.skills import SkillsClientExtension
+
+    from togo_mcp.main import mcp, setup
+
+    async def go():
+        await setup(local=local)
+        async with Client(mcp, mode=mode, extensions=[SkillsClientExtension()]) as client:
+            return await calls(client)
+
+    return asyncio.run(go())
+
+
+def _sha(data: bytes) -> str:
+    import hashlib
+
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+class TestSkillsExtension:
+    @staticmethod
+    def _list(**kw):
+        async def calls(client):
+            return await client.list_skills()
+
+        return _run_sep(calls, **kw)
+
+    @pytest.mark.parametrize("local", [False, True])
+    def test_list_is_public_skills_plus_entry_on_both_transports(self, local: bool) -> None:
+        entries = self._list(local=local)
+        assert {e.uri for e in entries} == {
+            f"skill://{n}/SKILL.md" for n in (*EXPECTED, ENTRY)
+        }
+
+    def test_list_excludes_guide_and_internal(self) -> None:
+        text = json.dumps([e.model_dump(mode="json", by_alias=True) for e in self._list()])
+        for name in (*INTERNAL, "usage-guide"):
+            assert name not in text, name
+
+    def test_frontmatter_is_the_registry_yaml_parse(self) -> None:
+        for e in self._list():
+            name = e.uri.split("/")[2]
+            disk = sk.parse_frontmatter((PUBLIC / name / "SKILL.md").read_text(encoding="utf-8"))
+            assert e.frontmatter.root == disk, name
+            assert "version" in disk["metadata"] and "catalog" in disk["metadata"], name
+
+    def test_digests_match_what_get_workflow_serves(self) -> None:
+        # The routes must serve identical bytes. get_workflow returns SKILL.md
+        # after a header; references/ verbatim. The entry skill is not served by
+        # get_workflow, so compare it with the file on disk.
+        async def calls(client):
+            out = {}
+            for e in await client.list_skills():
+                name = e.uri.split("/")[2]
+                for r in e.resources:
+                    rel = r.uri.split("/", 3)[3]
+                    if name == ENTRY:
+                        body = (PUBLIC / name / rel).read_bytes()
+                    else:
+                        args = {"name": name} if rel == "SKILL.md" else {"name": name, "path": rel}
+                        text = (await client.call_tool("get_workflow", args)).content[0].text
+                        if rel == "SKILL.md":  # drop get_workflow's header
+                            text = text[text.index("\n---\nname: ") + 1:]
+                        body = text.encode("utf-8")
+                    out[r.uri] = (r.digest, r.size, _sha(body), len(body))
+            return out
+
+        got = _run_sep(calls)
+        assert len(got) == sum(len(s.files) for s in sk.load_registry(PUBLIC).values())
+        for uri, (digest, size, want_digest, want_size) in got.items():
+            assert (digest, size) == (want_digest, want_size), uri
+
+    def test_resources_list_every_registry_file(self) -> None:
+        for e in self._list():
+            name = e.uri.split("/")[2]
+            assert {r.uri for r in e.resources} == {
+                f"skill://{name}/{rel}" for rel in sk.load_registry(PUBLIC)[name].files
+            }
+
+    @pytest.mark.parametrize("mode", ["auto", "legacy"])
+    def test_read_skill_verifies_end_to_end(self, mode: str) -> None:
+        # auto: manifest from skills/get; legacy: from the _manifest resource.
+        async def calls(client):
+            return {
+                n: await client.read_skill(f"skill://{n}/SKILL.md") for n in (*EXPECTED, ENTRY)
+            }
+
+        for name, skill in _run_sep(calls, mode=mode).items():
+            for rel, data in skill.files.items():
+                assert data == (PUBLIC / name / rel).read_bytes(), (name, rel)
+
+    def test_get_known_uri(self) -> None:
+        async def calls(client):
+            return await client.get_skill("skill://prism/SKILL.md")
+
+        assert _run_sep(calls).frontmatter.root["name"] == "prism"
+
+    @pytest.mark.parametrize("name", ["no-such-skill", "usage-guide", *INTERNAL])
+    def test_get_unknown_or_internal_uri_is_invalid_params(self, name: str) -> None:
+        from mcp.shared.exceptions import MCPError
+
+        async def calls(client):
+            with pytest.raises(MCPError) as exc:
+                await client.get_skill(f"skill://{name}/SKILL.md")
+            return exc.value
+
+        assert _run_sep(calls).error.code == -32602
+
+    def test_handshake_protocol_has_resources_but_no_skills_methods(self) -> None:
+        async def calls(client):
+            uris = {str(r.uri) for r in await client.list_resources()}
+            with pytest.raises(RuntimeError, match="modern MCP connection"):
+                await client.list_skills()
+            return uris
+
+        uris = _run_sep(calls, mode="legacy")
+        assert f"skill://{ENTRY}/SKILL.md" in uris and "skill://prism/_manifest" in uris
+
+    def test_each_skill_is_far_below_sep_limits(self) -> None:
+        # SEP-2640 / FastMCP cap a skill at 512 files and 16 MiB.
+        for s in sk.load_registry(PUBLIC).values():
+            assert len(s.files) < 512 and s.total_size < 16 * 1024 * 1024, s.name
+
+    @pytest.mark.parametrize("local", [False, True])
+    @pytest.mark.parametrize("mode", ["auto", "legacy"])
+    def test_extension_is_advertised(self, local: bool, mode: str) -> None:
+        async def calls(client):
+            # server_capabilities covers both eras (initialize or server/discover).
+            caps = client.server_capabilities
+            return caps.model_dump(mode="json", by_alias=True) if caps else {}
+
+        caps = _run_sep(calls, local=local, mode=mode)
+        advertised = "io.modelcontextprotocol/skills" in (caps.get("extensions") or {})
+        # Only where skills/* exist: a handshake client is not told about methods
+        # it cannot call (it still reads the skill:// resources).
+        assert advertised == (mode == "auto"), caps
