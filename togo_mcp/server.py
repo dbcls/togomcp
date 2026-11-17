@@ -987,8 +987,44 @@ def _result_size(result: Any) -> int | None:
         return None
 
 
+def _resource_size(result: Any) -> int | None:
+    """Best-effort byte size of a resources/read result."""
+    try:
+        total = 0
+        for c in getattr(result, "contents", None) or []:
+            body = getattr(c, "content", None)
+            if body is None:
+                body = getattr(c, "text", None) or getattr(c, "blob", None) or ""
+            total += len(body.encode("utf-8") if isinstance(body, str) else body)
+        return total
+    except Exception:
+        return None
+
+
+def _model_size(result: Any) -> int | None:
+    """Best-effort byte size of a skills/list or skills/get result (a plain dict
+    at the on_request layer in FastMCP 4.2; a pydantic model also accepted)."""
+    try:
+        if hasattr(result, "model_dump"):
+            result = result.model_dump(mode="json", by_alias=True)
+        return len(json.dumps(result, default=str).encode("utf-8"))
+    except Exception:
+        return None
+
+
+# The skills-over-MCP (SEP-2640) methods, logged as `kind` records (see below).
+_SKILLS_METHODS = {"skills/list": "skills_list", "skills/get": "skills_get"}
+
+
 class _ToolCallLogger(_Middleware):
-    """Emit one JSONL record per MCP tool call.
+    """Emit one JSONL record per MCP tool call, and per skill-route request.
+
+    Tool records carry no `kind` field (as they always have). The skill route,
+    which would otherwise be invisible because it makes no tool call, adds
+    records with `kind`: "resource" for a `resources/read` of a `skill://` URI,
+    "skills_list" / "skills_get" for the SEP-2640 methods. Those have `uri` (when
+    there is one) in place of `tool`/`args`, and the same metadata and redaction.
+    stats.py keeps them out of every tool tally (stats.record_kind).
 
     Enabled by setting TOGOMCP_QUERY_LOG to a filesystem path. Unset/empty =
     disabled (the default), in which case on_call_tool short-circuits and adds
@@ -1076,6 +1112,97 @@ class _ToolCallLogger(_Middleware):
         xff = req.headers.get("X-Forwarded-For")
         return xff[:200] if xff else None
 
+    def _common_fields(self, fctx: Any) -> dict[str, Any]:
+        """Fields every record shares: who called, over what, in which session."""
+        client_ip = self._client_ip()
+        protocol_version = _protocol_version(fctx)
+        out: dict[str, Any] = {
+            "session_id": _session_id(fctx, protocol_version),
+            "request_id": getattr(fctx, "request_id", None) if fctx else None,
+            "origin_request_id": (
+                getattr(fctx, "origin_request_id", None) if fctx else None
+            ),
+            "client_id": getattr(fctx, "client_id", None) if fctx else None,
+            "transport": getattr(fctx, "transport", None) if fctx else None,
+            "ip_hash": _hash_ip(client_ip),
+            "meta": {
+                **_STATIC_META,
+                "client": _client_info(fctx),
+                "protocol_version": protocol_version,
+            },
+        }
+        if self._raw_ip:
+            out["ip"] = client_ip
+            fwd = self._forwarded_for()
+            if fwd:
+                out["forwarded_for"] = fwd
+        return out
+
+    def _emit(self, record: dict[str, Any]) -> None:
+        try:
+            # The whole line is redacted, not just error_message: `extra` and
+            # `args` are free-form and the log is served over /logs.
+            self._log.info(redact_secrets(json.dumps(record, default=str)))  # type: ignore[union-attr]
+        except Exception:
+            # Logging must never break a call.
+            pass
+
+    async def _log_skill_request(self, context, call_next, kind: str, uri: str | None, size):
+        start = time.perf_counter()
+        status = "ok"
+        error_class: str | None = None
+        error_message: str | None = None
+        result = None
+        try:
+            result = await call_next(context)
+            return result
+        except BaseException as exc:
+            status = "error"
+            error_class = exc.__class__.__name__
+            error_message = redact_secrets(str(exc))[:500]
+            raise
+        finally:
+            record: dict[str, Any] = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "kind": kind,
+            }
+            if uri is not None:
+                record["uri"] = uri
+            record.update(
+                status=status,
+                elapsed_ms=round((time.perf_counter() - start) * 1000, 2),
+                output_bytes=size(result) if result is not None else None,
+            )
+            record.update(self._common_fields(context.fastmcp_context))
+            if error_class is not None:
+                record["error_class"] = error_class
+                record["error_message"] = error_message
+            self._emit(record)
+
+    async def on_read_resource(self, context, call_next):
+        uri = str(getattr(context.message, "uri", "") or "")
+        if not self._enabled or not uri.startswith("skill://"):
+            return await call_next(context)
+        return await self._log_skill_request(
+            context, call_next, "resource", uri, _resource_size
+        )
+
+    async def on_request(self, context, call_next):
+        # resources/read and tools/call are logged by their typed hooks; this
+        # catches only the extension methods, which have no typed hook.
+        kind = _SKILLS_METHODS.get(getattr(context, "method", None) or "")
+        if not self._enabled or kind is None:
+            return await call_next(context)
+        params = context.message if isinstance(context.message, dict) else {}
+        uri = params.get("uri")
+        return await self._log_skill_request(
+            context,
+            call_next,
+            kind,
+            str(uri) if uri is not None else None,
+            _model_size,
+        )
+
     async def on_call_tool(self, context, call_next):
         if not self._enabled:
             return await call_next(context)
@@ -1100,9 +1227,6 @@ class _ToolCallLogger(_Middleware):
             elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
             extra = _sparql_extra_var.get()
             _sparql_extra_var.reset(token)
-            fctx = context.fastmcp_context
-            client_ip = self._client_ip()
-            protocol_version = _protocol_version(fctx)
             record: dict[str, Any] = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "tool": context.message.name,
@@ -1110,37 +1234,14 @@ class _ToolCallLogger(_Middleware):
                 "status": status,
                 "elapsed_ms": elapsed_ms,
                 "output_bytes": _result_size(result),
-                "session_id": _session_id(fctx, protocol_version),
-                "request_id": getattr(fctx, "request_id", None) if fctx else None,
-                "origin_request_id": (
-                    getattr(fctx, "origin_request_id", None) if fctx else None
-                ),
-                "client_id": getattr(fctx, "client_id", None) if fctx else None,
-                "transport": getattr(fctx, "transport", None) if fctx else None,
-                "ip_hash": _hash_ip(client_ip),
-                "meta": {
-                    **_STATIC_META,
-                    "client": _client_info(fctx),
-                    "protocol_version": protocol_version,
-                },
+                **self._common_fields(context.fastmcp_context),
             }
-            if self._raw_ip:
-                record["ip"] = client_ip
-                fwd = self._forwarded_for()
-                if fwd:
-                    record["forwarded_for"] = fwd
             if error_class is not None:
                 record["error_class"] = error_class
                 record["error_message"] = error_message
             if extra:
                 record["extra"] = extra
-            try:
-                # The whole line is redacted, not just error_message: `extra` and
-                # `args` are free-form and the log is served over /logs.
-                self._log.info(redact_secrets(json.dumps(record, default=str)))  # type: ignore[union-attr]
-            except Exception:
-                # Logging must never break a tool call.
-                pass
+            self._emit(record)
 
 
 mcp.add_middleware(_ToolCallLogger())

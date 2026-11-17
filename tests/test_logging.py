@@ -277,3 +277,71 @@ def test_log_records_stateless_client(tmp_path, monkeypatch):
         # FastMCP invents a fresh uuid per stateless call; it must not be logged
         # as if it were a session.
         assert r["session_id"] is None
+
+
+def _log_skill_calls(tmp_path, monkeypatch, mode: str) -> list[dict]:
+    """Drive the skill route through a real Client and return the JSONL records."""
+    import asyncio
+    import logging
+
+    from fastmcp import Client, FastMCP
+    from fastmcp.skills import Skill, SkillsClientExtension
+    from fastmcp.skills.provider import SkillCatalogProvider
+    from mcp.types import Implementation
+
+    log_path = tmp_path / f"skills-{mode}.jsonl"
+    monkeypatch.setenv("TOGOMCP_QUERY_LOG", str(log_path))
+    toolcall_log = logging.getLogger("togomcp.toolcalls")
+    saved = (toolcall_log.handlers[:], toolcall_log.level, toolcall_log.propagate)
+
+    srv = FastMCP("skill-log-probe")
+    srv.add_middleware(server._ToolCallLogger())
+    srv.add_provider(
+        SkillCatalogProvider([Skill(name="demo", description="d", instructions="hi")])
+    )
+
+    @srv.resource("data://other")
+    def other() -> str:
+        return "not a skill"
+
+    async def go():
+        info = Implementation(name=f"probe-{mode}", version="7")
+        async with Client(
+            srv, mode=mode, client_info=info, extensions=[SkillsClientExtension()]
+        ) as c:
+            if mode == "auto":
+                await c.list_skills()
+                await c.get_skill("skill://demo/SKILL.md")
+            await c.read_resource("skill://demo/SKILL.md")
+            await c.read_resource("data://other")  # not a skill: not logged
+
+    try:
+        asyncio.run(go())
+        for h in toolcall_log.handlers:
+            h.flush()
+    finally:
+        for h in toolcall_log.handlers:
+            h.close()
+        toolcall_log.handlers, toolcall_log.level, toolcall_log.propagate = saved
+    return [json.loads(line) for line in log_path.read_text().splitlines()]
+
+
+def test_skill_route_is_logged_stateless(tmp_path, monkeypatch):
+    recs = _log_skill_calls(tmp_path, monkeypatch, "auto")
+    assert [(r["kind"], r.get("uri")) for r in recs] == [
+        ("skills_list", None),
+        ("skills_get", "skill://demo/SKILL.md"),
+        ("resource", "skill://demo/SKILL.md"),
+    ]
+    for r in recs:
+        assert "tool" not in r and r["status"] == "ok"
+        assert r["meta"]["client"] == {"name": "probe-auto", "version": "7"}
+        assert r["meta"]["protocol_version"] in server.MODERN_PROTOCOL_VERSIONS
+        assert r["session_id"] is None
+        assert isinstance(r["output_bytes"], int) and r["output_bytes"] > 0
+
+
+def test_skill_resource_read_is_logged_on_handshake_protocol(tmp_path, monkeypatch):
+    recs = _log_skill_calls(tmp_path, monkeypatch, "legacy")
+    assert [(r["kind"], r["uri"]) for r in recs] == [("resource", "skill://demo/SKILL.md")]
+    assert recs[0]["session_id"]
