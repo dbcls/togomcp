@@ -13,6 +13,26 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.34.1] - 2026-11-17
+
+<!-- whatsnew: 2026-11-17 | Claude Desktop: upload <code>togomcp-start.skill</code> (attached to every release) as a skill, and TogoMCP is used for life-science questions and starts from its Usage Guide from the first message. -->
+
+PATCH: no tool, parameter or return shape changed. The skill archives and the tutorial change for Claude
+Desktop users, who until now had no route to the model's first turn.
+
+### Changed
+
+- `togomcp-start` is now packaged by `package-skills.yml` (2.34.0 left it out). In Claude Desktop, uploading
+  it is the only way to reach the model from the first message. Desktop does not start `skill://` skills on
+  its own, and over the remote connector it shows server instructions only after a TogoMCP tool has been
+  loaded. An uploaded skill's description is present from turn one. The tutorial (chapter 5, EN + JA) now
+  says to upload it; the same commit range adds the chapter 5 notes on the skills-extension route.
+- `package-skills.yml` now runs on every version tag (`v*`), not only `skills-v*`. Every release therefore
+  gets a GitHub Release with the `.skill` archives, so `releases/latest` always has the current set (the
+  tutorial links there). The archives are attached by one job after all packaging finishes. On a `v*` tag
+  no release exists beforehand, and one upload per matrix job would race to create it. The release body
+  is appended, so hand-written notes are kept.
+
 ## [2.34.0] - 2026-11-17
 
 <!-- whatsnew: 2026-11-17 | TogoMCP's analysis workflows are now also served as MCP skills (<code>skills/list</code>, SEP-2640), so hosts that support skills can discover and verify them on their own; <code>get_workflow</code> works as before. -->
@@ -4053,7 +4073,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.1...HEAD
+[2.34.1]: https://github.com/dbcls/togomcp/compare/v2.34.0...v2.34.1
 [2.34.0]: https://github.com/dbcls/togomcp/compare/v2.33.0...v2.34.0
 [2.33.0]: https://github.com/dbcls/togomcp/compare/v2.32.1...v2.33.0
 [2.32.1]: https://github.com/dbcls/togomcp/compare/v2.32.0...v2.32.1
