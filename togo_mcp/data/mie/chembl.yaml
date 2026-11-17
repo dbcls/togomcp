@@ -385,8 +385,10 @@ examples:
           # highestDevelopmentPhase are molecule-only predicates, so the type constraint is redundant here.
           ?molecule rdfs:label ?moleculeLabel ;
                     cco:moleculeXref ?xref ; cco:highestDevelopmentPhase 4 .   # phase=4 pre-filter: 2.9M → ~2.5k
-          FILTER(CONTAINS(STR(?xref), "chebi/searchId"))
-          # cco:moleculeXref is an EBI WEB URL (…searchId.do?chebiId=CHEBI%3ANNN) — rebuild the obo IRI to join:
+          FILTER(CONTAINS(STR(?xref), "/chebi/CHEBI%3A"))
+          # cco:moleculeXref is an EBI WEB URL (https://www.ebi.ac.uk/chebi/CHEBI%3ANNN) — rebuild the obo IRI to join.
+          # Match on the CHEBI%3A tail, not the URL path: the path changed upstream (2026-11; it was
+          # …/searchId.do?chebiId=CHEBI%3ANNN) and a path-keyed filter silently returned 0 rows.
           BIND(IRI(CONCAT("http://purl.obolibrary.org/obo/CHEBI_",
                    REPLACE(STR(?xref), ".*CHEBI%3A", ""))) AS ?chebiId)
         }
@@ -398,7 +400,7 @@ examples:
       }
       ORDER BY ?moleculeLabel
       LIMIT 50
-    verified: {min_rows: 50, has_values: ["2-MERCAPTOETHANESULFONIC ACID", "coenzyme M"], date: "2026-07-30", first_row: "2-MERCAPTOETHANESULFONIC ACID → 'coenzyme M' C2H6O3S2, 142.201", note: "the 2026-07-22 first_row (ABACAVIR) was stale — re-running the ORIGINAL query today also returns 2-MERCAPTOETHANESULFONIC ACID first, so this is upstream drift, not the type-pin removal"}
+    verified: {min_rows: 50, has_values: ["2-MERCAPTOETHANESULFONIC ACID", "coenzyme M"], date: "2026-11-17", first_row: "2-MERCAPTOETHANESULFONIC ACID → 'coenzyme M' C2H6O3S2, 142.201", note: "2026-11-17: xref URL format changed upstream (searchId.do?chebiId= → /chebi/CHEBI%3A); filter re-keyed, result identical to 2026-07-30"}
     teaches: "Molecule→ChEBI is cco:moleculeXref, but it stores an EBI web URL, NOT the obo:CHEBI_ IRI — BIND+REPLACE rebuilds purl.obolibrary.org/obo/CHEBI_N to join. On the ChEBI side use the chemrof: namespace (chemrof:mass / chemrof:generalized_empirical_formula); the old chebi:formula/chebi:mass were removed upstream (0 rows)."
     traps_avoided:
       - "skos:exactMatch does NOT link a molecule to ChEBI — it is ONLY on TargetComponent (→UniProt). Using it here returns 0 rows silently; use cco:moleculeXref."
