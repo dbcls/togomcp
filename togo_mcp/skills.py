@@ -1,4 +1,10 @@
-"""Workflow (Agent Skill) registry served by `get_workflow` and as `skill://` resources.
+"""Workflow (Agent Skill) registry: the ONE copy behind every skill route.
+
+Three routes serve the same in-memory bytes: the `get_workflow` tool (hosts whose
+models only call tools), `skill://<name>/...` resources (any resource-reading host),
+and the SEP-2640 Skills extension's `skills/list` / `skills/get` (2026-07-28 protocol
+only). The last two come from FastMCP's `SkillCatalogProvider`, fed by
+`to_fastmcp_skill()` below, so the disk is read once and every route agrees.
 
 A workflow is an Agent Skills directory — `SKILL.md` plus `references/` — that drives
 the TogoMCP tools through a multi-step analysis. They are served from the server so
@@ -11,7 +17,8 @@ intro-page-updater) stay in `.claude/skills/`, outside the package, so neither t
 nor the resource route can reach them. `.claude/skills/<public name>` are symlinks INTO
 `public/`, which keeps Claude Code's in-repo discovery working without a second copy.
 
-This module is pure: no FastMCP, no server state. The registry is built once at import
+This module is pure apart from `to_fastmcp_skill()`, the one function that imports
+FastMCP (lazily); everything else has no FastMCP and no server state. The registry is built once at import
 (a deploy restarts the server), and it fails LOUDLY on a malformed skill — a skill that
 silently dropped out of the catalog would be indistinguishable from one never shipped.
 """
@@ -22,12 +29,22 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 import yaml
 
 MAIN_FILE = "SKILL.md"
 ALLOWED_SUFFIXES = frozenset({".md", ".yaml", ".yml", ".txt"})
 _CATALOG_MAX = 120
+# Agent Skills specification limits (agentskills.io/specification), which FastMCP
+# also enforces when it builds a Skill. Checked here too, so the registry fails at
+# load with a message naming the file rather than inside the provider.
+NAME_MAX = 64
+DESCRIPTION_MAX = 1024
+_NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+# `metadata.role` values. An entry skill is served only on the resource/SEP routes,
+# never by get_workflow or in the Usage Guide's Workflows list (see rdf_portal.py).
+ROLE_ENTRY = "entry"
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*(?:\n|\Z)", re.S)
 
 
@@ -48,9 +65,13 @@ class Skill:
     description: str
     catalog: str
     version: str | None
-    digest: str  # full sha256 hex over every file (path + content)
+    # Aggregate digest: ONE sha256 over every file's path and content, used by
+    # get_workflow's header. Not the SEP-2640 digest, which is per file (sha256 of
+    # that file's bytes) and is computed by FastMCP for skills/list.
+    digest: str
     root: Path
     files: dict[str, SkillFile] = field(default_factory=dict)
+    role: str | None = None  # metadata.role, e.g. ROLE_ENTRY
 
     @property
     def short_digest(self) -> str:
@@ -118,6 +139,11 @@ def load_skill(skill_dir: Path) -> Skill:
     name = fm.get("name")
     if not name:
         raise SkillRegistryError(f"{main}: frontmatter has no `name`")
+    if not isinstance(name, str) or len(name) > NAME_MAX or not _NAME_RE.match(name):
+        raise SkillRegistryError(
+            f"{main}: name {name!r} must be lowercase letters, digits and single "
+            f"hyphens, at most {NAME_MAX} characters"
+        )
     if name != skill_dir.name:
         raise SkillRegistryError(
             f"{main}: frontmatter name {name!r} does not match directory {skill_dir.name!r}"
@@ -125,11 +151,17 @@ def load_skill(skill_dir: Path) -> Skill:
     description = fm.get("description")
     if not isinstance(description, str) or not description.strip():
         raise SkillRegistryError(f"{main}: frontmatter has no `description`")
+    if len(description) > DESCRIPTION_MAX:
+        raise SkillRegistryError(
+            f"{main}: description is {len(description)} characters "
+            f"(Agent Skills limit {DESCRIPTION_MAX})"
+        )
     description = " ".join(description.split())
     meta = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
     catalog = meta.get("catalog")
     catalog = " ".join(str(catalog).split()) if catalog else _first_sentence(description)
     version = meta.get("version")
+    role = meta.get("role")
     files = _scan_files(skill_dir)
     return Skill(
         name=name,
@@ -139,6 +171,7 @@ def load_skill(skill_dir: Path) -> Skill:
         digest=_digest(files),
         root=skill_dir.resolve(),
         files=files,
+        role=str(role) if role is not None else None,
     )
 
 
@@ -155,6 +188,31 @@ def load_registry(root: Path) -> dict[str, Skill]:
             raise SkillRegistryError(f"duplicate skill name {skill.name!r} under {root}")
         registry[skill.name] = skill
     return registry
+
+
+def to_fastmcp_skill(skill: Skill) -> Any:
+    """The registry snapshot as a FastMCP `Skill` (SEP-2640 resources + skills/list).
+
+    Built from the registry's own file contents, not re-read from disk, so the
+    resource route and get_workflow serve identical bytes. FastMCP parses the
+    frontmatter itself (that verbatim copy is what skills/list returns), so check
+    that its parse agrees with ours: a mismatch would make skills/list and
+    get_workflow describe the same skill differently, and must stop the boot.
+    """
+    from fastmcp.skills import Skill as FastMCPSkill
+
+    try:
+        fm = FastMCPSkill.from_files(
+            {path: f.content.encode("utf-8") for path, f in skill.files.items()}
+        )
+    except Exception as exc:  # FastMCP's own Agent Skills validation
+        raise SkillRegistryError(f"{skill.root}: rejected by FastMCP: {exc}") from exc
+    if fm.name != skill.name or " ".join(fm.description.split()) != skill.description:
+        raise SkillRegistryError(
+            f"{skill.root}: FastMCP parses the frontmatter differently from the "
+            f"registry (name {fm.name!r} vs {skill.name!r}, or the description differs)"
+        )
+    return fm
 
 
 def resolve_path(skill: Skill, path: str) -> SkillFile:

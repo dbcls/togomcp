@@ -1408,8 +1408,8 @@ class TestTransportGate:
         kegg_tools = [t for t in await fresh.list_tools() if t.name.startswith("kegg_")]
         assert len(kegg_tools) == 8
         for tool in kegg_tools:
-            assert tool.annotations.readOnlyHint is True, tool.name
-            assert tool.annotations.openWorldHint is True, tool.name
+            assert tool.annotations.read_only_hint is True, tool.name
+            assert tool.annotations.open_world_hint is True, tool.name
             # FastMCP drops the docstring `Returns:` section, so the contract has
             # to live in the body above `Args:`.
             assert "RETURNS" in (tool.description or ""), tool.name

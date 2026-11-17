@@ -117,6 +117,28 @@ class TestRegistry:
         (d / "references" / "r.md").write_text("two", encoding="utf-8")
         assert sk.load_skill(d).digest != first
 
+    @pytest.mark.parametrize("bad", ["Prism", "pr_ism", "-prism", "a--b", "x" * 65])
+    def test_invalid_name_raises(self, tmp_path: Path, bad: str) -> None:
+        _write_skill(tmp_path, bad, f"name: {bad}\ndescription: x")
+        with pytest.raises(sk.SkillRegistryError, match="lowercase"):
+            sk.load_skill(tmp_path / bad)
+
+    def test_overlong_description_raises(self, tmp_path: Path) -> None:
+        d = _write_skill(tmp_path, "a", "name: a\ndescription: " + "x" * 1025)
+        with pytest.raises(sk.SkillRegistryError, match="1025 characters"):
+            sk.load_skill(d)
+
+    def test_public_descriptions_fit_the_spec_limit(self) -> None:
+        # prism is ~930 of 1024: the margin is small, so say which skill overflowed.
+        for d in sorted(PUBLIC.iterdir()):
+            fm = sk.parse_frontmatter((d / "SKILL.md").read_text(encoding="utf-8"))
+            assert len(fm["description"]) <= sk.DESCRIPTION_MAX, d.name
+
+    def test_role_comes_from_metadata(self, tmp_path: Path) -> None:
+        d = _write_skill(tmp_path, "a", "name: a\ndescription: x\nmetadata:\n  role: entry")
+        assert sk.load_skill(d).role == sk.ROLE_ENTRY
+        assert sk.load_registry(PUBLIC)["prism"].role is None
+
     def test_symlinks_and_disallowed_suffixes_are_not_loaded(self, tmp_path: Path) -> None:
         outside = tmp_path / "outside"
         outside.mkdir()
@@ -127,6 +149,46 @@ class TestRegistry:
         (d / "references" / "script.py").write_text("print()", encoding="utf-8")
         files = sk.load_skill(d).files
         assert set(files) == {"SKILL.md", "references/ok.md"}
+
+
+# --- FastMCP adapter ---------------------------------------------------------
+
+
+class TestToFastMCPSkill:
+    def test_bytes_and_frontmatter_match_disk(self) -> None:
+        for skill in sk.load_registry(PUBLIC).values():
+            fm = sk.to_fastmcp_skill(skill)
+            assert fm.name == skill.name
+            assert set(fm.files) == set(skill.files), skill.name
+            for rel, data in fm.files.items():
+                assert data == (skill.root / rel).read_bytes(), (skill.name, rel)
+
+    def test_parser_disagreement_raises(self, tmp_path: Path) -> None:
+        import dataclasses
+
+        skill = sk.load_skill(_write_skill(tmp_path, "a", "name: a\ndescription: real"))
+        with pytest.raises(sk.SkillRegistryError, match="differently"):
+            sk.to_fastmcp_skill(dataclasses.replace(skill, description="other"))
+
+
+def test_no_deprecated_fastmcp_api_at_import() -> None:
+    # FastMCP 4.3 removes what 4.2 deprecates (the old skills provider among them).
+    # A fresh process, because a module an earlier test imported warns no more.
+    # The filter is set AFTER importing fastmcp, whose __init__ installs a "default"
+    # filter for its own category; matching on the category (not module=) because
+    # FastMCP attributes the warning to the CALLER's module, i.e. togo_mcp.
+    import subprocess
+    import sys
+
+    code = (
+        "import warnings, fastmcp\n"
+        "warnings.simplefilter('error', fastmcp.FastMCPDeprecationWarning)\n"
+        "import togo_mcp.main\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, cwd=REPO
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
 
 
 # --- get_workflow -----------------------------------------------------------
@@ -280,6 +342,8 @@ class TestResources:
             assert {f["path"] for f in manifest["files"]} == set(WORKFLOWS[name].files)
 
     def test_resource_description_is_real_description(self) -> None:
+        # FastMCP < 4.2 read a folded `description: >` as the literal ">", which
+        # rdf_portal.py patched over. 4.2 parses real YAML, so no patch remains.
         async def calls(client):
             return {str(r.uri): r.description for r in await client.list_resources()}
 
