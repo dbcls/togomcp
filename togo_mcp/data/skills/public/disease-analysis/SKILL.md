@@ -27,7 +27,7 @@ live in [references/disease_analysis.md](references/disease_analysis.md) — rea
 for the deliverable structure. This SKILL.md is the *operational* path: verified
 queries, the exact tool calls, and the traps.
 
-Files under `references/` are fetched with `get_workflow(name="disease-analysis", path="references/...")` (when this skill is installed locally, read them as files instead).
+Files under `references/` are relative to this skill. If your host loaded this skill from the TogoMCP server as `skill://disease-analysis/SKILL.md`, read them as sibling resources (`skill://disease-analysis/references/...`). If you got this file from `get_workflow`, fetch them with `get_workflow(name="disease-analysis", path="references/...")`. If the skill is installed locally, read them as files.
 
 ## Prerequisites
 

@@ -30,7 +30,7 @@ anti-skipping safeguards live in
 operational path: the SPARQL that actually works (the printed templates have two
 bugs — see Gotchas), the verified tool calls, and the traps.**
 
-Files under `references/` are fetched with `get_workflow(name="research-article-analysis", path="references/...")` (when this skill is installed locally, read them as files instead).
+Files under `references/` are relative to this skill. If your host loaded this skill from the TogoMCP server as `skill://research-article-analysis/SKILL.md`, read them as sibling resources (`skill://research-article-analysis/references/...`). If you got this file from `get_workflow`, fetch them with `get_workflow(name="research-article-analysis", path="references/...")`. If the skill is installed locally, read them as files.
 
 ## Prerequisites
 
