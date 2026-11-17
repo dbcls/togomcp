@@ -13,6 +13,47 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.33.0] - 2026-11-17
+
+<!-- whatsnew: 2026-11-17 | New database: <code>riken_pmm</code> — the RIKEN Plant Metabolomics MetaDatabase, experiment metadata for 152 plant metabolomics studies with sample species, organ, growth conditions, instrument settings and raw data file links. -->
+
+MINOR: one new database (#304); no tool, parameter or return shape changed. Also carries the fixes from
+the weekly MIE drift sweep (#303). The WikiPathways one matters most: every WikiPathways example had been
+returning 0 rows since 2026-11-10.
+
+### Added
+
+- **RIKEN Plant Metabolomics MetaDatabase** (`riken_pmm`, `endpoint_name="metabobank"`, graph `plantMetabolomics`):
+  experiment metadata for 152 plant metabolomics studies (64 RIKEN `RPMMnnnn` + 88 Kazusa MetaboNote `MN_SEnnn`).
+  It covers 9,109 biological samples with species, Plant Ontology organ, genotype/mutant and growth conditions,
+  instrument and MS settings, and 14,026 downloadable raw data files. It is served from RIKEN MetaboBank's own
+  endpoint `https://metabobank.riken.jp/sparql`. The browser page `/pmm/sparql` is an HTML front end that rejects
+  POST, so TogoMCP cannot use it. The MIE has 11 verified examples, including the set-level routes by species,
+  organ, instrument and EFO experimental factor, and a same-endpoint join from a sample's gene to the co-hosted
+  TAIR GO-slim annotations. It records traps that return wrong answers without any error: Dublin Core minted
+  under `dc/dcmitype/`, BioPortal taxon IRIs, a ×2.00 `owl:Class` re-typing of every ontology hub, unlabeled PO
+  terms, and gene codes packed into one string. New database, no tool change: MINOR.
+- The intro pages (English and Japanese) get a `riken_pmm` card, and the usage stats credit the `pm:` prefix
+  to `riken_pmm`, so queries to the new database show up there.
+
+### Fixed
+
+- `wikipathways`: WikiPathways' 2026-11-10 reload split its single data graph `<http://rdf.wikipathways.org/>`
+  into per-layer graphs (`graph/wp`, `graph/ontologies`, `graph/gpml`, `graph/authors`, `graph/void`). The
+  old graph no longer exists, so every query the MIE pinned to it returned 0 rows with no error. That is the
+  worst kind of failure, because an agent reads it as "no such pathway". All examples and checks are now
+  pinned to the right layer. Queries that walk an ontology hierarchy (disease and pathway-ontology tags)
+  must name BOTH `graph/ontologies` and `graph/wp`, and the MIE now says so. One real data change surfaced:
+  WP5598 lost its disease tag, so epilepsy pathways went from 20 to 19.
+- `chembl` (`xdb_chebi` example): ChEMBL changed the URL form of its ChEBI cross-references
+  (`…/searchId.do?chebiId=CHEBI%3AN` → `…/chebi/CHEBI%3AN`), and the example's filter on the old path returned
+  0 rows. It now matches the `CHEBI%3A` part, which survives either form, and returns the same 50 drugs as before.
+- `lipidmaps`, `rikenbrc_jcm`: re-measured figures (21 multi-mass formulas, not 22; the live JCM catalogue
+  is now 75 strains ahead of its BRSO copy and still growing).
+- Benchmark Q104 and Q110 re-pinned to the new WikiPathways graph; their answers are unchanged.
+- `endpoints.csv`: five rows had LF line endings in an otherwise CRLF file; all rows are now CRLF.
+- The Docker base image (`astral/uv`) is updated to digest `ee8a885`.
+
 ## [2.32.1] - 2026-11-11
 
 PATCH: two more verified examples in the `jcm` MIE; no tool, parameter or return shape changed. They were
@@ -3966,7 +4007,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.32.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.33.0...HEAD
+[2.33.0]: https://github.com/dbcls/togomcp/compare/v2.32.1...v2.33.0
 [2.32.1]: https://github.com/dbcls/togomcp/compare/v2.32.0...v2.32.1
 [2.32.0]: https://github.com/dbcls/togomcp/compare/v2.31.0...v2.32.0
 [2.31.0]: https://github.com/dbcls/togomcp/compare/v2.30.0...v2.31.0

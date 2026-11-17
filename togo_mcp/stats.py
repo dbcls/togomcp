@@ -288,6 +288,7 @@ SIGNATURE_PREFIXES = {
     "nuc": "ddbj",              # http://ddbj.nig.ac.jp/ontologies/nucleotide/
     "insdc": "ddbj",
     "cello": "cellosaurus",     # https://purl.expasy.org/cellosaurus/rdf/ontology/
+    "pm": "riken_pmm",          # http://metadb.riken.jp/ontology/plantMetabolomics/0.1/
 }
 
 # Prefix strings that bind to DIFFERENT namespaces in different databases, so

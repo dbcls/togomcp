@@ -1,0 +1,366 @@
+# MIE v3 — RIKEN Plant Metabolomics MetaDatabase (graph plantMetabolomics), 2026-11-17.
+# Served from RIKEN's own MetaboBank endpoint (metabobank.riken.jp, endpoint_name metabobank), NOT RDF Portal.
+# The browser page https://metabobank.riken.jp/pmm/sparql is an HTML front end that rejects POST (405)
+# and ignores Accept; https://metabobank.riken.jp/sparql serves the same 42 graphs as a standard endpoint.
+mie_spec: 3
+database: riken_pmm
+
+discovery:
+  title: RIKEN PMM — RIKEN Plant Metabolomics MetaDatabase
+  description: >
+    Experiment metadata for ~150 plant metabolomics studies (GC-MS, LC-MS, CE-MS) from RIKEN and Kazusa
+    MetaboNote — projects, biological samples with species, plant organ, genotype/mutant and growth
+    conditions, measurement and instrument settings, and downloadable raw data files.
+  keywords: [metabolomics, metabolite profiling, plant metabolome, gc-ms, lc-ms, mass spectrometry,
+             experiment metadata, biological sample, plant organ, growth condition, raw data, arabidopsis, rice, tomato]
+  categories: [compound]
+
+endpoint: https://metabobank.riken.jp/sparql   # RIKEN MetaboBank Virtuoso — 42 graphs; endpoint_name metabobank
+base_uri: http://metadb.riken.jp/db/plantMetabolomics/0.1/   # entity IRI = base + <Class>/<id>, e.g. Project/RPMM0024
+graphs:
+  primary: http://metadb.riken.jp/db/plantMetabolomics
+  co_hosted:
+    NCBITaxon: >
+      JOIN TARGET + TYPE INFLATION. Holds species names for the BioPortal taxon IRIs the samples use
+      (skos:prefLabel, @en). It and the primary graph BOTH assert `?taxon a owl:Class`, so an unpinned
+      type+label join returns ×2.00 rows (gotcha hub_retyping).
+    EFO: >
+      JOIN TARGET + TYPE INFLATION. The only graph carrying labels for the plant-organ PO_ terms, the EFO
+      experimental factors and EO environment terms used here (rdfs:label). Re-types each as owl:Class
+      like NCBITaxon (×2.00). Its obo NCBITaxon_N copies use a different IRI form and never match a sample.
+    PO: "EMPTY STUB — one junk triple (an error message stored as <PO#If> <PO#you> <PO#are>). No PO labels here."
+    SciNetS_ria269i: >
+      JOIN TARGET (example xdb_tair_go). 181,900 TAIR Arabidopsis gene→GO-slim annotations; joins on the TAIR
+      locus URL built from pm:relevantGene. Its relation labels are in SciNetS_ria390i (23 rows).
+    other_ontologies: >
+      ChEBI, GO, CLO, ORDO, UBERON, MP, CHMO, OBI, UO, … and lexvo_org / DBCatalog. Probed: none of them touches a
+      plantMetabolomics entity IRI; UO and CHMO carry labels for the unit and experiment-type IRIs.
+
+entity_counts:                   # graph-pinned COUNT(DISTINCT) — 2026-11-17 (example totals_by_class)
+  projects: 152                  # 64 RPMMnnnn (RIKEN) + 88 MN_SEnnn (Kazusa MetaboNote)
+  experiments: 175
+  measurements: 12712
+  samples: 9723
+  biological_samples: 9109
+  taxa: 169
+  raw_files: 14026
+  date: "2026-11-17"
+
+global_gotchas:
+  - id: dcmitype_namespace
+    say: >
+      The Dublin Core predicates are minted in the WRONG namespace: identifier, description, references and
+      creator are <http://purl.org/dc/dcmitype/identifier> etc. Nothing in this graph uses dc/terms/ or
+      dc/elements/1.1/, so `dcterms:identifier "RPMM0024"` returns 0 rows with no error. Declare
+      PREFIX dcm: <http://purl.org/dc/dcmitype/>.
+    check:
+      kind: absent
+      date: "2026-11-17"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?s ?p ?o FILTER(STRSTARTS(STR(?p), "http://purl.org/dc/terms/")) } } LIMIT 1
+  - id: literal_forms
+    say: >
+      Identifiers and attribute strings (dcm:identifier, pm:relevantGene, pm:ionMode, pm:genotype, …) are PLAIN
+      literals — "RPMM0024" matches, "RPMM0024"^^xsd:string returns 0 rows. rdfs:label is @en (44,630; 350 @ja),
+      so a plain label match also returns 0. When unsure, use FILTER(STR(?x) = "…").
+    check:
+      kind: zero_rows
+      date: "2026-11-17"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?s <http://purl.org/dc/dcmitype/identifier> "RPMM0024"^^<http://www.w3.org/2001/XMLSchema#string> } } LIMIT 1
+  - id: taxon_iri_form
+    say: >
+      Samples point to taxa as BioPortal IRIs (obo:RO_0002162 <http://purl.bioontology.org/ontology/NCBITAXON/3702>),
+      never as obo NCBITaxon_3702 — that form returns 0 rows. The name is skos:prefLabel (@en) in graph
+      <http://metadb.riken.jp/ontology/NCBITaxon>; those taxa carry no rdfs:label.
+    check:
+      kind: zero_rows
+      date: "2026-11-17"
+      query: |
+        SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?s <http://purl.obolibrary.org/obo/RO_0002162> <http://purl.obolibrary.org/obo/NCBITaxon_3702> } } LIMIT 1
+  - id: hub_retyping
+    say: >
+      The primary graph re-types every taxon, PO organ, EFO factor and OBI term it uses as owl:Class, and the
+      ontology graph types it again. An unpinned `?bs obo:RO_0002162 ?t . ?t a owl:Class ; skos:prefLabel ?l`
+      returns 18,216 rows against 9,108 when each leg is pinned (×2.00, in 0.2s, so nothing signals it); the PO-organ
+      label join doubles the same way. FIX: GRAPH <…/plantMetabolomics> around the data, GRAPH <…/NCBITaxon> or
+      <…/EFO> around the label, and no `a owl:Class` leg.
+    check:
+      kind: ratio
+      date: "2026-11-17"
+      unpinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { ?s <http://purl.obolibrary.org/obo/RO_0002162> ?t . ?t a <http://www.w3.org/2002/07/owl#Class> ; <http://www.w3.org/2004/02/skos/core#prefLabel> ?l }
+      pinned: |
+        SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?s <http://purl.obolibrary.org/obo/RO_0002162> ?t } GRAPH <http://metadb.riken.jp/ontology/NCBITaxon> { ?t <http://www.w3.org/2004/02/skos/core#prefLabel> ?l } }
+      expect: {ratio: 2.0, tolerance: 0.02}
+  - id: two_project_series
+    say: >
+      Two series share the schema but not the vocabulary: RPMMnnnn (RIKEN) and MN_SEnnn (Kazusa MetaboNote).
+      Sample dcm:identifier values are not prefixed consistently (RPMM0056 samples are "001_Bd21"), so never
+      derive a project from an ID string — walk pm:experiment/pm:measurement/pm:sampleMeasured/pm:biologicalSample
+      (reaches 9,098 of 9,109 biological samples).
+    check:
+      kind: count
+      date: "2026-11-17"
+      query: |
+        PREFIX pm: <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+        SELECT (COUNT(DISTINCT ?bs) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?p a pm:Project ; pm:experiment/pm:measurement/pm:sampleMeasured/pm:biologicalSample ?bs } }
+      expect: {value: 9098, tolerance: 0.02}
+
+examples:
+  - id: project_record
+    intent: core record for one study by its project ID
+    question: "What is RIKEN PMM project RPMM0024 — its title, investigators, publication, analytical platform and size?"
+    complexity: basic
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcm:  <http://purl.org/dc/dcmitype/>
+      PREFIX pm:   <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      SELECT ?project ?title (GROUP_CONCAT(DISTINCT STR(?pi); separator=" ") AS ?investigators) (SAMPLE(?ref) AS ?pubmed)
+             (GROUP_CONCAT(DISTINCT STRAFTER(STR(?platform), "TechnologyPlatform/"); separator=",") AS ?platforms)
+             (COUNT(DISTINCT ?m) AS ?measurements) WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          ?project a pm:Project ; dcm:identifier "RPMM0024" ; rdfs:label ?title ; pm:experiment ?e .
+          OPTIONAL { ?project pm:principalInvestigator ?pi }
+          OPTIONAL { ?project dcm:references ?ref FILTER(STRSTARTS(STR(?ref), "http://rdf.ncbi.nlm.nih.gov/pubmed/")) }
+          OPTIONAL { ?e pm:technologyPlatform ?platform }
+          OPTIONAL { ?e pm:measurement ?m }
+        }
+      } GROUP BY ?project ?title
+    verified: {row_count: 1, has_values: ["RPMM0024", "29784957", "GCMS", 115], date: "2026-11-17"}
+    teaches: "Project IRI = base + Project/<id>; title is rdfs:label (@en), abstract dcm:description, funding foaf:fundedBy. Investigators (pm:principalInvestigator, pm:contactPerson, pm:submitter) are pm:Person IRIs with foaf names. dcm:references holds PubMed IRIs (68 projects); rdfs:seeAlso holds MassBase/KomicMarket/MetaboLights links."
+    traps_avoided:
+      - "A project has several investigators and experiments: aggregate them, or one project fans out into many rows."
+
+  - id: enum_by_species
+    intent: the SET-LEVEL species route — taxon IRI on the biological sample, name from the co-hosted NCBITaxon graph
+    question: "Which plant species are most studied in RIKEN PMM, by number of projects and samples?"
+    complexity: aggregation
+    sparql: |
+      PREFIX pm:   <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+      SELECT ?taxon ?species (COUNT(DISTINCT ?project) AS ?projects) (COUNT(DISTINCT ?bs) AS ?biological_samples) WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          ?project a pm:Project ; pm:experiment/pm:measurement/pm:sampleMeasured/pm:biologicalSample ?bs .
+          ?bs obo:RO_0002162 ?taxon .
+        }
+        OPTIONAL { GRAPH <http://metadb.riken.jp/ontology/NCBITaxon> { ?taxon skos:prefLabel ?species } }
+      } GROUP BY ?taxon ?species ORDER BY DESC(?biological_samples) ?taxon LIMIT 10
+    verified: {min_rows: 10, has_values: ["Arabidopsis thaliana", 42, 3685, "Oryza sativa", 2125, "Solanum lycopersicum", 29], date: "2026-11-17"}
+    teaches: "To restrict to one species, bind ?taxon to <http://purl.bioontology.org/ontology/NCBITAXON/<taxid>>. pm:speciesName is the free-text form (with <i> tags, sometimes two organisms); a few samples (18) carry two taxa, e.g. soybean + Bacillus in a fermentation study."
+
+  - id: enum_by_organ
+    intent: the SET-LEVEL plant-organ route — a Plant Ontology IRI on pm:plantOrgan
+    question: "Which RIKEN PMM projects profiled root samples, and how many root samples does each have?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX dcm:  <http://purl.org/dc/dcmitype/>
+      PREFIX pm:   <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      SELECT ?id ?title (COUNT(DISTINCT ?bs) AS ?root_samples) WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          ?bs pm:plantOrgan obo:PO_0009005 .
+          ?project a pm:Project ; dcm:identifier ?id ; rdfs:label ?title ;
+                   pm:experiment/pm:measurement/pm:sampleMeasured/pm:biologicalSample ?bs .
+        }
+      } GROUP BY ?id ?title ORDER BY DESC(?root_samples) ?id
+    verified: {row_count: 19, has_values: ["RPMM0007", 104, "MN_SE68", 39], date: "2026-11-17"}
+    teaches: "pm:plantOrgan takes obo:PO_ IRIs (59 distinct, on 8,611 samples; a sample may carry two). The PO term is not expanded: PO_0009005 'root' does not match a sample tagged with a narrower root term, so list the narrower IRIs with VALUES when you need the whole subtree."
+
+  - id: organ_counts
+    intent: organ vocabulary in use, with labels from the only graph that has them
+    question: "Which plant organs are sampled most often in RIKEN PMM?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX pm:   <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      SELECT ?organ ?label (COUNT(DISTINCT ?bs) AS ?samples) WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?bs a pm:BiologicalSample ; pm:plantOrgan ?organ }
+        OPTIONAL { GRAPH <http://metadb.riken.jp/ontology/EFO> { ?organ rdfs:label ?label } }
+      } GROUP BY ?organ ?label ORDER BY DESC(?samples) ?organ LIMIT 12
+    verified: {min_rows: 12, has_values: ["PO_0009006", "shoot system", 3031, "leaf", 981, "PO_0030104"], date: "2026-11-17"}
+    teaches: "Organ labels come only from the EFO graph's PO imports; keep the label leg OPTIONAL and pinned to <…/ontology/EFO>."
+    traps_avoided:
+      - say: "29 of the 59 organ terms in use have no label in ANY graph on this endpoint (e.g. PO_0030104, 470 samples) — the PO graph is a stub — so a required label leg silently drops those samples. Resolve unlabeled PO IRIs with OLS4."
+        check:
+          kind: count
+          date: "2026-11-17"
+          query: |
+            SELECT (COUNT(DISTINCT ?o) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?s <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/plantOrgan> ?o } FILTER NOT EXISTS { GRAPH ?g { ?o <http://www.w3.org/2000/01/rdf-schema#label> ?l } } }
+          expect: {value: 29, tolerance: 0.0}
+
+  - id: enum_by_instrument
+    intent: the analytical-method route that works for BOTH project series — the chromatography instrument
+    question: "Which chromatography instruments were used across RIKEN PMM experiments (GC vs LC systems)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX pm:   <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      SELECT ?instrument ?label (COUNT(DISTINCT ?e) AS ?experiments) (COUNT(DISTINCT ?project) AS ?projects) WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          ?project a pm:Project ; pm:experiment ?e .
+          ?e pm:measurement/pm:measurementCondition/pm:chromatography/pm:instrument ?instrument .
+          ?instrument rdfs:label ?label .
+        }
+      } GROUP BY ?instrument ?label ORDER BY DESC(?experiments) ?instrument
+    verified: {row_count: 13, has_values: ["GC_Agilent6890N", 68, "MN_HPLC1", 67, "LC_WatersAcquity"], date: "2026-11-17"}
+    teaches: "Experiment → pm:measurement → pm:measurementCondition → pm:chromatography / pm:massSpectrometry → pm:instrument (26 pm:Instrument nodes, rdfs:label + dcm:description). The MS node also carries pm:ionMode, pm:massAnalyser, pm:ionSource (RPMM only), pm:scanMZRange."
+    traps_avoided:
+      - say: "pm:technologyPlatform is only specific for RPMM projects (GCMS 49, LCMS 17, CEMS, LCPDA); every MN_SE project carries just the generic TechnologyPlatform/massSpectrometry + /chromatography, so filtering on TechnologyPlatform/GCMS or /LCMS silently drops all 88 MetaboNote projects."
+        check:
+          kind: zero_rows
+          date: "2026-11-17"
+          query: |
+            PREFIX pm: <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+            SELECT ?p WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?p a pm:Project ; <http://purl.org/dc/dcmitype/identifier> ?id ; pm:experiment/pm:technologyPlatform ?t FILTER(STRSTARTS(?id, "MN_") && ?t IN (<http://metadb.riken.jp/db/plantMetabolomics/0.1/TechnologyPlatform/GCMS>, <http://metadb.riken.jp/db/plantMetabolomics/0.1/TechnologyPlatform/LCMS>)) } } LIMIT 1
+
+  - id: growth_conditions
+    intent: growth conditions on a biological sample, including shared value nodes with units
+    question: "Under what cultivar, temperatures and light were the rice samples of project RPMM0007 grown?"
+    complexity: intermediate
+    sparql: |
+      PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+      PREFIX pm:  <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      SELECT ?bs ?cultivar ?dayT ?nightT ?unit ?light WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          <http://metadb.riken.jp/db/plantMetabolomics/0.1/Project/RPMM0007> pm:experiment/pm:measurement/pm:sampleMeasured/pm:biologicalSample ?bs .
+          OPTIONAL { ?bs pm:cultivar ?cultivar }
+          OPTIONAL { ?bs pm:dayTemperature ?d . ?d rdf:value ?dayT ; <http://qudt.org/schema/qudtunit> ?unit }
+          OPTIONAL { ?bs pm:nightTemperature/rdf:value ?nightT }
+          OPTIONAL { ?bs pm:lightCondition/pm:lightIntensity ?light }
+        }
+      } ORDER BY ?bs LIMIT 5
+    verified: {min_rows: 5, has_values: ["RPMM0007_gs_001_1", "Nipponbare", 26.0, 23.0, "UO_0000027"], date: "2026-11-17"}
+    teaches: "Numeric conditions (pm:temperature/dayTemperature/nightTemperature, pm:humidity, flow rates, energies) are nodes typed pm:Temperature etc. with rdf:value (xsd:float) and a unit IRI (UO_0000027 = degree Celsius); one node is shared by all samples with that value. Everything else (pm:genotype, pm:mutant, pm:dayLength 'PT24H', pm:growthCondition, pm:nutritionalRegime, pm:lightCondition → pm:lightIntensity/pm:lightQuality) is free text, so compare with FILTER(CONTAINS())."
+    traps_avoided:
+      - say: "The unit predicate is the malformed <http://qudt.org/schema/qudtunit> (no '#' or '/'); qudt:unit / qudt/unit / qudt/hasUnit match nothing."
+        check:
+          kind: absent
+          date: "2026-11-17"
+          query: |
+            SELECT ?s WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { { ?s <http://qudt.org/schema/qudt#unit> ?u } UNION { ?s <http://qudt.org/schema/qudt/unit> ?u } UNION { ?s <http://qudt.org/schema/qudt/hasUnit> ?u } } } LIMIT 1
+
+  - id: raw_data_files
+    intent: download URLs and checksums for a project's raw data
+    question: "Where can I download the raw LC-MS data files of the rice cultivar panel RPMM0054, and in which format?"
+    complexity: intermediate
+    sparql: |
+      PREFIX pm: <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      SELECT ?file ?url ?format ?md5 WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          <http://metadb.riken.jp/db/plantMetabolomics/0.1/Project/RPMM0054> pm:experiment/pm:measurement ?m .
+          ?m pm:rawDataset/pm:file ?file .
+          ?file pm:downloadURL ?url ; pm:fileFormat ?format ; pm:md5 ?md5 .
+        }
+      } ORDER BY ?url LIMIT 5
+    verified: {min_rows: 5, has_values: ["RPMM0054_1-1", "http://prime.psc.riken.jp/archives/data/DropMet/018/netcdf/1-1_POS01.CDF", "a5515fc16e718f335528e4e70e402957"], date: "2026-11-17"}
+    teaches: "Measurement → pm:rawDataset → pm:file → pm:downloadURL (xsd:anyURI; metabobank.riken.jp/data/… or prime.psc.riken.jp/archives/…) + pm:md5. Processed data hang off DataAnalysis → pm:analysedDataset → pm:peakFile / pm:normalisedDataMatrixFile / pm:massSpectralFile, same file predicates. RPMM0054 has 752 raw files."
+    traps_avoided:
+      - say: "pm:fileFormat is an IRI in a non-http scheme (<nrn:mimetype:application/x-cdf>), not a string, and its case varies (x-abf 5,931 vs x-ABF 77): match with FILTER(LCASE(STR(?format)) = \"nrn:mimetype:application/x-abf\")."
+        check:
+          kind: count
+          date: "2026-11-17"
+          query: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?f <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/fileFormat> <nrn:mimetype:application/x-ABF> } }
+          expect: {value: 77, tolerance: 0.02}
+
+  - id: enum_by_factor
+    intent: the SET-LEVEL study-design route — EFO/EO experimental-factor IRIs
+    question: "Which experimental factors do RIKEN PMM studies vary, and how many projects use each?"
+    complexity: aggregation
+    sparql: |
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      PREFIX pm:   <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      SELECT ?factor ?label (COUNT(DISTINCT ?project) AS ?projects) WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          ?project a pm:Project ; pm:experiment/pm:experimentalDesign/pm:experimentalFactor ?factor .
+        }
+        OPTIONAL { GRAPH ?og { ?factor rdfs:label ?label } FILTER(?og IN (<http://metadb.riken.jp/ontology/EFO>, <http://metadb.riken.jp/ontology/EO>)) }
+      } GROUP BY ?factor ?label ORDER BY DESC(?projects) ?factor LIMIT 10
+    verified: {min_rows: 10, has_values: ["EFO_0000752", 148, "EFO_0001758", "genetic modification design", 18, "EFO_0000724"], date: "2026-11-17"}
+    teaches: "Experiment → pm:experimentalDesign → pm:experimentalFactor (EFO_, EO_, GO_, PATO_, CHEBI_ IRIs) and pm:experimentType (OBI_/CHMO_ IRIs, labels in the CHMO/OBI graphs). EFO_0000752 'metabolomic profiling' is on almost every project, so filter on a more specific factor (genetic modification, cultivar, drought environment)."
+    traps_avoided:
+      - "An EO_ term is labelled in BOTH the EFO and EO graphs, so the label leg returns it twice — keep the GRAPH filter and GROUP BY on ?factor, or SAMPLE(?label)."
+
+  - id: totals_by_class
+    intent: database size — COUNT(DISTINCT) per class, pinned to the primary graph
+    question: "How many projects, experiments, measurements, samples, biological samples and species does RIKEN PMM hold?"
+    complexity: aggregation
+    sparql: |
+      PREFIX pm:  <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      SELECT (COUNT(DISTINCT ?p) AS ?projects) (COUNT(DISTINCT ?e) AS ?experiments) (COUNT(DISTINCT ?m) AS ?measurements)
+             (COUNT(DISTINCT ?s) AS ?samples) (COUNT(DISTINCT ?bs) AS ?biological_samples) (COUNT(DISTINCT ?t) AS ?taxa) WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          { ?p a pm:Project } UNION { ?e a pm:Experiment } UNION { ?m a pm:Measurement } UNION { ?s a pm:Sample }
+          UNION { ?bs a pm:BiologicalSample } UNION { ?x a pm:BiologicalSample ; obo:RO_0002162 ?t }
+        }
+      }
+    verified: {row_count: 1, has_values: [152, 175, 12712, 9723, 9109, 169], date: "2026-11-17"}
+    teaches: "pm:Sample (the extract that was measured) and pm:BiologicalSample (the plant material: species, organ, growth) are distinct classes linked by pm:biologicalSample; the joins fan out (9,890 links for 9,645 samples), so count with DISTINCT."
+
+  - id: samples_for_gene
+    intent: mutant / transgenic samples for one gene — a free-text field with packed values
+    question: "Which RIKEN PMM samples are mutants or transgenics of Arabidopsis AT5G63110 (HDA6)?"
+    complexity: intermediate
+    sparql: |
+      PREFIX pm: <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      SELECT ?project ?bs ?gene ?mutant ?transgenic WHERE {
+        GRAPH <http://metadb.riken.jp/db/plantMetabolomics> {
+          ?bs pm:relevantGene ?gene .
+          FILTER(CONTAINS(?gene, "AT5G63110"))
+          OPTIONAL { ?bs pm:mutant ?mutant }
+          OPTIONAL { ?bs pm:transgenicLine ?transgenic }
+          ?project a pm:Project ; pm:experiment/pm:measurement/pm:sampleMeasured/pm:biologicalSample ?bs .
+        }
+      } ORDER BY ?bs LIMIT 5
+    verified: {min_rows: 5, has_values: ["RPMM0027", "RPMM0027_axe_d_12d_01", "AT5G63110"], date: "2026-11-17"}
+    teaches: "pm:relevantGene (1,447 samples, 73 distinct values) is free text, not an IRI: AGI codes, GenBank accessions (AB037595, AK066653) or gene names (RINO1). CONTAINS is the right tool here because the field has no controlled vocabulary; pm:mutant and pm:transgenicLine are free text with <i> tags."
+    traps_avoided:
+      - say: "Several AGI codes are packed into one string (\"AT2G46790; AT5G02810; AT5G24470\", 223 samples), so an exact `pm:relevantGene \"AT5G02810\"` returns 0 samples where CONTAINS finds 223."
+        check:
+          kind: zero_rows
+          date: "2026-11-17"
+          query: |
+            SELECT ?bs WHERE { GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?bs <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/relevantGene> "AT5G02810" } } LIMIT 1
+
+  - id: xdb_tair_go
+    intent: "same-endpoint join: PMM sample genes → co-hosted TAIR GO-slim annotations via the TAIR locus URL"
+    question: "For the Arabidopsis genes studied as mutants/transgenics in RIKEN PMM, how many samples and TAIR GO annotations does each have?"
+    complexity: cross_db
+    endpoint_name: metabobank
+    sparql: |
+      PREFIX pm: <http://metadb.riken.jp/ontology/plantMetabolomics/0.1/>
+      PREFIX cc: <http://creativecommons.org/ns#>
+      SELECT ?gene (COUNT(DISTINCT ?bs) AS ?samples) (COUNT(DISTINCT ?ann) AS ?go_annotations) WHERE {
+        { SELECT DISTINCT ?gene ?bs ?locus WHERE {
+            GRAPH <http://metadb.riken.jp/db/plantMetabolomics> { ?bs pm:relevantGene ?gene }
+            FILTER(REGEX(?gene, "^AT[1-5CM]G[0-9]{5}$", "i"))
+            BIND(IRI(CONCAT("http://arabidopsis.org/servlets/TairObject?type=locus&name=", UCASE(?gene))) AS ?locus) } }
+        GRAPH <http://metadb.riken.jp/db/SciNetS_ria269i> { ?ann cc:attributionURL ?locus }
+      } GROUP BY ?gene ORDER BY DESC(?samples) ?gene
+    verified: {row_count: 47, has_values: ["AT2G46830", 119, 27, "AT5G13930", 113], date: "2026-11-17"}
+    teaches: "The TAIR graph has no AGI column: each annotation's cc:attributionURL is the locus page <http://arabidopsis.org/servlets/TairObject?type=locus&name=AGI>, so build that IRI from the gene string and join on it (14s). Per annotation: rdfs:label 'AGI:relation:GO term', SciNetS_ria269i/pria269u5i = GO-slim category, pria269u3i = relation node labelled in graph SciNetS_ria390i ('involved in', 'located in', 'functions in', …)."
+    traps_avoided:
+      - "The REGEX keeps only single-AGI values; a packed value (several codes joined by '; ') needs splitting first, or it never matches a locus."
+
+id_join_map:
+  stable_anchor: >
+    Project = http://metadb.riken.jp/db/plantMetabolomics/0.1/Project/<id>, with the id (RPMMnnnn or MN_SEnnn) also in
+    dcm:identifier (plain literal). Other entities follow the same <base>/<Class>/<id> pattern (Experiment/RPMM0037_GC,
+    BiologicalSample/RPMM0037_11_1); walk the project chain rather than parsing ids.
+  same_endpoint_joins:
+    tair_go: "pm:relevantGene AGI → <http://arabidopsis.org/servlets/TairObject?type=locus&name=AGI> = cc:attributionURL in graph SciNetS_ria269i — example xdb_tair_go"
+    ncbitaxon: "obo:RO_0002162 BioPortal taxon IRI → skos:prefLabel in graph ontology/NCBITaxon — example enum_by_species"
+  xrefs:
+    pubmed: "Project dcm:references <http://rdf.ncbi.nlm.nih.gov/pubmed/N> (68 projects) = the `pubmed` database's IRI form on RDF Portal's ncbi endpoint (not joinable in one query)"
+    taxonomy: "obo:RO_0002162 <http://purl.bioontology.org/ontology/NCBITAXON/N> — the number is the NCBI taxid"
+    plant_ontology: "pm:plantOrgan obo:PO_NNNNNNN (resolve unlabeled ones with OLS4)"
+    massbase: "Project rdfs:seeAlso http://webs2.kazusa.or.jp/massbase/…md_id=… (87 MN_SE projects); Measurement rdfs:comment repeats the MassBase ID"
+    metabolights: "Project rdfs:seeAlso https://www.ebi.ac.uk/metabolights/MTBLSn (6 projects)"
+
+schema_delta:
+  - "Per-project processing: Experiment pm:dataAnalysis → pm:annotationMethodDetails (pm:software, pm:spectralLibrary e.g. 'GMD', pm:annotationType), pm:preProcessing, pm:multivariateAnalysis. Metabolite identities are NOT in RDF — only in the downloadable peak/matrix files; pm:Compound (115) is standards and internal standards from pm:compound on pm:Sample."
+  - "Sample preparation: Sample pm:samplePreparation → pm:extraction, pm:derivatisation, pm:internalStandardCompound (free text)."
