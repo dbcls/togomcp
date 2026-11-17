@@ -17,33 +17,35 @@ discovery:
 endpoint: https://sparql.wikipathways.org/sparql   # WikiPathways' OWN Virtuoso, NOT RDF Portal
 base_uri: https://identifiers.org/                 # entity IRIs are identifiers.org URIs keyed by DATASOURCE, not a WikiPathways namespace (see example pathway_gene_products)
 graphs:
-  primary: http://rdf.wikipathways.org/            # the ONLY data graph — 12,261,000 triples (2026-09-14)
+  # Since the 2026-11-10 reload the data is SPLIT across named graphs by layer. The old single graph
+  # <http://rdf.wikipathways.org/> no longer exists: a query pinned to it returns 0 rows with no error.
+  primary: http://rdf.wikipathways.org/graph/wp            # SEMANTIC layer: wp: classes, isPartOf, wp:bdb* xrefs, titles, organisms — 1,854,094 triples
+  supporting:                                              # same-DB layer graphs, all under http://rdf.wikipathways.org/
+    - graph/ontologies   # the embedded OBO ontologies (DOID, PW, CL, NCBITaxon ...): subClassOf hierarchies + term labels — 1,196,546 triples
+    - graph/gpml         # DRAWING layer: gpml: boxes, lines, coordinates — 9,406,513 triples
+    - graph/authors      # wp:hasAuthorship / wp:Authorship / foaf:Person — 70,257 triples
+    - graph/void         # release metadata (pav:version, dcterms:issued) — 5,568 triples
   co_hosted:
     probed_clean: >
-      2g probe run 2026-09-14 — NO re-declaration found. Reverse probe (?p and ?g both unbound, no
-      type filter) over 9 IRIs spanning every leg — a revision-pinned pathway, a bare pathway
-      accession, an ncbigene node, and the hub IRIs uniprot/P04637, NCBITaxon_9913, PW_0000004,
-      DOID_1612, pubmed/10618704, chebi/CHEBI:15377 — returned 46 (graph, predicate) rows, ALL of
-      them in http://rdf.wikipathways.org/. The realistic join (GeneProduct -> Pathway -> organismName)
-      measures 78,747 rows unpinned and 78,747 pinned: ratio 1.00, no inflation. The only other
-      graphs on this endpoint are endpoint plumbing totalling 10 triples — `servicedescription` (5,
-      SPARQL service description), `http://www.w3.org/ns/ldp#` (3, LDP container axioms),
-      `urn:activitystreams-owl:map` (2) — plus Virtuoso's internal
-      `http://www.openlinksw.com/schemas/virtrdf#` (2,479). None contains a WikiPathways IRI.
-      Graph-pinning is therefore optional for correctness here, unlike on RDF Portal's shared
-      endpoints; the examples pin anyway so they stay correct if a graph is ever added.
+      Re-probed 2026-11-17 after the graph split: the layers are DISJOINT by predicate — every wp:
+      class and wp:bdb* xref is in graph/wp only, gpml:DataNode only in graph/gpml, and the DOID/PW
+      subClassOf edges (17,635 / 3,234) only in graph/ontologies — so there is no re-declaration to
+      inflate a join. PIN EVERY PATTERN TO ITS LAYER: a query that walks an ontology hierarchy needs
+      graph/ontologies AND graph/wp (two FROM clauses, or one GRAPH block each — see
+      enum_pathways_by_disease). The remaining graphs are endpoint plumbing (`servicedescription`,
+      `.well-known/sparql-examples`) and Virtuoso's internal `virtrdf#`; none holds WikiPathways data.
 
-entity_counts:                 # all COUNT(DISTINCT) + graph-pinned, measured 2026-10-16
+entity_counts:                 # all COUNT(DISTINCT) + pinned to graph/wp, measured 2026-11-17
   pathway_records: 2215        # wp:Pathway nodes that carry dc:title — the real answer to "how many pathways"
   wp_pathway_nodes_raw: 3035   # bare `?s a wp:Pathway` — INFLATED by pathway-as-DataNode stubs; never report (gotcha revision_pinned_pathway_iri)
   organisms: 41                # distinct wp:organismName values; Homo sapiens 1131, Bos taurus 241, Mus musculus 214
-  data_nodes: 56386            # wp:DataNode (semantic layer)
-  gene_products: 38703         # wp:GeneProduct
-  proteins: 7344               # wp:Protein
-  metabolites: 7107            # wp:Metabolite
+  data_nodes: 56383            # wp:DataNode (semantic layer)
+  gene_products: 38701         # wp:GeneProduct
+  proteins: 7345               # wp:Protein
+  metabolites: 7105            # wp:Metabolite
   complexes: 3873              # wp:Complex
-  interactions: 65201          # wp:Interaction (41886 of them wp:DirectedInteraction)
-  triples_total: 12524693      # whole graph
+  interactions: 65199          # wp:Interaction (41886 of them wp:DirectedInteraction)
+  triples_total: 12532978      # all five data graphs; graph/wp alone is 1,854,094
 
 global_gotchas:
   - id: revision_pinned_pathway_iri
@@ -64,11 +66,11 @@ global_gotchas:
       date: "2026-09-14"
       numerator: |
         SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> { ?s a <http://vocabularies.wikipathways.org/wp#Pathway> }
+          GRAPH <http://rdf.wikipathways.org/graph/wp> { ?s a <http://vocabularies.wikipathways.org/wp#Pathway> }
         }
       denominator: |
         SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> {
+          GRAPH <http://rdf.wikipathways.org/graph/wp> {
             ?s a <http://vocabularies.wikipathways.org/wp#Pathway> ;
                <http://purl.org/dc/elements/1.1/title> ?t
           }
@@ -84,8 +86,9 @@ global_gotchas:
       `"Actin cytoskeleton regulation"@en`. But `dcterms:identifier`, `wp:organismName` and data-layer
       `rdfs:label` are the OPPOSITE: they are PLAIN literals, so `"WP1062"^^xsd:string` and
       `"Bos taurus"^^xsd:string` return 0 rows even though `DATATYPE()` reports `xsd:string` for all
-      three. (`rdfs:label` is mixed graph-wide — 91,284 plain vs 15,264 `@en` — but every `@en` one
-      belongs to the embedded OWL vocabulary, never to a pathway/gene/metabolite node.) FIX: use the
+      three. (In graph/wp `rdfs:label` is plain on 59,846 values; its 36 `@en` ones label the wp: vocabulary
+      itself, never a pathway/gene/metabolite node. The embedded ontology terms in graph/ontologies
+      are mixed — 31,571 plain vs 15,316 `@en`.) FIX: use the
       plain form for identifiers/organism/label, `@en` for `dc:title`, or `FILTER(STR(?x) = "...")`,
       which matches every form.
     check:
@@ -93,7 +96,7 @@ global_gotchas:
       date: "2026-09-14"
       query: |
         SELECT ?s WHERE {
-          GRAPH <http://rdf.wikipathways.org/> {
+          GRAPH <http://rdf.wikipathways.org/graph/wp> {
             ?s <http://purl.org/dc/elements/1.1/title> "Actin cytoskeleton regulation" .
           }
         } LIMIT 1
@@ -112,14 +115,14 @@ global_gotchas:
       date: "2026-09-14"
       numerator: |
         SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> {
+          GRAPH <http://rdf.wikipathways.org/graph/wp> {
             ?node <http://vocabularies.wikipathways.org/wp#bdbHgncSymbol> <https://identifiers.org/hgnc.symbol/MTOR> ;
                   <http://purl.org/dc/terms/isPartOf> ?pathway .
           }
         }
       denominator: |
         SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> {
+          GRAPH <http://rdf.wikipathways.org/graph/wp> {
             ?node <http://vocabularies.wikipathways.org/wp#bdbHgncSymbol> <https://identifiers.org/hgnc.symbol/MTOR> ;
                   <http://purl.org/dc/terms/isPartOf> ?pathway .
             ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
@@ -144,11 +147,11 @@ global_gotchas:
       date: "2026-09-14"
       numerator: |
         SELECT (COUNT(DISTINCT ?g) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> { ?g a <http://vocabularies.wikipathways.org/gpml#DataNode> }
+          GRAPH <http://rdf.wikipathways.org/graph/gpml> { ?g a <http://vocabularies.wikipathways.org/gpml#DataNode> }
         }
       denominator: |
         SELECT (COUNT(DISTINCT ?w) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> { ?w a <http://vocabularies.wikipathways.org/wp#DataNode> }
+          GRAPH <http://rdf.wikipathways.org/graph/wp> { ?w a <http://vocabularies.wikipathways.org/wp#DataNode> }
         }
       expect: {ratio: 2.4841, tolerance: 0.05}
 
@@ -166,14 +169,14 @@ global_gotchas:
       date: "2026-09-14"
       numerator: |
         SELECT (COUNT(*) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> {
+          GRAPH <http://rdf.wikipathways.org/graph/wp> {
             ?s a <http://vocabularies.wikipathways.org/wp#GeneProduct> ;
                <http://vocabularies.wikipathways.org/wp#bdbUniprot> ?u .
           }
         }
       denominator: |
         SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
-          GRAPH <http://rdf.wikipathways.org/> {
+          GRAPH <http://rdf.wikipathways.org/graph/wp> {
             ?s a <http://vocabularies.wikipathways.org/wp#GeneProduct> ;
                <http://vocabularies.wikipathways.org/wp#bdbUniprot> ?u .
           }
@@ -191,7 +194,7 @@ examples:
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX foaf: <http://xmlns.com/foaf/0.1/>
       SELECT ?pathway ?title ?organism ?taxon ?page
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
       WHERE {
         ?pathway a wp:Pathway ;
                  dcterms:identifier "WP1062" ;      # PLAIN literal — ^^xsd:string returns 0 rows
@@ -219,7 +222,7 @@ examples:
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       SELECT DISTINCT ?gene ?label ?id
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
       WHERE {
         ?pathway a wp:Pathway ;
                  dcterms:identifier "WP1062" ;
@@ -243,7 +246,7 @@ examples:
           date: "2026-09-14"
           query: |
             SELECT (COUNT(DISTINCT ?s) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?s a <http://vocabularies.wikipathways.org/wp#GeneProduct> .
                 FILTER(STRSTARTS(STR(?s), "https://identifiers.org/ensembl/"))
               }
@@ -259,7 +262,7 @@ examples:
       PREFIX dc: <http://purl.org/dc/elements/1.1/>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       SELECT ?pathway ?acc ?title
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
       WHERE {
         ?pathway a wp:Pathway ;
                  wp:organismName "Rattus norvegicus" ;   # PLAIN literal
@@ -283,10 +286,11 @@ examples:
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       SELECT DISTINCT ?acc ?title ?organism
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
+      FROM <http://rdf.wikipathways.org/graph/ontologies>           # the DOID/PW/CL hierarchies live HERE, not in graph/wp
       WHERE {
-        # this graph EMBEDS the Disease Ontology (17,479 DOID→DOID subClassOf edges), so the
-        # subtree walk is local — no federation, no external term expansion
+        # the endpoint EMBEDS the Disease Ontology (17,635 DOID→DOID subClassOf edges, in graph/ontologies),
+        # so the subtree walk is local — no federation, no external term expansion
         ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/DOID_1826> .   # epilepsy + subtypes
         ?pathway a wp:Pathway ;
                  wp:diseaseOntologyTag ?term ;
@@ -296,10 +300,10 @@ examples:
       }
       ORDER BY ?acc
     verified:
-      row_count: 20
-      has_values: ["WP5360", "WP5598", "WP5200"]
-      date: "2026-10-16"
-    teaches: "Enumerate a disease subtree with `rdfs:subClassOf*` against the EMBEDDED ontology, then match `wp:diseaseOntologyTag` — the hierarchy ships inside this graph, so no OLS4 round-trip is needed."
+      row_count: 19
+      has_values: ["WP5360", "WP4228", "WP5200"]
+      date: "2026-11-17"     # 20 → 19: WP5598's 2026-10-21 revision dropped its DOID tag (curator edit)
+    teaches: "Enumerate a disease subtree with `rdfs:subClassOf*` against the EMBEDDED ontology, then match `wp:diseaseOntologyTag` — the hierarchy ships in graph/ontologies on the same endpoint, so no OLS4 round-trip is needed — but the walk must be pinned THERE, not to graph/wp."
     traps_avoided:
       - say: "`wp:ontologyTag` is the SUPERPROPERTY and is polymorphic: its 10,172 values are 6,009 OBO terms (PW 3,591 + DOID 1,285 + CL 1,133) PLUS 4,163 `wp:Curation:*` collection flags (AnalysisCollection, Homology_Converted, COVID19, Lipids...). Querying `wp:ontologyTag` when you meant a disease mixes curation workflow tags into the answer; use the specific `wp:diseaseOntologyTag` / `wp:pathwayOntologyTag` / `wp:cellTypeOntologyTag` subproperty."
         check:
@@ -307,19 +311,21 @@ examples:
           date: "2026-10-16"
           query: |
             SELECT (COUNT(*) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?s <http://vocabularies.wikipathways.org/wp#ontologyTag> ?o
               }
             }
           expect: {value: 10172, tolerance: 0.02}
-      - say: "Tags are asserted only at the level the curator chose, so the DIRECT form `wp:diseaseOntologyTag obo:DOID_1826` returns 16 pathways where the subtree walk above returns 20 — it silently misses the ones tagged 'Dravet syndrome' instead of plain 'epilepsy'. Conversely the walk fans out: WP4228 carries three terms inside this subtree and appears three times, which is why the SELECT needs DISTINCT (22 raw rows, 20 pathways)."
+      - say: "Tags are asserted only at the level the curator chose, so the DIRECT form `wp:diseaseOntologyTag obo:DOID_1826` returns 15 pathways where the subtree walk above returns 19 — it silently misses the ones tagged 'Dravet syndrome' instead of plain 'epilepsy'. Conversely the walk fans out: WP4228 carries three terms inside this subtree and appears three times, which is why the SELECT needs DISTINCT (21 raw rows, 19 pathways)."
         check:
           kind: ratio
-          date: "2026-09-14"
+          date: "2026-11-17"
           numerator: |
             SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/ontologies> {
                 ?term <http://www.w3.org/2000/01/rdf-schema#subClassOf>* <http://purl.obolibrary.org/obo/DOID_1826> .
+              }
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
                          <http://vocabularies.wikipathways.org/wp#diseaseOntologyTag> ?term ;
                          <http://purl.org/dc/elements/1.1/title> ?t .
@@ -327,13 +333,13 @@ examples:
             }
           denominator: |
             SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
                          <http://vocabularies.wikipathways.org/wp#diseaseOntologyTag> <http://purl.obolibrary.org/obo/DOID_1826> ;
                          <http://purl.org/dc/elements/1.1/title> ?t .
               }
             }
-          expect: {ratio: 1.2143, tolerance: 0.05}
+          expect: {ratio: 1.2667, tolerance: 0.05}
   - id: enum_pathways_by_pathway_ontology
     intent: count/enumerate ALL pathways under a Pathway Ontology class
     question: "How many WikiPathways pathways are classified as lipid metabolic pathways, including subtypes?"
@@ -343,7 +349,8 @@ examples:
       PREFIX dc: <http://purl.org/dc/elements/1.1/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       SELECT (COUNT(DISTINCT ?pathway) AS ?n)
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
+      FROM <http://rdf.wikipathways.org/graph/ontologies>           # the DOID/PW/CL hierarchies live HERE, not in graph/wp
       WHERE {
         ?term rdfs:subClassOf* <http://purl.obolibrary.org/obo/PW_0000010> .   # lipid metabolic pathway + subtypes
         ?pathway a wp:Pathway ;
@@ -359,8 +366,10 @@ examples:
           date: "2026-09-14"
           numerator: |
             SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/ontologies> {
                 ?term <http://www.w3.org/2000/01/rdf-schema#subClassOf>* <http://purl.obolibrary.org/obo/PW_0000010> .
+              }
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
                          <http://vocabularies.wikipathways.org/wp#pathwayOntologyTag> ?term ;
                          <http://purl.org/dc/elements/1.1/title> ?t .
@@ -368,7 +377,7 @@ examples:
             }
           denominator: |
             SELECT (COUNT(DISTINCT ?pathway) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
                          <http://vocabularies.wikipathways.org/wp#pathwayOntologyTag> <http://purl.obolibrary.org/obo/PW_0000010> ;
                          <http://purl.org/dc/elements/1.1/title> ?t .
@@ -385,7 +394,7 @@ examples:
       PREFIX dc: <http://purl.org/dc/elements/1.1/>
       PREFIX dcterms: <http://purl.org/dc/terms/>
       SELECT (COUNT(DISTINCT ?pathway) AS ?n)
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
       WHERE {
         ?node wp:bdbHgncSymbol <https://identifiers.org/hgnc.symbol/MTOR> ;
               dcterms:isPartOf ?pathway .
@@ -407,7 +416,7 @@ examples:
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       SELECT ?acc ?srcLabel ?tgtLabel
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
       WHERE {
         ?pathway a wp:Pathway ;
                  wp:organismName "Rattus norvegicus" ;
@@ -434,7 +443,7 @@ examples:
           date: "2026-10-16"
           query: |
             SELECT (COUNT(*) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?i <http://vocabularies.wikipathways.org/wp#source>|<http://vocabularies.wikipathways.org/wp#target> ?o
               }
             }
@@ -445,13 +454,13 @@ examples:
           date: "2026-09-14"
           numerator: |
             SELECT (SUM(IF(EXISTS { ?o <http://www.w3.org/2000/01/rdf-schema#label> ?l }, 1, 0)) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?i <http://vocabularies.wikipathways.org/wp#source>|<http://vocabularies.wikipathways.org/wp#target> ?o
               }
             }
           denominator: |
             SELECT (COUNT(*) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?i <http://vocabularies.wikipathways.org/wp#source>|<http://vocabularies.wikipathways.org/wp#target> ?o
               }
             }
@@ -468,7 +477,7 @@ examples:
       PREFIX dcterms: <http://purl.org/dc/terms/>
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
       SELECT DISTINCT ?label ?chebi
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
       WHERE {
         ?pathway a wp:Pathway ;
                  dcterms:identifier "WP1282" ;
@@ -504,7 +513,7 @@ examples:
             PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
             PREFIX dc: <http://purl.org/dc/elements/1.1/>
             PREFIX dcterms: <http://purl.org/dc/terms/>
-            SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/> {
+            SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/graph/wp> {
               VALUES ?chebi { <https://identifiers.org/chebi/CHEBI:17234> <https://identifiers.org/chebi/CHEBI:17634>
                               <https://identifiers.org/chebi/CHEBI:15903> <https://identifiers.org/chebi/CHEBI:17925>
                               <https://identifiers.org/chebi/CHEBI:4167> <https://identifiers.org/chebi/CHEBI:42758> }
@@ -514,7 +523,7 @@ examples:
             PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
             PREFIX dc: <http://purl.org/dc/elements/1.1/>
             PREFIX dcterms: <http://purl.org/dc/terms/>
-            SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/> {
+            SELECT (COUNT(DISTINCT ?p) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/graph/wp> {
               ?m a wp:Metabolite ; wp:bdbChEBI <https://identifiers.org/chebi/CHEBI:15903> ; dcterms:isPartOf ?p .
               ?p a wp:Pathway ; dc:title ?t . } }
           expect: {ratio: 1.8475, tolerance: 0.05}
@@ -525,7 +534,7 @@ examples:
           query: |
             PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            SELECT (COUNT(DISTINCT ?chebi) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/> {
+            SELECT (COUNT(DISTINCT ?chebi) AS ?n) WHERE { GRAPH <http://rdf.wikipathways.org/graph/wp> {
               ?m a wp:Metabolite ; rdfs:label ?l ; wp:bdbChEBI ?chebi .
               FILTER(LCASE(STR(?l)) = "glucose") } }
           expect: {value: 6, tolerance: 0}
@@ -538,7 +547,7 @@ examples:
       PREFIX wp: <http://vocabularies.wikipathways.org/wp#>
       PREFIX dc: <http://purl.org/dc/elements/1.1/>
       SELECT ?organism (COUNT(DISTINCT ?pathway) AS ?n)
-      FROM <http://rdf.wikipathways.org/>
+      FROM <http://rdf.wikipathways.org/graph/wp>
       WHERE {
         ?pathway a wp:Pathway ;
                  wp:organismName ?organism ;
@@ -552,7 +561,7 @@ examples:
       has_values: ["Homo sapiens", 1131]
       first_row: "Homo sapiens 1131; then Bos taurus 241, Mus musculus 214, Rattus norvegicus 129"
       date: "2026-10-16"
-    teaches: "COUNT(DISTINCT ?pathway) + the `dc:title` guard + a graph pin is the census recipe; totals 2,215 records across 41 organisms."
+    teaches: "COUNT(DISTINCT ?pathway) + the `dc:title` guard + a pin to graph/wp is the census recipe; totals 2,215 records across 41 organisms."
     traps_avoided:
       - say: "Class counts here OVERLAP — a single node is typed with several `wp:` classes at once, because different pathways annotate the same identifier differently. `https://identifiers.org/ncbigene/7157` is simultaneously a wp:DataNode, wp:GeneProduct, wp:Protein AND wp:Rna. So GeneProduct (38,624) + Protein (7,334) + Metabolite (6,879) + Complex (3,870) + Rna (1,224) = 57,931 exceeds wp:DataNode's 55,618; never add class counts expecting a partition."
         check:
@@ -560,7 +569,7 @@ examples:
           date: "2026-09-14"
           query: |
             SELECT (COUNT(DISTINCT ?t) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 <https://identifiers.org/ncbigene/7157> a ?t .
                 FILTER(STRSTARTS(STR(?t), "http://vocabularies.wikipathways.org/wp#"))
               }
@@ -582,7 +591,7 @@ examples:
       WHERE {
         # cap the binding set BEFORE crossing: SERVICE costs one round-trip per binding
         { SELECT DISTINCT ?label ?u WHERE {
-            GRAPH <http://rdf.wikipathways.org/> {
+            GRAPH <http://rdf.wikipathways.org/graph/wp> {
               ?pathway a wp:Pathway ;
                        dcterms:identifier "WP4313" ;
                        dc:title ?t .
@@ -614,7 +623,7 @@ examples:
           date: "2026-09-14"
           query: |
             SELECT (COUNT(*) AS ?n) WHERE {
-              GRAPH <http://rdf.wikipathways.org/> {
+              GRAPH <http://rdf.wikipathways.org/graph/wp> {
                 ?pathway a <http://vocabularies.wikipathways.org/wp#Pathway> ;
                          <http://purl.org/dc/terms/identifier> "WP4313" ;
                          <http://purl.org/dc/elements/1.1/title> ?t .
@@ -637,7 +646,7 @@ examples:
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             PREFIX up: <http://purl.uniprot.org/core/>
             SELECT ?label ?mnemonic
-            FROM <http://rdf.wikipathways.org/>
+            FROM <http://rdf.wikipathways.org/graph/wp>
             WHERE {
               ?pathway a wp:Pathway ; dcterms:identifier "WP4313" ; dc:title ?t .
               ?gene dcterms:isPartOf ?pathway ; a wp:GeneProduct ; rdfs:label ?label ; wp:bdbUniprot ?u .
@@ -652,7 +661,7 @@ schema_delta:
   - "`wp:Complex` (3,870) collects its members through the same `dcterms:isPartOf` used for pathways — members point AT the complex IRI `http://rdf.wikipathways.org/Pathway/<pw>/Complex/<id>`, which is itself `dcterms:isPartOf` its pathway."
   - "Literature: `dcterms:references` links pathways, interactions AND individual nodes straight to `https://identifiers.org/pubmed/<pmid>` (13,163 `cito:cites` on pathways; 9,229 references on interactions). `wp:PublicationReference` (9,792) is the reified citation node; `dcterms:bibliographicCitation` carries free-text citations on 260 interactions."
   - "Provenance: `wp:hasAuthorship` → `wp:Authorship` (11,101) with `dc:creator` → `foaf:Person`; `pav:hasVersion` on a bare accession points to the revision-pinned record; `foaf:img` gives PNG and SVG diagram URLs (two per pathway), `foaf:page` the WikiPathways web page."
-  - "The graph EMBEDS the ontologies it tags with — 42,896 OBO `owl:Class` nodes (PW, DOID, CL, NCBITaxon and more) carry their own `rdfs:label`, so a tag IRI resolves to a human-readable name in the SAME query with no federation (`obo:PW_0000004` → 'regulatory pathway')."
+  - "The endpoint EMBEDS the ontologies it tags with, in graph/ontologies — 59,384 OBO `owl:Class` nodes (PW, DOID, CL, NCBITaxon and more) carry their own `rdfs:label`, so a tag IRI resolves to a human-readable name in the SAME query with no federation (`obo:PW_0000004` → 'regulatory pathway'). The label is in graph/ontologies, the tag in graph/wp: pin each pattern to its own graph."
 
 id_join_map:
   stable_anchor: >
