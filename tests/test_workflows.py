@@ -20,7 +20,10 @@ from togo_mcp import skills as sk
 
 REPO = Path(__file__).resolve().parent.parent
 PUBLIC = REPO / "togo_mcp" / "data" / "skills" / "public"
+# The workflows: get_workflow and the Usage Guide serve exactly these.
 EXPECTED = {"prism", "research-article-analysis", "disease-analysis", "query-provenance"}
+# The entry skill: served on the resource / SEP-2640 routes only.
+ENTRY = "togomcp-start"
 INTERNAL = ("mie-generator", "qa-generator", "intro-page-updater")
 
 
@@ -60,7 +63,8 @@ def _write_skill(root: Path, dirname: str, frontmatter: str, files: dict | None 
 class TestRegistry:
     def test_public_skills_load_with_matching_names(self) -> None:
         reg = sk.load_registry(PUBLIC)
-        assert set(reg) == EXPECTED
+        assert set(reg) == EXPECTED | {ENTRY}
+        assert set(sk.workflows_of(reg)) == EXPECTED
         for name, skill in reg.items():
             assert skill.root.name == name
             assert skill.description and skill.catalog
@@ -139,6 +143,12 @@ class TestRegistry:
         assert sk.load_skill(d).role == sk.ROLE_ENTRY
         assert sk.load_registry(PUBLIC)["prism"].role is None
 
+    def test_two_entry_skills_raise(self, tmp_path: Path) -> None:
+        for n in ("a", "b"):
+            _write_skill(tmp_path, n, f"name: {n}\ndescription: x\nmetadata:\n  role: entry")
+        with pytest.raises(sk.SkillRegistryError, match="more than one entry skill"):
+            sk.workflows_of(sk.load_registry(tmp_path))
+
     def test_symlinks_and_disallowed_suffixes_are_not_loaded(self, tmp_path: Path) -> None:
         outside = tmp_path / "outside"
         outside.mkdir()
@@ -199,7 +209,7 @@ class TestGetWorkflow:
         text = _call({})
         for name in EXPECTED:
             assert f"- {name}:" in text
-        for name in INTERNAL:
+        for name in (*INTERNAL, ENTRY):
             assert name not in text
         assert "digest:" in text
 
@@ -235,7 +245,7 @@ class TestGetWorkflow:
     def test_path_without_name_is_an_error(self) -> None:
         assert _call({"path": "SKILL.md"}).startswith("Error:")
 
-    @pytest.mark.parametrize("name", ["no-such-workflow", *INTERNAL])
+    @pytest.mark.parametrize("name", ["no-such-workflow", *INTERNAL, ENTRY])
     def test_unknown_and_internal_names_list_valid_names(self, name: str) -> None:
         text = _call({"name": name})
         assert text.startswith("Error:")
@@ -289,6 +299,7 @@ def test_usage_guide_workflows_section_matches_registry() -> None:
     assert "## Workflows (fetch with get_workflow(name))" in guide
     for s in WORKFLOWS.values():
         assert f"- {s.name}: {s.catalog}" in guide
+    assert ENTRY not in guide
     # placed right after GATE 0's part, before the budgets part
     assert guide.index("GATE 0") < guide.index("## Workflows") < guide.index(
         (REPO / "togo_mcp/data/resources/usage_guide_v7/02_budgets_and_discovery.md")
@@ -312,7 +323,7 @@ class TestResources:
             return [str(r.uri) for r in await client.list_resources()]
 
         uris = _run(calls)
-        for name in EXPECTED:
+        for name in (*EXPECTED, ENTRY):
             assert f"skill://{name}/SKILL.md" in uris
         for name in INTERNAL:
             assert not any(name in u for u in uris)
@@ -349,3 +360,42 @@ class TestResources:
 
         descs = _run(calls)
         assert descs["skill://prism/SKILL.md"].startswith("PRISM finds")
+
+
+# --- Entry skill (togomcp-start) ---------------------------------------------
+#
+# Its only job is to route a SEP-2640 host's skill list to TogoMCP_Usage_Guide.
+# Every edit changes its digest, which makes supporting hosts ask every user to
+# re-approve it — so it must not carry facts that change with releases.
+
+
+class TestEntrySkill:
+    @staticmethod
+    def _body() -> str:
+        return (PUBLIC / ENTRY / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_is_small(self) -> None:
+        assert len(self._body().encode("utf-8")) < 2048
+
+    def test_is_the_entry_role(self) -> None:
+        assert sk.load_registry(PUBLIC)[ENTRY].role == sk.ROLE_ENTRY
+
+    def test_named_tools_exist(self) -> None:
+        import re
+
+        async def calls(client):
+            return {t.name for t in await client.list_tools()}
+
+        tools = _run(calls)
+        named = set(re.findall(r"`([A-Za-z_]+)(?:\(\))?`", self._body()))
+        assert {"TogoMCP_Usage_Guide", "get_workflow"} <= named
+        assert named <= tools, named - tools
+
+    def test_names_no_workflow(self) -> None:
+        # A workflow named here would change this digest whenever workflows change.
+        body = self._body()
+        for name in EXPECTED:
+            assert name not in body, name
+
+    def test_has_no_references(self) -> None:
+        assert set(sk.load_registry(PUBLIC)[ENTRY].files) == {"SKILL.md"}

@@ -190,6 +190,17 @@ def load_registry(root: Path) -> dict[str, Skill]:
     return registry
 
 
+def workflows_of(registry: dict[str, Skill]) -> dict[str, Skill]:
+    """The registry minus its entry skill: what get_workflow serves and the Usage
+    Guide lists. An entry skill (metadata.role: entry) only routes a host's skill
+    list to the Usage Guide; a tool-route model already got that routing, so it is
+    not a workflow. More than one entry skill is a registry error."""
+    entries = [s.name for s in registry.values() if s.role == ROLE_ENTRY]
+    if len(entries) > 1:
+        raise SkillRegistryError(f"more than one entry skill: {', '.join(entries)}")
+    return {n: s for n, s in registry.items() if s.role != ROLE_ENTRY}
+
+
 def to_fastmcp_skill(skill: Skill) -> Any:
     """The registry snapshot as a FastMCP `Skill` (SEP-2640 resources + skills/list).
 

@@ -801,8 +801,9 @@ if GUIDE_SKILL_NAME in PUBLIC_SKILLS:
         f"workflow name {GUIDE_SKILL_NAME!r} is reserved for the Usage Guide"
     )
 # What get_workflow lists and serves, and what the Usage Guide's Workflows section
-# names.
-WORKFLOWS: dict[str, _skills.Skill] = dict(PUBLIC_SKILLS)
+# names: every public skill except the entry skill (togomcp-start), which exists only
+# to route a SEP-2640 host's skill list to TogoMCP_Usage_Guide.
+WORKFLOWS: dict[str, _skills.Skill] = _skills.workflows_of(PUBLIC_SKILLS)
 
 # Built from PUBLIC_SKILLS, not WORKFLOWS: the resource/SEP routes serve every public
 # skill. URIs stay flat, `skill://<name>/...`, exactly as before the migration.
