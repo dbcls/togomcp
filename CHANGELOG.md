@@ -13,6 +13,14 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Changed
+
+- `togomcp-start` is now packaged by `package-skills.yml` (2.34.0 left it out). In Claude Desktop, uploading
+  it is the only way to reach the model from the first message. Desktop does not start `skill://` skills on
+  its own, and over the remote connector it shows server instructions only after a TogoMCP tool has been
+  loaded. An uploaded skill's description is present from turn one. The tutorial (chapter 5, EN + JA) now
+  says to upload it; the same commit range adds the chapter 5 notes on the skills-extension route.
+
 ## [2.34.0] - 2026-11-17
 
 <!-- whatsnew: 2026-11-17 | TogoMCP's analysis workflows are now also served as MCP skills (<code>skills/list</code>, SEP-2640), so hosts that support skills can discover and verify them on their own; <code>get_workflow</code> works as before. -->

@@ -6,7 +6,9 @@ name: Package skills
 #
 # public/ holds the portable, MCP-driven analysis skills — the set the server
 # serves via get_workflow, skill:// resources and skills/list — plus the entry
-# skill togomcp-start, which is served but not packaged (see below). Repo-bound dev /
+# skill togomcp-start. It IS packaged: uploaded into Claude Desktop, its
+# description reaches the model from the first turn, before any TogoMCP tool is
+# loaded (server instructions arrive only after that). Repo-bound dev /
 # maintenance skills (mie-generator, qa-generator, intro-page-updater) live only in
 # .claude/skills/ and so are never packaged. (.claude/skills/<public name> are
 # symlinks into public/.)
@@ -35,13 +37,8 @@ jobs:
         name: List packageable skills as a JSON array
         run: |
           set -euo pipefail
-          # The entry skill (metadata `role: entry`, i.e. togomcp-start) is not
-          # packaged: it only points a host's skill list at TogoMCP_Usage_Guide,
-          # which a local install has no use for.
-          skills="$(for d in togo_mcp/data/skills/public/*/; do
-                      grep -qE '^[[:space:]]+role:[[:space:]]*entry[[:space:]]*$' "$d/SKILL.md" \
-                        || basename "$d"
-                    done | jq -R . | jq -cs .)"
+          skills="$(ls -d togo_mcp/data/skills/public/*/ | xargs -n1 basename \
+                    | jq -R . | jq -cs .)"
           echo "Packaging skills: $skills"
           echo "skills=$skills" >> "$GITHUB_OUTPUT"
 
