@@ -603,6 +603,30 @@ def sparql_class(rec: dict[str, Any]) -> str | None:
     return "other_error"
 
 
+# Records that are not tool calls (server.py _ToolCallLogger). Tool records carry
+# no `kind`; the skills-over-MCP route (SEP-2640) logs `resource` (a read of a
+# skill:// URI), `skills_list` and `skills_get`. These never enter a tool tally:
+# they are counted per month under `skill_route`, which exists only for months
+# that have such records, so a log without them aggregates exactly as before.
+# Like get_workflow they are local (bundled skill files), but they are not
+# tool calls and are not added to `tool_calls`.
+SKILL_ROUTE_KINDS = ("resource", "skills_list", "skills_get")
+
+
+def record_kind(rec: dict[str, Any]) -> str:
+    """`tool` for a tool-call record (no `kind` field), else the record's kind."""
+    kind = rec.get("kind")
+    return kind if isinstance(kind, str) and kind else "tool"
+
+
+def skill_of_uri(uri: Any) -> str | None:
+    """`skill://prism/references/x.md` -> `prism`."""
+    if not isinstance(uri, str) or not uri.startswith("skill://"):
+        return None
+    name = uri[len("skill://"):].split("/", 1)[0]
+    return name or None
+
+
 def client_of(rec: dict[str, Any]) -> str:
     """Reporting MCP client name ('claude-code', 'openai-mcp', …) or '<unknown>'."""
     meta = rec.get("meta")
@@ -768,6 +792,11 @@ def aggregate(
     co_pairs: dict[str, dict[tuple[str, str], int]] = defaultdict(
         lambda: defaultdict(int)
     )
+    # month -> skill-route tally (see SKILL_ROUTE_KINDS)
+    skill_route: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {**{k: 0 for k in SKILL_ROUTE_KINDS}, "errors": 0, "ips": set(),
+                 "clients": defaultdict(int), "skills": defaultdict(int)}
+    )
     months: set[str] = set()
     n_total = 0
     n_skipped_no_month = 0
@@ -779,6 +808,21 @@ def aggregate(
             n_skipped_no_month += 1
             continue
         months.add(month)
+        kind = record_kind(rec)
+        if kind != "tool":
+            if kind in SKILL_ROUTE_KINDS:
+                sr = skill_route[month]
+                sr[kind] += 1
+                if rec.get("status") == "error":
+                    sr["errors"] += 1
+                ip = rec.get("ip_hash") or rec.get("ip")
+                if ip:
+                    sr["ips"].add(ip)
+                sr["clients"][client_of(rec)] += 1
+                skill = skill_of_uri(rec.get("uri"))
+                if skill:
+                    sr["skills"][skill] += 1
+            continue
         tool = rec.get("tool") or "<unknown>"
         is_error = rec.get("status") == "error"
 
@@ -919,6 +963,16 @@ def aggregate(
                 )
             ],
         }
+        if month in skill_route:
+            sr = skill_route[month]
+            by_month[month]["skill_route"] = {
+                "requests": sum(sr[k] for k in SKILL_ROUTE_KINDS),
+                **{k: sr[k] for k in SKILL_ROUTE_KINDS},
+                "errors": sr["errors"],
+                "ips": len(sr["ips"]),
+                "clients": dict(sorted(sr["clients"].items(), key=lambda kv: -kv[1])),
+                "skills": dict(sorted(sr["skills"].items(), key=lambda kv: -kv[1])),
+            }
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -1449,7 +1503,11 @@ def _compute_incremental(
     traps["since"] = trap_cutoff
     return {
         "generated_at": now.isoformat(),
-        "n_records": sum(by_month[m].get("tool_calls", 0) for m in months) + n_skipped,
+        "n_records": sum(
+            by_month[m].get("tool_calls", 0)
+            + (by_month[m].get("skill_route") or {}).get("requests", 0)
+            for m in months
+        ) + n_skipped,
         "excluded_clients": {
             "names": sorted(excluded),
             "n_records": sum(meta[m].get("n_excluded", 0) for m in months),
@@ -1807,6 +1865,33 @@ def render_html(
                 f"<td>{cell(t['p95_ms'])}</td><td>{cell(t['mean_ms'])}</td></tr>"
             )
         parts.append("</table>")
+
+        sr = m.get("skill_route")
+        if sr:
+            parts.append("<h3>Skill route (skills-over-MCP)</h3>")
+            parts.append(
+                "<p class='muted'>Requests that reach the bundled skills without a "
+                "tool call: <b>resource</b> = a read of a <code>skill://</code> file, "
+                "<b>skills/list</b> and <b>skills/get</b> = the SEP-2640 methods "
+                "(2026-07-28 protocol only). <b>local</b>, like get_workflow. "
+                "Not counted in the tool calls above.</p>"
+            )
+            parts.append(
+                f"<p>{cell(sr['requests'])} requests · resource {cell(sr['resource'])}"
+                f" · skills/list {cell(sr['skills_list'])}"
+                f" · skills/get {cell(sr['skills_get'])} · errors {cell(sr['errors'])}"
+                f" · IPs {cell(sr['ips'])}</p>"
+            )
+            if sr.get("skills"):
+                parts.append("<table><tr><th>skill</th><th>requests</th></tr>")
+                for name, n in sr["skills"].items():
+                    parts.append(f"<tr><td>{cell(name)}</td><td>{cell(n)}</td></tr>")
+                parts.append("</table>")
+            if sr.get("clients"):
+                parts.append("<table><tr><th>client</th><th>requests</th></tr>")
+                for name, n in sr["clients"].items():
+                    parts.append(f"<tr><td>{cell(name)}</td><td>{cell(n)}</td></tr>")
+                parts.append("</table>")
 
     parts.append("</body></html>")
     return "".join(parts)

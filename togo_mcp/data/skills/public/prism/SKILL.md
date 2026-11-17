@@ -21,7 +21,7 @@ PRISM answers "what entities are common to property set A and property set B?" o
 
 ## Before you begin
 
-- Files under `references/` are fetched with `get_workflow(name="prism", path="references/...")` (when this skill is installed locally, read them as files instead).
+- Files under `references/` are relative to this skill. If your host loaded this skill from the TogoMCP server as `skill://prism/SKILL.md`, read them as sibling resources (`skill://prism/references/...`). If you got this file from `get_workflow`, fetch them with `get_workflow(name="prism", path="references/...")`. If the skill is installed locally, read them as files.
 - Call `TogoMCP_Usage_Guide` **first**, and run its GATE 0 classification.
 - Read `references/sparql-templates.md` — parameterized queries for every phase (hierarchy expansion, GO→UniProt, PubTator co-occurrence, ClinVar gene-anchored significance, ChEMBL targets, Reactome membership, TogoID bridging).
 - Read `references/worked-example.md` for a full end-to-end run with a filled-in provenance ledger.

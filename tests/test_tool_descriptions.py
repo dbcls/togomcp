@@ -235,7 +235,7 @@ class TestReadOnlyAnnotations:
         missing = [
             t.name
             for t in tools
-            if getattr(getattr(t, "annotations", None), "readOnlyHint", None) is not True
+            if getattr(getattr(t, "annotations", None), "read_only_hint", None) is not True
         ]
         assert not missing, (
             f"tools missing readOnlyHint=True: {missing}. Add "
@@ -250,7 +250,7 @@ class TestReadOnlyAnnotations:
         missing = [
             t.name
             for t in tools
-            if getattr(getattr(t, "annotations", None), "openWorldHint", None) is not True
+            if getattr(getattr(t, "annotations", None), "open_world_hint", None) is not True
         ]
         assert not missing, f"tools missing openWorldHint=True: {missing}"
 
@@ -261,7 +261,7 @@ class TestReadOnlyAnnotations:
         wrong = [
             t.name
             for t in tools
-            for hint in ("destructiveHint", "idempotentHint")
+            for hint in ("destructive_hint", "idempotent_hint")
             if getattr(getattr(t, "annotations", None), hint, None) is not None
         ]
         assert not wrong, f"read-only tools must leave destructive/idempotent unset: {wrong}"

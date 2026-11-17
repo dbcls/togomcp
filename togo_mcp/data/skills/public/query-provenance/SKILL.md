@@ -26,9 +26,12 @@ twice); a call with its arguments is.
 This skill's record is the **query ledger**. It is not PRISM's "provenance ledger"
 (PRISM's is a per-member evidence table for one intersection); the two can coexist.
 
-Files under `references/` are fetched with
-`get_workflow(name="query-provenance", path="references/...")` (when this skill is
-installed locally, read them as files instead):
+Files under `references/` are relative to this skill. If your host loaded this skill
+from the TogoMCP server as `skill://query-provenance/SKILL.md`, read them as sibling
+resources (`skill://query-provenance/references/...`). If you got this file from
+`get_workflow`, fetch them with
+`get_workflow(name="query-provenance", path="references/...")`. If the skill is
+installed locally, read them as files. The files:
 
 - [references/ledger-format.md](references/ledger-format.md) — the full `ledger.yaml` specification. **Read it before writing the first entry.**
 - [references/methods-template.md](references/methods-template.md) — the Methods paragraph template and citation.

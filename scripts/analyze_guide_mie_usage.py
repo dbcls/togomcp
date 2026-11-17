@@ -148,6 +148,9 @@ def main() -> None:
     args = ap.parse_args()
     with open(args.log, encoding="utf-8") as fh:
         recs = [json.loads(line) for line in fh if line.strip()]
+    # Tool calls only: skill-route records (`kind`: resource/skills_list/skills_get,
+    # logged since 2.34.0) have no `tool`.
+    recs = [r for r in recs if "tool" in r]
     if args.since:
         recs = [r for r in recs if r["ts"] >= args.since]
     print(f"{len(recs)} records, {recs[0]['ts'][:10]} → {recs[-1]['ts'][:10]}\n")

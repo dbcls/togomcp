@@ -20,7 +20,10 @@ from togo_mcp import skills as sk
 
 REPO = Path(__file__).resolve().parent.parent
 PUBLIC = REPO / "togo_mcp" / "data" / "skills" / "public"
+# The workflows: get_workflow and the Usage Guide serve exactly these.
 EXPECTED = {"prism", "research-article-analysis", "disease-analysis", "query-provenance"}
+# The entry skill: served on the resource / SEP-2640 routes only.
+ENTRY = "togomcp-start"
 INTERNAL = ("mie-generator", "qa-generator", "intro-page-updater")
 
 
@@ -60,7 +63,8 @@ def _write_skill(root: Path, dirname: str, frontmatter: str, files: dict | None 
 class TestRegistry:
     def test_public_skills_load_with_matching_names(self) -> None:
         reg = sk.load_registry(PUBLIC)
-        assert set(reg) == EXPECTED
+        assert set(reg) == EXPECTED | {ENTRY}
+        assert set(sk.workflows_of(reg)) == EXPECTED
         for name, skill in reg.items():
             assert skill.root.name == name
             assert skill.description and skill.catalog
@@ -117,6 +121,34 @@ class TestRegistry:
         (d / "references" / "r.md").write_text("two", encoding="utf-8")
         assert sk.load_skill(d).digest != first
 
+    @pytest.mark.parametrize("bad", ["Prism", "pr_ism", "-prism", "a--b", "x" * 65])
+    def test_invalid_name_raises(self, tmp_path: Path, bad: str) -> None:
+        _write_skill(tmp_path, bad, f"name: {bad}\ndescription: x")
+        with pytest.raises(sk.SkillRegistryError, match="lowercase"):
+            sk.load_skill(tmp_path / bad)
+
+    def test_overlong_description_raises(self, tmp_path: Path) -> None:
+        d = _write_skill(tmp_path, "a", "name: a\ndescription: " + "x" * 1025)
+        with pytest.raises(sk.SkillRegistryError, match="1025 characters"):
+            sk.load_skill(d)
+
+    def test_public_descriptions_fit_the_spec_limit(self) -> None:
+        # prism is ~930 of 1024: the margin is small, so say which skill overflowed.
+        for d in sorted(PUBLIC.iterdir()):
+            fm = sk.parse_frontmatter((d / "SKILL.md").read_text(encoding="utf-8"))
+            assert len(fm["description"]) <= sk.DESCRIPTION_MAX, d.name
+
+    def test_role_comes_from_metadata(self, tmp_path: Path) -> None:
+        d = _write_skill(tmp_path, "a", "name: a\ndescription: x\nmetadata:\n  role: entry")
+        assert sk.load_skill(d).role == sk.ROLE_ENTRY
+        assert sk.load_registry(PUBLIC)["prism"].role is None
+
+    def test_two_entry_skills_raise(self, tmp_path: Path) -> None:
+        for n in ("a", "b"):
+            _write_skill(tmp_path, n, f"name: {n}\ndescription: x\nmetadata:\n  role: entry")
+        with pytest.raises(sk.SkillRegistryError, match="more than one entry skill"):
+            sk.workflows_of(sk.load_registry(tmp_path))
+
     def test_symlinks_and_disallowed_suffixes_are_not_loaded(self, tmp_path: Path) -> None:
         outside = tmp_path / "outside"
         outside.mkdir()
@@ -129,6 +161,46 @@ class TestRegistry:
         assert set(files) == {"SKILL.md", "references/ok.md"}
 
 
+# --- FastMCP adapter ---------------------------------------------------------
+
+
+class TestToFastMCPSkill:
+    def test_bytes_and_frontmatter_match_disk(self) -> None:
+        for skill in sk.load_registry(PUBLIC).values():
+            fm = sk.to_fastmcp_skill(skill)
+            assert fm.name == skill.name
+            assert set(fm.files) == set(skill.files), skill.name
+            for rel, data in fm.files.items():
+                assert data == (skill.root / rel).read_bytes(), (skill.name, rel)
+
+    def test_parser_disagreement_raises(self, tmp_path: Path) -> None:
+        import dataclasses
+
+        skill = sk.load_skill(_write_skill(tmp_path, "a", "name: a\ndescription: real"))
+        with pytest.raises(sk.SkillRegistryError, match="differently"):
+            sk.to_fastmcp_skill(dataclasses.replace(skill, description="other"))
+
+
+def test_no_deprecated_fastmcp_api_at_import() -> None:
+    # FastMCP 4.3 removes what 4.2 deprecates (the old skills provider among them).
+    # A fresh process, because a module an earlier test imported warns no more.
+    # The filter is set AFTER importing fastmcp, whose __init__ installs a "default"
+    # filter for its own category; matching on the category (not module=) because
+    # FastMCP attributes the warning to the CALLER's module, i.e. togo_mcp.
+    import subprocess
+    import sys
+
+    code = (
+        "import warnings, fastmcp\n"
+        "warnings.simplefilter('error', fastmcp.FastMCPDeprecationWarning)\n"
+        "import togo_mcp.main\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, cwd=REPO
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+
+
 # --- get_workflow -----------------------------------------------------------
 
 
@@ -137,7 +209,7 @@ class TestGetWorkflow:
         text = _call({})
         for name in EXPECTED:
             assert f"- {name}:" in text
-        for name in INTERNAL:
+        for name in (*INTERNAL, ENTRY):
             assert name not in text
         assert "digest:" in text
 
@@ -173,7 +245,7 @@ class TestGetWorkflow:
     def test_path_without_name_is_an_error(self) -> None:
         assert _call({"path": "SKILL.md"}).startswith("Error:")
 
-    @pytest.mark.parametrize("name", ["no-such-workflow", *INTERNAL])
+    @pytest.mark.parametrize("name", ["no-such-workflow", *INTERNAL, ENTRY])
     def test_unknown_and_internal_names_list_valid_names(self, name: str) -> None:
         text = _call({"name": name})
         assert text.startswith("Error:")
@@ -227,6 +299,7 @@ def test_usage_guide_workflows_section_matches_registry() -> None:
     assert "## Workflows (fetch with get_workflow(name))" in guide
     for s in WORKFLOWS.values():
         assert f"- {s.name}: {s.catalog}" in guide
+    assert ENTRY not in guide
     # placed right after GATE 0's part, before the budgets part
     assert guide.index("GATE 0") < guide.index("## Workflows") < guide.index(
         (REPO / "togo_mcp/data/resources/usage_guide_v7/02_budgets_and_discovery.md")
@@ -250,7 +323,7 @@ class TestResources:
             return [str(r.uri) for r in await client.list_resources()]
 
         uris = _run(calls)
-        for name in EXPECTED:
+        for name in (*EXPECTED, ENTRY):
             assert f"skill://{name}/SKILL.md" in uris
         for name in INTERNAL:
             assert not any(name in u for u in uris)
@@ -280,8 +353,194 @@ class TestResources:
             assert {f["path"] for f in manifest["files"]} == set(WORKFLOWS[name].files)
 
     def test_resource_description_is_real_description(self) -> None:
+        # FastMCP < 4.2 read a folded `description: >` as the literal ">", which
+        # rdf_portal.py patched over. 4.2 parses real YAML, so no patch remains.
         async def calls(client):
             return {str(r.uri): r.description for r in await client.list_resources()}
 
         descs = _run(calls)
         assert descs["skill://prism/SKILL.md"].startswith("PRISM finds")
+
+
+# --- Entry skill (togomcp-start) ---------------------------------------------
+#
+# Its only job is to route a SEP-2640 host's skill list to TogoMCP_Usage_Guide.
+# Every edit changes its digest, which makes supporting hosts ask every user to
+# re-approve it — so it must not carry facts that change with releases.
+
+
+class TestEntrySkill:
+    @staticmethod
+    def _body() -> str:
+        return (PUBLIC / ENTRY / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_is_small(self) -> None:
+        assert len(self._body().encode("utf-8")) < 2048
+
+    def test_is_the_entry_role(self) -> None:
+        assert sk.load_registry(PUBLIC)[ENTRY].role == sk.ROLE_ENTRY
+
+    def test_named_tools_exist(self) -> None:
+        import re
+
+        async def calls(client):
+            return {t.name for t in await client.list_tools()}
+
+        tools = _run(calls)
+        named = set(re.findall(r"`([A-Za-z_]+)(?:\(\))?`", self._body()))
+        assert {"TogoMCP_Usage_Guide", "get_workflow"} <= named
+        assert named <= tools, named - tools
+
+    def test_names_no_workflow(self) -> None:
+        # A workflow named here would change this digest whenever workflows change.
+        body = self._body()
+        for name in EXPECTED:
+            assert name not in body, name
+
+    def test_has_no_references(self) -> None:
+        assert set(sk.load_registry(PUBLIC)[ENTRY].files) == {"SKILL.md"}
+
+
+# --- SEP-2640 (skills/list, skills/get) ----------------------------------------
+#
+# Asserted against what a skills-extension CLIENT receives. skills/* exist only on
+# the 2026-07-28 protocol; a handshake-protocol client gets resources + _manifest.
+
+
+def _run_sep(calls, *, local: bool = False, mode: str = "auto"):
+    from fastmcp import Client
+    from fastmcp.skills import SkillsClientExtension
+
+    from togo_mcp.main import mcp, setup
+
+    async def go():
+        await setup(local=local)
+        async with Client(mcp, mode=mode, extensions=[SkillsClientExtension()]) as client:
+            return await calls(client)
+
+    return asyncio.run(go())
+
+
+def _sha(data: bytes) -> str:
+    import hashlib
+
+    return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+class TestSkillsExtension:
+    @staticmethod
+    def _list(**kw):
+        async def calls(client):
+            return await client.list_skills()
+
+        return _run_sep(calls, **kw)
+
+    @pytest.mark.parametrize("local", [False, True])
+    def test_list_is_public_skills_plus_entry_on_both_transports(self, local: bool) -> None:
+        entries = self._list(local=local)
+        assert {e.uri for e in entries} == {
+            f"skill://{n}/SKILL.md" for n in (*EXPECTED, ENTRY)
+        }
+
+    def test_list_excludes_guide_and_internal(self) -> None:
+        text = json.dumps([e.model_dump(mode="json", by_alias=True) for e in self._list()])
+        for name in (*INTERNAL, "usage-guide"):
+            assert name not in text, name
+
+    def test_frontmatter_is_the_registry_yaml_parse(self) -> None:
+        for e in self._list():
+            name = e.uri.split("/")[2]
+            disk = sk.parse_frontmatter((PUBLIC / name / "SKILL.md").read_text(encoding="utf-8"))
+            assert e.frontmatter.root == disk, name
+            assert "version" in disk["metadata"] and "catalog" in disk["metadata"], name
+
+    def test_digests_match_what_get_workflow_serves(self) -> None:
+        # The routes must serve identical bytes. get_workflow returns SKILL.md
+        # after a header; references/ verbatim. The entry skill is not served by
+        # get_workflow, so compare it with the file on disk.
+        async def calls(client):
+            out = {}
+            for e in await client.list_skills():
+                name = e.uri.split("/")[2]
+                for r in e.resources:
+                    rel = r.uri.split("/", 3)[3]
+                    if name == ENTRY:
+                        body = (PUBLIC / name / rel).read_bytes()
+                    else:
+                        args = {"name": name} if rel == "SKILL.md" else {"name": name, "path": rel}
+                        text = (await client.call_tool("get_workflow", args)).content[0].text
+                        if rel == "SKILL.md":  # drop get_workflow's header
+                            text = text[text.index("\n---\nname: ") + 1:]
+                        body = text.encode("utf-8")
+                    out[r.uri] = (r.digest, r.size, _sha(body), len(body))
+            return out
+
+        got = _run_sep(calls)
+        assert len(got) == sum(len(s.files) for s in sk.load_registry(PUBLIC).values())
+        for uri, (digest, size, want_digest, want_size) in got.items():
+            assert (digest, size) == (want_digest, want_size), uri
+
+    def test_resources_list_every_registry_file(self) -> None:
+        for e in self._list():
+            name = e.uri.split("/")[2]
+            assert {r.uri for r in e.resources} == {
+                f"skill://{name}/{rel}" for rel in sk.load_registry(PUBLIC)[name].files
+            }
+
+    @pytest.mark.parametrize("mode", ["auto", "legacy"])
+    def test_read_skill_verifies_end_to_end(self, mode: str) -> None:
+        # auto: manifest from skills/get; legacy: from the _manifest resource.
+        async def calls(client):
+            return {
+                n: await client.read_skill(f"skill://{n}/SKILL.md") for n in (*EXPECTED, ENTRY)
+            }
+
+        for name, skill in _run_sep(calls, mode=mode).items():
+            for rel, data in skill.files.items():
+                assert data == (PUBLIC / name / rel).read_bytes(), (name, rel)
+
+    def test_get_known_uri(self) -> None:
+        async def calls(client):
+            return await client.get_skill("skill://prism/SKILL.md")
+
+        assert _run_sep(calls).frontmatter.root["name"] == "prism"
+
+    @pytest.mark.parametrize("name", ["no-such-skill", "usage-guide", *INTERNAL])
+    def test_get_unknown_or_internal_uri_is_invalid_params(self, name: str) -> None:
+        from mcp.shared.exceptions import MCPError
+
+        async def calls(client):
+            with pytest.raises(MCPError) as exc:
+                await client.get_skill(f"skill://{name}/SKILL.md")
+            return exc.value
+
+        assert _run_sep(calls).error.code == -32602
+
+    def test_handshake_protocol_has_resources_but_no_skills_methods(self) -> None:
+        async def calls(client):
+            uris = {str(r.uri) for r in await client.list_resources()}
+            with pytest.raises(RuntimeError, match="modern MCP connection"):
+                await client.list_skills()
+            return uris
+
+        uris = _run_sep(calls, mode="legacy")
+        assert f"skill://{ENTRY}/SKILL.md" in uris and "skill://prism/_manifest" in uris
+
+    def test_each_skill_is_far_below_sep_limits(self) -> None:
+        # SEP-2640 / FastMCP cap a skill at 512 files and 16 MiB.
+        for s in sk.load_registry(PUBLIC).values():
+            assert len(s.files) < 512 and s.total_size < 16 * 1024 * 1024, s.name
+
+    @pytest.mark.parametrize("local", [False, True])
+    @pytest.mark.parametrize("mode", ["auto", "legacy"])
+    def test_extension_is_advertised(self, local: bool, mode: str) -> None:
+        async def calls(client):
+            # server_capabilities covers both eras (initialize or server/discover).
+            caps = client.server_capabilities
+            return caps.model_dump(mode="json", by_alias=True) if caps else {}
+
+        caps = _run_sep(calls, local=local, mode=mode)
+        advertised = "io.modelcontextprotocol/skills" in (caps.get("extensions") or {})
+        # Only where skills/* exist: a handshake client is not told about methods
+        # it cannot call (it still reads the skill:// resources).
+        assert advertised == (mode == "auto"), caps

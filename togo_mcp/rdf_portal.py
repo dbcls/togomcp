@@ -776,36 +776,46 @@ def _mie_trap_banner(content: str, database: str) -> str:
 
 # --- Workflows (Agent Skills) --- #
 #
-# One registry, two routes to the SAME in-memory files: the `get_workflow` tool (for
-# hosts whose models only call tools) and `skill://` resources (for skills-over-MCP
-# hosts). Registry details and the public/internal split are in skills.py.
+# One registry (skills.py), three routes to the SAME in-memory bytes:
+#   * the `get_workflow` tool — hosts whose models only call tools (Claude Desktop);
+#   * `skill://<name>/...` resources — any host that reads resources;
+#   * SEP-2640 `skills/list` / `skills/get` — ONLY for clients on the 2026-07-28
+#     protocol (FastMCP binds the methods to MODERN_PROTOCOL_VERSIONS); a client on a
+#     handshake protocol sees the resources and `skill://<name>/_manifest` only.
+# The last two come from one SkillCatalogProvider built from the registry snapshot
+# (to_fastmcp_skill), so the disk is read once and the routes cannot disagree.
 
-from fastmcp.server.providers.skills import SkillsDirectoryProvider
+from fastmcp.skills.extension import SkillsExtension
+from fastmcp.skills.provider import SkillCatalogProvider
 
 from . import skills as _skills
 
 SKILLS_DIR = CWD.joinpath("skills", "public")
-WORKFLOWS: dict[str, _skills.Skill] = _skills.load_registry(SKILLS_DIR)
-# The Usage Guide is served through the same tool under a reserved name (its core as
+# Everything under public/: what the resource and SEP-2640 routes serve.
+PUBLIC_SKILLS: dict[str, _skills.Skill] = _skills.load_registry(SKILLS_DIR)
+# The Usage Guide is served through get_workflow under a reserved name (its core as
 # the "SKILL.md", its on-demand sections as references/), but it is not a workflow and
-# is deliberately absent from this registry and from the guide's Workflows list.
-if GUIDE_SKILL_NAME in WORKFLOWS:
+# is deliberately absent from the registry and from the guide's Workflows list.
+if GUIDE_SKILL_NAME in PUBLIC_SKILLS:
     raise _skills.SkillRegistryError(
         f"workflow name {GUIDE_SKILL_NAME!r} is reserved for the Usage Guide"
     )
+# What get_workflow lists and serves, and what the Usage Guide's Workflows section
+# names: every public skill except the entry skill (togomcp-start), which exists only
+# to route a SEP-2640 host's skill list to TogoMCP_Usage_Guide.
+WORKFLOWS: dict[str, _skills.Skill] = _skills.workflows_of(PUBLIC_SKILLS)
 
-# TODO(fastmcp#5016): enable SkillsExtension (SEP-2640 `skills/list` / `skills/get`)
-# once FastMCP ships it — absent in 3.4.3, 4.0.4 and 4.0.10 (checked 2026-09-29). Until
-# then skills reach resource-reading hosts through the provider below.
-_skills_provider = SkillsDirectoryProvider(roots=SKILLS_DIR)
-# FastMCP's frontmatter reader is a line splitter, so a folded `description: >` comes
-# out as the literal ">" in resources/list. Overwrite it with the registry's real YAML
-# parse so both routes describe a skill identically.
-for _child in _skills_provider.providers:
-    _info = _child.skill_info
-    if _info.name in WORKFLOWS:
-        _info.description = WORKFLOWS[_info.name].description
+# Built from PUBLIC_SKILLS, not WORKFLOWS: the resource/SEP routes serve every public
+# skill. URIs stay flat, `skill://<name>/...`, exactly as before the migration.
+_skills_provider = SkillCatalogProvider(
+    [_skills.to_fastmcp_skill(s) for s in PUBLIC_SKILLS.values()]
+)
 mcp.add_provider(_skills_provider)
+# Explicit, so that discovery stays limited to this provider if another skill-bearing
+# provider (or a mounted server with skills) is ever added. The provider also
+# auto-registers an unscoped SkillsExtension; an explicit registration replaces it.
+# Requires that the root server has no transforms (FastMCP 4.2 rejects them here).
+mcp.add_extension(SkillsExtension(providers=[_skills_provider]))
 
 
 def workflow_catalog_section() -> str:

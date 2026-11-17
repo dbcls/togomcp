@@ -930,3 +930,60 @@ def test_mpo_and_mccv_resolved_by_local_name():
     assert stats.co_queried_databases(shared, "nbrc") == set()
     for prefix in ("mpo", "mccv"):
         assert prefix not in stats.SIGNATURE_PREFIXES
+
+
+# --- Skill route (SEP-2640 / skill:// resources) -----------------------------
+
+
+def _skill(kind, uri=None, *, client="claude-code", ip="ip1", err=False):
+    rec = {"ts": "2026-06-02T10:00:00+00:00", "kind": kind,
+           "status": "error" if err else "ok", "elapsed_ms": 1.0,
+           "ip_hash": ip, "meta": {"client": {"name": client, "version": "1"}}}
+    if uri is not None:
+        rec["uri"] = uri
+    return rec
+
+
+_SKILL_RECS = [
+    _skill("skills_list"),
+    _skill("skills_get", "skill://prism/SKILL.md"),
+    _skill("resource", "skill://prism/references/sparql-templates.md"),
+    _skill("resource", "skill://togomcp-start/SKILL.md", client="Anthropic/ClaudeAI", ip="ip2"),
+    _skill("skills_get", "skill://nope/SKILL.md", err=True),
+]
+
+
+def test_skill_records_do_not_change_the_tool_aggregate():
+    tools = [_sparql("ok", rows=3, nbytes=100), _rec(tool="get_workflow")]
+    base = stats.aggregate(tools)
+    mixed = stats.aggregate(tools + _SKILL_RECS)
+    strip = lambda a: {k: v for k, v in a.items() if k not in ("generated_at", "n_records")}
+    jun_mixed = dict(mixed["by_month"]["2026-06"])
+    assert jun_mixed.pop("skill_route")
+    assert jun_mixed == base["by_month"]["2026-06"]
+    assert {**strip(mixed), "by_month": None} == {**strip(base), "by_month": None}
+    assert "skill_route" not in base["by_month"]["2026-06"]
+
+
+def test_skill_route_tally():
+    sr = stats.aggregate(_SKILL_RECS)["by_month"]["2026-06"]["skill_route"]
+    assert sr["requests"] == 5
+    assert (sr["resource"], sr["skills_list"], sr["skills_get"]) == (2, 1, 2)
+    assert sr["errors"] == 1 and sr["ips"] == 2
+    assert sr["skills"] == {"prism": 2, "togomcp-start": 1, "nope": 1}
+    assert sr["clients"] == {"claude-code": 4, "Anthropic/ClaudeAI": 1}
+    assert stats.aggregate(_SKILL_RECS)["by_month"]["2026-06"]["tool_calls"] == 0
+
+
+def test_record_kind_and_skill_of_uri():
+    assert stats.record_kind(_rec()) == "tool"
+    assert stats.record_kind(_skill("resource")) == "resource"
+    assert stats.skill_of_uri("skill://prism/references/x.md") == "prism"
+    assert stats.skill_of_uri("https://x") is None and stats.skill_of_uri(None) is None
+
+
+def test_skill_route_renders_only_when_present():
+    tools = [_sparql("ok", rows=3, nbytes=100)]
+    assert "Skill route" not in stats.render_html(stats.aggregate(tools))
+    html = stats.render_html(stats.aggregate(tools + _SKILL_RECS))
+    assert "Skill route (skills-over-MCP)" in html and "togomcp-start" in html
