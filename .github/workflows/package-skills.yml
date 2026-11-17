@@ -1,8 +1,10 @@
 name: Package skills
 
 # Bundles the DISTRIBUTABLE skills under togo_mcp/data/skills/public/<name>/ into
-# their own <name>.skill zip archives, uploaded as a SEPARATE artifact per skill
-# (and attached individually to a GitHub Release on skills-v* tags).
+# their own <name>.skill zip archives, uploaded as a SEPARATE artifact per skill,
+# and attached to the GitHub Release of every version tag (v*) — so
+# https://github.com/dbcls/togomcp/releases/latest always carries the current set
+# (the tutorial links there) — and of skills-v* tags (a skills-only release).
 #
 # public/ holds the portable, MCP-driven analysis skills — the set the server
 # serves via get_workflow, skill:// resources and skills/list — plus the entry
@@ -19,8 +21,8 @@ name: Package skills
 
 on:
   push:
-    tags: ['skills-v*']     # e.g. git tag skills-v1 && git push origin skills-v1
-  workflow_dispatch:         # allow manual runs from the Actions tab
+    tags: ['v*', 'skills-v*']   # every release tag; skills-v* for a skills-only release
+  workflow_dispatch:         # manual run; publishes only with --ref <tag> (see `release`)
 
 permissions:
   contents: write            # needed to attach assets to a Release on tag runs
@@ -71,8 +73,33 @@ jobs:
           path: dist/${{ matrix.skill }}.skill
           if-no-files-found: error
 
-      - name: Attach ${{ matrix.skill }}.skill to the Release
-        if: startsWith(github.ref, 'refs/tags/')
+  # Attach every archive in ONE job. On a v* tag no release exists beforehand, and
+  # one action-gh-release call per matrix job would race to create it (duplicate
+  # releases). If a release for the tag already exists, the action uploads into
+  # it — check that it is not a draft, or the assets will not show publicly.
+  release:
+    needs: package
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: '*.skill'
+          path: dist
+          merge-multiple: true
+
+      - run: ls -la dist
+
+      - name: Attach the .skill archives to the ${{ github.ref_name }} Release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/${{ matrix.skill }}.skill
+          files: dist/*.skill
+          fail_on_unmatched_files: true
+          # The action REPLACES an existing release's body with `body` unless
+          # append_body is set; append so hand-written notes survive. (A re-run on
+          # the same tag appends this text again — harmless.)
+          append_body: true
+          body: |
+            Agent Skill archives for TogoMCP ${{ github.ref_name }}. Each `.skill` file is a zip of one skill directory.
+            Claude Desktop users: upload `togomcp-start.skill` as a skill (see the tutorial, chapter 5).
+            Release notes: [CHANGELOG.md](https://github.com/dbcls/togomcp/blob/main/CHANGELOG.md).

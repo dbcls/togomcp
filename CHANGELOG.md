@@ -20,6 +20,11 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   its own, and over the remote connector it shows server instructions only after a TogoMCP tool has been
   loaded. An uploaded skill's description is present from turn one. The tutorial (chapter 5, EN + JA) now
   says to upload it; the same commit range adds the chapter 5 notes on the skills-extension route.
+- `package-skills.yml` now runs on every version tag (`v*`), not only `skills-v*`. Every release therefore
+  gets a GitHub Release with the `.skill` archives, so `releases/latest` always has the current set (the
+  tutorial links there). The archives are attached by one job after all packaging finishes. On a `v*` tag
+  no release exists beforehand, and one upload per matrix job would race to create it. The release body
+  is appended, so hand-written notes are kept.
 
 ## [2.34.0] - 2026-11-17
 
