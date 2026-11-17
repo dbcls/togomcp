@@ -83,6 +83,12 @@ For tool metadata, capture `Mcp-Session-Id` from that response, POST `notificati
 `tools/list` with the session header — that is how the 2.1.0 `readOnlyHint` annotations were confirmed to
 reach clients rather than merely to build.
 
+That probe speaks protocol 2025-06-18, where the skills-over-MCP methods do not exist (`skills/list` and
+`skills/get` are 2026-07-28 only). To see what a skills-supporting host receives, use
+`uv run python scripts/probe_skills.py --url <…/mcp> --verify`. It connects on 2026-07-28, lists each skill
+with its version and digest, and downloads and checks every file. A hand-written 2026-07-28 curl must also
+send the `Mcp-Method` header (and `Mcp-Name` for `resources/read`), or the server rejects it with -32020.
+
 ## Versioning
 
 The version in `pyproject.toml` is read at runtime via `importlib.metadata` and reported in `serverInfo.version` (the deployment tell — a stale build shows the old number). Bump it on every `dev → main` release, and sync `uv.lock` in the same commit.
