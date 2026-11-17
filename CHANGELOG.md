@@ -13,6 +13,52 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.34.0] - 2026-11-17
+
+<!-- whatsnew: 2026-11-17 | TogoMCP's analysis workflows are now also served as MCP skills (<code>skills/list</code>, SEP-2640), so hosts that support skills can discover and verify them on their own; <code>get_workflow</code> works as before. -->
+
+MINOR: TogoMCP now implements the MCP Skills extension (SEP-2640, `io.modelcontextprotocol/skills`). No
+tool, parameter or return shape changed, so the stale-client canaries stay as they are. One new skill is
+served, and a host that supports the extension sees it, but it is not a tool.
+
+### Added
+
+- **`skills/list` and `skills/get`** for clients on the 2026-07-28 protocol. That is 61% of production calls
+  in the month to 2026-11-17, including claude.ai, Claude Code and ChatGPT. Hosts that implement the
+  extension can now discover the four workflows (`disease-analysis`, `prism`, `query-provenance`,
+  `research-article-analysis`) and check each file against a per-file sha256 digest, with no tool call. An
+  approval is tied to that digest, so editing a skill makes such a host ask its users to re-approve it.
+  Clients on older protocols are not told about the extension. They still read the same files as
+  `skill://<name>/...` resources plus a `_manifest`. The URIs did not change.
+- **Entry skill `togomcp-start`**. A skills host shows the model each skill's name and description, and some
+  hosts (Claude Desktop) never pass server instructions to the model. This skill uses that listing to say
+  "call `TogoMCP_Usage_Guide` first". It holds nothing that changes with a release, so adding a database does
+  not change its digest or trigger a re-approval. It is served only through the extension and as a resource,
+  not by `get_workflow` or in the guide's Workflows list (tool-route models already get this routing), and
+  `package-skills.yml` does not package it.
+- **The skill route is logged.** A skill read makes no tool call, so it was invisible in the usage log.
+  `skill://` resource reads and `skills/list` / `skills/get` now write records with a `kind` field. `/stats`
+  shows them in a separate "Skill route" section and keeps them out of every tool count, so the existing
+  figures are unchanged. Tool records are unchanged.
+- `scripts/probe_skills.py` checks a deployment's skills surface on the 2026-07-28 protocol (the CLAUDE.md
+  curl probe uses 2025-06-18, where `skills/list` does not exist). `--verify` downloads every file and
+  checks it against its digest.
+
+### Changed
+
+- FastMCP 4.0.10 → **4.2.0** (and mcp 2.2.0 → 2.3.0). The old skills provider
+  (`fastmcp.server.providers.skills.SkillsDirectoryProvider`) is replaced. It is deprecated in 4.2 and
+  removed in 4.3, so this migration lets the server take 4.3 without breaking. A test now fails if importing
+  the server raises a `FastMCPDeprecationWarning`.
+- The three skill routes (`get_workflow`, resources, `skills/*`) now serve one in-memory copy, built once
+  from the skill registry. Before, two separate readers read the same directory, and the resource route
+  advertised a folded `description: >` as the literal `">"` (it was patched over). The boot now fails if the
+  registry and FastMCP parse a skill's frontmatter differently, or if a skill breaks the Agent Skills
+  `name`/`description` limits.
+- Each workflow's `SKILL.md` now says how to fetch its `references/` for each route: sibling `skill://`
+  resources, `get_workflow(name, path)`, or local files. Before, it named only the last two. This is a
+  wording change, but it changes every skill's digest once.
+
 ## [2.33.0] - 2026-11-17
 
 <!-- whatsnew: 2026-11-17 | New database: <code>riken_pmm</code> — the RIKEN Plant Metabolomics MetaDatabase, experiment metadata for 152 plant metabolomics studies with sample species, organ, growth conditions, instrument settings and raw data file links. -->
@@ -4007,7 +4053,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.33.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.0...HEAD
+[2.34.0]: https://github.com/dbcls/togomcp/compare/v2.33.0...v2.34.0
 [2.33.0]: https://github.com/dbcls/togomcp/compare/v2.32.1...v2.33.0
 [2.32.1]: https://github.com/dbcls/togomcp/compare/v2.32.0...v2.32.1
 [2.32.0]: https://github.com/dbcls/togomcp/compare/v2.31.0...v2.32.0
