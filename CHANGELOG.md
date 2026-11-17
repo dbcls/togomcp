@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.34.1] - 2026-11-17
+
+<!-- whatsnew: 2026-11-17 | Claude Desktop: upload <code>togomcp-start.skill</code> (attached to every release) as a skill, and TogoMCP is used for life-science questions and starts from its Usage Guide from the first message. -->
+
+PATCH: no tool, parameter or return shape changed. The skill archives and the tutorial change for Claude
+Desktop users, who until now had no route to the model's first turn.
+
 ### Changed
 
 - `togomcp-start` is now packaged by `package-skills.yml` (2.34.0 left it out). In Claude Desktop, uploading
@@ -4066,7 +4073,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.0...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.1...HEAD
+[2.34.1]: https://github.com/dbcls/togomcp/compare/v2.34.0...v2.34.1
 [2.34.0]: https://github.com/dbcls/togomcp/compare/v2.33.0...v2.34.0
 [2.33.0]: https://github.com/dbcls/togomcp/compare/v2.32.1...v2.33.0
 [2.32.1]: https://github.com/dbcls/togomcp/compare/v2.32.0...v2.32.1
