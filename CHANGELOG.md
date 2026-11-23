@@ -13,6 +13,27 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.34.2] - 2026-11-24
+
+PATCH: no tool, parameter or return shape changed. Three MIE files are re-measured after the weekly drift
+sweep (#309) found that the live endpoints no longer agreed with them.
+
+### Fixed
+
+- `idsm`: the endpoint changed how `sachem:similaritySearch` returns its result node. The node now comes
+  back as an opaque blank node instead of unbound, so the gotcha's "UNBOUND — empty cells" wording was
+  false. The advice an agent acts on is unchanged: the subject is never a compound, so read
+  `sachem:compound` and `sachem:score` off it. The check now asserts that the subject is always a blank
+  node, which is the part of the claim that still matters.
+- `rikenbrc_jcm`: strains in the live JCM catalogue that the BRSO copy lacks went from 75 to 81. RIKEN is
+  still loading strains, so this figure will keep moving.
+- `rikenbrc_mouse`: data growth in the mutant-strain breakdown (CRISPR 702 → 751, distinct strains
+  6,273 → 6,327). The "don't sum the per-type rows" warning now quotes the current figures (rows add to
+  6,408).
+
+Endpoint outages in the same report (bh26microbes 502, togovar timeouts, a lipidmaps federated leg) are
+not drift and are unchanged.
+
 ## [2.34.1] - 2026-11-17
 
 <!-- whatsnew: 2026-11-17 | Claude Desktop: upload <code>togomcp-start.skill</code> (attached to every release) as a skill, and TogoMCP is used for life-science questions and starts from its Usage Guide from the first message. -->
@@ -4073,7 +4094,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.1...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.2...HEAD
+[2.34.2]: https://github.com/dbcls/togomcp/compare/v2.34.1...v2.34.2
 [2.34.1]: https://github.com/dbcls/togomcp/compare/v2.34.0...v2.34.1
 [2.34.0]: https://github.com/dbcls/togomcp/compare/v2.33.0...v2.34.0
 [2.33.0]: https://github.com/dbcls/togomcp/compare/v2.32.1...v2.33.0
