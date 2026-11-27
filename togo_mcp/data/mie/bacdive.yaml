@@ -84,6 +84,15 @@ examples:
       LIMIT 10
     verified: {row_count: 2, has_values: ["Acetobacter", "Acetobacter aceti"], date: "2026-07-21", first_row: "strain/1 = Acetobacter aceti (Proteobacteria, isType 0)"}
     teaches: "Strain is the hub; taxonomy (hasGenus/hasSpecies/hasPhylum) is stored redundantly ON the Strain — no lineage traversal needed."
+    traps_avoided:
+      - say: "schema:hasSpecies is the FULL binomial (\"Clostridioides difficile\" → 80 strains); the bare epithet is schema:hasSpeciesEpithet. hasGenus \"Clostridioides\" + hasSpecies \"difficile\" returns 0 rows."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX schema: <https://purl.dsmz.de/schema/>
+            SELECT ?s FROM <http://rdfportal.org/dataset/bacdive>
+            WHERE { ?s a schema:Strain ; schema:hasGenus "Clostridioides" ; schema:hasSpecies "difficile" . } LIMIT 1
 
   - id: count_strains            # ELEVATED aggregation — the scope-bleed recipe
     intent: count strains correctly (graph-pinned) vs the inflated unpinned count
@@ -207,6 +216,32 @@ examples:
     teaches: "Quantitative phenotypes carry typed test qualifiers (hasSaltType/hasTestType/hasTestAbility) + numeric range predicates (…RangeStart/…RangeEnd)."
     traps_avoided:
       - "The SaltTolerance IRI namespace is bacdive/halophily/{id}, not bacdive/salt_tolerance/ — reach it by TYPE (a schema:SaltTolerance), not by IRI pattern."
+
+  - id: optimum_temperature
+    intent: numeric growth-temperature filter (CultureTemperature, test type "optimum")
+    question: "How many strains have an optimum growth temperature of 80 °C or above?"
+    complexity: intermediate
+    sparql: |
+      PREFIX schema: <https://purl.dsmz.de/schema/>
+      SELECT (COUNT(DISTINCT ?strain) AS ?n)
+      FROM <http://rdfportal.org/dataset/bacdive>
+      WHERE {
+        ?ct a schema:CultureTemperature ; schema:describesStrain ?strain ;
+            schema:hasTestType "optimum" ;                 # growth | optimum | minimum | maximum
+            schema:hasTemperatureRangeStart ?tStart .      # xsd:float; …RangeEnd for the upper bound
+        FILTER(?tStart >= 80)
+      }
+    verified: {n: 21, date: "2026-11-27"}
+    teaches: "CultureTemperature: hasTemperatureRangeStart/End (xsd:float, °C), rdfs:label the range text (\"37-41\"), hasTemperatureRange the class (\"mesophilic\"…), growthObserved \"positive\"/\"negative\", hasTestType growth (86,138) / optimum (7,776) / maximum (197) / minimum (157)."
+    traps_avoided:
+      - say: "There is no schema:hasCultureTemp (0 triples) — use the range predicates above."
+        check:
+          kind: absent
+          date: "2026-11-27"
+          query: |
+            PREFIX schema: <https://purl.dsmz.de/schema/>
+            SELECT ?c FROM <http://rdfportal.org/dataset/bacdive> WHERE { ?c schema:hasCultureTemp ?x } LIMIT 1
+      - "Most CultureTemperature nodes are test type \"growth\" (a tested temperature, positive or negative) — filter hasTestType \"optimum\" for the optimum."
 
   - id: motile_phylo             # ELEVATED aggregation — clade distribution + isNumeric taxID
     intent: distribution of motile type strains with 16S, grouped by phylum

@@ -318,6 +318,22 @@ examples:
       LIMIT 20
     verified: {row_count: 3, has_values: ["HUMAN38363", "HUMAN38364"], date: "2026-07-22", paralogs: "HUMAN38361, HUMAN38363, HUMAN38364"}
     teaches: "orth:ParalogsCluster members are species-level OrthologsClusters (not proteins) — a ParalogsCluster→sub-cluster→protein two-hop. Pin hasTaxonomicRange to the query species to keep only in-species paralogs."
+    traps_avoided:
+      - say: "This two-hop route finds only RECENT duplications, where the ParalogsCluster sits directly above the species leaf. For an older duplication it returns 0 rows (PYCR1 = HUMAN37130). Fallback: same-species leaves sharing the family prefix — anchor `?leaf orth:hasTaxonomicRange <taxonomy/9606> ; dct:identifier ?cid` then FILTER(STRSTARTS(?cid, \"HOG:E1027413.\")) returns PYCR1, PYCR2, PYCR3."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            SELECT DISTINCT ?paralog WHERE {
+              GRAPH <http://rdfportal.org/dataset/oma> {
+                ?paralogCluster a orth:ParalogsCluster ; orth:hasHomologousMember ?mySub .
+                ?mySub orth:hasHomologousMember <https://omabrowser.org/oma/info/HUMAN37130> .
+                ?paralogCluster orth:hasHomologousMember ?otherSub .
+                ?otherSub a orth:OrthologsCluster ; orth:hasTaxonomicRange <http://purl.uniprot.org/taxonomy/9606> ; orth:hasHomologousMember ?paralog .
+                FILTER(?paralog != <https://omabrowser.org/oma/info/HUMAN37130>)
+              }
+            }
 
   - id: ortholog_1to1_prefix
     intent: the precise 1:1 ortholog in a target species via the shared HOG dotted-path PREFIX (isolates orthologs, excludes paralogs, no timeout)
@@ -360,6 +376,73 @@ examples:
             }
           expect: {value: 195, tolerance: 0.05}
       - "Do NOT use orth:hasHomologousMember+ to walk from the human protein to the mouse ortholog — with the target species unbound the path has no anchor and Virtuoso rejects it outright (gotcha property_path_unanchored). The dotted-prefix is the substitute."
+
+  - id: hog_root_of_protein
+    intent: the root HOG (HierarchicalGeneTree) of a protein and the taxon it is rooted at
+    question: "What is the root HOG of the OMA protein for UniProt P54886, and at which taxon is it rooted?"
+    complexity: intermediate
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX dct:  <http://purl.org/dc/terms/>
+      PREFIX obo:  <http://purl.obolibrary.org/obo/>
+      SELECT DISTINCT ?protein ?treeId ?rootTaxon
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?protein a orth:Protein ; lscr:xrefUniprot <http://purl.uniprot.org/uniprot/P54886> .
+          ?root orth:hasHomologousMember+ ?protein .        # anchored: the protein end is bound
+          ?tree a orth:HierarchicalGeneTree ; obo:CDAO_0000148 ?root ; dct:identifier ?treeId .
+          ?root orth:hasTaxonomicRange ?rootTaxon .
+        }
+      }
+    verified: {row_count: 1, has_values: ["HOG:E0804879_2759", "HUMAN02283"], date: "2026-11-27"}
+    teaches: "Walk UP from the bound protein with hasHomologousMember+ to the cluster a HierarchicalGeneTree points at (obo:CDAO_0000148). The tree's dct:identifier is {family}_{rootTaxon} (here _2759 = Eukaryota); bare 'HOG:E…' tree ids (13,196 of 1,040,435) are the LUCA-rooted ones, hasTaxonomicRange oma#TAX_RANGE_LUCA."
+    traps_avoided:
+      - say: "Do not derive the tree id from a leaf id with STRBEFORE(?leafId, \".\") and match it: the leaf HOG:E0804879.10b_9606 gives 'HOG:E0804879', but the tree is 'HOG:E0804879_2759', so the exact match returns 0 rows (and a STRSTARTS scan over all trees is slow). Navigate the graph instead."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            PREFIX dct: <http://purl.org/dc/terms/>
+            SELECT ?t WHERE { GRAPH <http://rdfportal.org/dataset/oma> { ?t a orth:HierarchicalGeneTree ; dct:identifier "HOG:E0804879" } }
+
+  - id: protein_gene_xrefs
+    intent: UniProt accession -> OMA protein -> its orth:Gene -> Ensembl gene / NCBI Gene IRIs
+    question: "What are the Ensembl gene and NCBI Gene IDs of the OMA protein for UniProt P54886?"
+    complexity: basic
+    sparql: |
+      PREFIX orth: <http://purl.org/net/orth#>
+      PREFIX lscr: <http://purl.org/lscr#>
+      PREFIX sio:  <http://semanticscience.org/resource/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?protein ?symbol ?ensemblGene ?ncbiGene
+      WHERE {
+        GRAPH <http://rdfportal.org/dataset/oma> {
+          ?protein a orth:Protein ; lscr:xrefUniprot <http://purl.uniprot.org/uniprot/P54886> ;
+                   rdfs:label ?symbol ; sio:SIO_010079 ?gene .     # rdfs:label = gene symbol
+          ?gene lscr:xrefEnsemblGene ?ensemblGene .                # gene-level xrefs live on orth:Gene
+          OPTIONAL { ?gene lscr:xrefNCBIGene ?ncbiGene }
+        }
+      }
+    verified: {row_count: 1, has_values: ["HUMAN02283", "ALDH18A1", "ENSG00000059573", "5832"], date: "2026-11-27"}
+    teaches: "Gene-level xrefs (lscr:xrefEnsemblGene, lscr:xrefNCBIGene) hang on the orth:Gene one sio:SIO_010079 hop from the protein; protein-level ones (xrefUniprot, xrefNCBIRefSeq, xrefEnsemblProtein/Transcript) on orth:Protein. Join a UniProt accession through lscr:xrefUniprot."
+    traps_avoided:
+      - say: "lscr:xrefEnsemblGene / lscr:xrefNCBIGene on the orth:Protein return 0 rows — they are on the gene."
+        check:
+          kind: absent
+          date: "2026-11-27"
+          query: |
+            PREFIX orth: <http://purl.org/net/orth#>
+            PREFIX lscr: <http://purl.org/lscr#>
+            SELECT ?p WHERE { GRAPH <http://rdfportal.org/dataset/oma> { ?p a orth:Protein ; lscr:xrefEnsemblGene ?x } } LIMIT 1
+      - say: "lscr:xrefSwissProt holds the MNEMONIC IRI (…/uniprot/P5CS_HUMAN), not the accession, so `lscr:xrefSwissProt <…/uniprot/P54886>` returns 0 rows. Use lscr:xrefUniprot, which carries both the accession and the mnemonic IRI (2 values per protein — bind it to the accession, or expect 2 rows)."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX lscr: <http://purl.org/lscr#>
+            SELECT ?p WHERE { GRAPH <http://rdfportal.org/dataset/oma> { ?p lscr:xrefSwissProt <http://purl.uniprot.org/uniprot/P54886> } } LIMIT 1
 
   - id: count_hog_by_taxon
     intent: enumerate/count ALL HOG clusters spanning a clade via hasTaxonomicRange (THE set-level enumeration route)
@@ -440,9 +523,9 @@ examples:
 
 # ── schema_delta: non-obvious predicates/structure NO example above already demonstrates. ──
 schema_delta:
-  - "Cluster TYPES by IRI shape: species-LEAF OrthologsCluster ids look like {HOG_family}.{dotted-path}_{TAXON} (single species, members are proteins); clade-level nodes are {HOG_family}_{TAXON} with hasTaxonomicRange = the clade taxon (members are sub-clusters). orth:HierarchicalGeneTree (~1.04M, id 'HOG:...') is the ROOT entry of each family, linking to its root cluster via obo:CDAO_0000148."
-  - "Protein → gene/genome: sio:SIO_010079 → orth:Gene IRI (~46%); obo:RO_0001018 → the genome-dataset node (sio:SIO_000750, carries pav:version = the Ensembl release used). orth:Gene is sparse — mainly orth:organism + lscr:xrefEnsemblGene; it is ALSO the IRI Bgee re-types (gotcha mandatory_graph_pin)."
-  - "rdfs:comment on orth:Protein is free-text Ensembl/HGNC/MGI source annotation (~94%), e.g. '...[Source:HGNC Symbol;Acc:HGNC:12313]'; useful to read but NOT a clean gene name. bif:contains on it is the one legitimate text search (Virtuoso; split the property path before the text node)."
+  - "Cluster TYPES by IRI shape: species-LEAF OrthologsCluster ids look like {HOG_family}.{dotted-path}_{TAXON} (single species, members are proteins); clade-level nodes are {HOG_family}_{TAXON} with hasTaxonomicRange = the clade taxon (members are sub-clusters). orth:HierarchicalGeneTree (~1.04M) is the ROOT entry of each family, linking to its root cluster via obo:CDAO_0000148; its id is {HOG_family}_{rootTaxon}, bare only when LUCA-rooted (example hog_root_of_protein)."
+  - "Protein → gene/genome: sio:SIO_010079 → orth:Gene IRI (~46%); obo:RO_0001018 → the genome-dataset node (sio:SIO_000750, carries pav:version = the Ensembl release used). orth:Gene is sparse — orth:organism + lscr:xrefEnsemblGene + lscr:xrefNCBIGene (example protein_gene_xrefs); it is ALSO the IRI Bgee re-types (gotcha mandatory_graph_pin)."
+  - "rdfs:label on orth:Protein is the gene SYMBOL (e.g. 'ALDH18A1') — exact-match it, graph-pinned. rdfs:comment (~94%) is the full name plus source annotation, e.g. 'aldehyde dehydrogenase 18 family member A1 [Source:HGNC Symbol;Acc:HGNC:9722]'; use bif:contains on it for name words (split the property path before the text node)."
   - "Some orth:Organism IRIs have NEGATIVE synthetic taxon ids (…/genome/-1637988980) for genomes lacking an NCBI taxon — obo:RO_0002162 still resolves them."
 
 # ── id_join_map: how to anchor stably and cross to other resources. ──
@@ -453,12 +536,12 @@ id_join_map:
     Cluster = orth:OrthologsCluster keyed by its dct:identifier HOG string ("HOG:E0756069.1b.7b_207598").
     Organism = https://omabrowser.org/oma/genome/{NCBI_TAXON}, identifiable ONLY via obo:RO_0002162 (no label).
   same_endpoint_joins:            # co-hosted on the sib endpoint — direct GRAPH join, NO TogoID
-    uniprot: "lscr:xrefUniprot → http://purl.uniprot.org/uniprot/{ACC} IRI; join in GRAPH <http://sparql.uniprot.org/uniprot> (NOT dataset/uniprot). ~78% of orth:Protein. See xdb_uniprot_function."
+    uniprot: "lscr:xrefUniprot → http://purl.uniprot.org/uniprot/{ACC} IRI (plus the mnemonic IRI; lscr:xrefSwissProt is mnemonic-only); join in GRAPH <http://sparql.uniprot.org/uniprot> (NOT dataset/uniprot). ~78% of orth:Protein. See xdb_uniprot_function."
     ncbi_taxonomy: "orth:Organism obo:RO_0002162 → http://purl.uniprot.org/taxonomy/{NCBI_TAXON}; the same IRI is hasTaxonomicRange's value on clusters. Names via up:scientificName — pin ONE graph (up_taxon_hub is in 3)."
-  xrefs:                          # outbound reference IRIs carried on orth:Protein (mechanism = lscr:xref* IRI)
+  xrefs:                          # outbound lscr:xref* IRIs on orth:Protein, or on its orth:Gene where noted
     ncbi_refseq:  "lscr:xrefNCBIRefSeq → ncbi.nlm.nih.gov/protein/{ACC} (multiple per protein)"
-    ncbi_gene:    "lscr:xrefNCBIGene → ncbi.nlm.nih.gov/gene/{ID} (~43%)"
-    ensembl:      "lscr:xrefEnsemblGene / xrefEnsemblProtein / xrefEnsemblTranscript → rdf.ebi.ac.uk/resource/ensembl{,.protein,.transcript}/{ENS} — joinable with the Ensembl graph on the EBI endpoint (different endpoint, not sib)"
+    ncbi_gene:    "lscr:xrefNCBIGene → ncbi.nlm.nih.gov/gene/{ID} — on orth:GENE (?protein sio:SIO_010079 ?gene), not on the protein (example protein_gene_xrefs)"
+    ensembl:      "lscr:xrefEnsemblGene (on orth:GENE) / xrefEnsemblProtein / xrefEnsemblTranscript (on orth:Protein) → rdf.ebi.ac.uk/resource/ensembl{,.protein,.transcript}/{ENS} — joinable with the Ensembl graph on the EBI endpoint (different endpoint, not sib)"
   bridged_via_togoid:             # DBs NOT co-hosted on sib — route via togoid_convertId on an OMA-carried accession
     - "Ensembl / NCBI RefSeq / NCBI Gene accessions → other RDF Portal DBs (ensembl, ncbigene, ...) via togoid_convertId when no same-endpoint graph exists."
 

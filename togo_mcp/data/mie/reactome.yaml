@@ -51,12 +51,18 @@ entity_counts:                     # COUNT(DISTINCT), graph-pinned; verified liv
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
   - id: string_typing
     say: >
-      bp:db, bp:id, bp:name, bp:eCNumber, bp:controlType literals are stored ^^xsd:string; a plain
-      literal is a DIFFERENT RDF term and joins to NOTHING (0 rows, no error). Required in THREE spots:
+      bp:db, bp:id, bp:name, bp:displayName, bp:eCNumber, bp:controlType literals are stored ^^xsd:string; a plain
+      literal is a DIFFERENT RDF term and joins to NOTHING (bp:displayName "Apoptosis": plain 0, typed 15). Required in THREE spots:
       VALUES blocks (HIGHEST-MISS — "P02649" looks identical to the typed form but never joins),
       triple-pattern objects (?xref bp:db "UniProt"^^xsd:string), and FILTER = comparisons. NOT needed
       for CONTAINS/STRSTARTS/REGEX/bif:contains or when merely binding into a variable. Pre-flight: scan
       every quoted literal against those predicates before submitting.
+    check:
+      kind: zero_rows
+      date: "2026-11-27"
+      query: |
+        PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+        SELECT ?p FROM <http://rdf.ebi.ac.uk/dataset/reactome> WHERE { ?p bp:displayName "Apoptosis" } LIMIT 1
   - id: go_xref_type
     say: >
       GO annotations are stored PRIMARILY as bp:RelationshipXref (68,949 links), NOT bp:UnificationXref
@@ -256,8 +262,11 @@ examples:
       SELECT DISTINCT ?sign ?controllerName ?reactionName
       FROM <http://rdf.ebi.ac.uk/dataset/reactome>
       WHERE {
-        ?prot bp:entityReference/bp:xref ?x .
-        ?x bp:db "UniProt"^^xsd:string ; bp:id "Q00987"^^xsd:string .
+        VALUES ?acc { "Q00987"^^xsd:string }
+        VALUES ?db  { "UniProt"^^xsd:string "UniProt Isoform"^^xsd:string }   # isoform-aware, as in protein_to_pathways
+        { ?prot bp:entityReference/bp:xref ?x . } UNION { ?prot bp:xref ?x . }
+        ?x bp:db ?db ; bp:id ?id .
+        FILTER(?id = ?acc || STRSTARTS(STR(?id), CONCAT(STR(?acc), "-")))
         # The controller is USUALLY a Complex or EntitySet CONTAINING the protein,
         # not the bare Protein — the * path admits both plus the protein itself.
         ?ctrl (bp:component|bp:memberPhysicalEntity)* ?prot .
@@ -268,7 +277,7 @@ examples:
         ?rxn  bp:displayName ?reactionName .
       }
       ORDER BY ?sign ?reactionName
-    verified: {row_count: 13, has_values: ["ACTIVATION", "MDM2 ubiquitinates TP53"], date: "2026-07-31", note: "12 ACTIVATION + 1 INHIBITION. Includes \"MDM2 ubiquitinates TP53\" (ACTIVATION) and p14ARF:MDM2 INHIBITION of that same reaction. Dropping bp:memberPhysicalEntity from the path returns only 6 rows — the TP53 row is one of the 7 lost.\n"}
+    verified: {row_count: 13, has_values: ["ACTIVATION", "MDM2 ubiquitinates TP53"], date: "2026-11-27", note: "12 ACTIVATION + 1 INHIBITION. Includes \"MDM2 ubiquitinates TP53\" (ACTIVATION) and p14ARF:MDM2 INHIBITION of that same reaction. Dropping bp:memberPhysicalEntity from the path returns only 6 rows — the TP53 row is one of the 7 lost.\n"}
     teaches: >
       Reactome DOES carry signed regulation (61,819 bp:controlType statements) — but the sign is on
       a REACTION, not between two molecules. "MDM2 ubiquitinates TP53" is ACTIVATION: the control
@@ -280,6 +289,31 @@ examples:
       - "bp:Catalysis is 100% ACTIVATION (50,692/50,692) — BioPAX defines catalysis as inherently activating. ALL 4,464 meaningful INHIBITIONs are bp:Control (+5 TemplateReactionRegulation). Anchoring an inhibition query on bp:Catalysis returns ZERO, silently. Leave the control class UNBOUND (as here) or use bp:Control."
       - "The controller is a Complex 2,473x vs a bare Protein 1,040x for INHIBITION controls, plus EntitySets. Writing `?ctrl a bp:Protein` (or omitting the (bp:component|bp:memberPhysicalEntity)* path) silently drops ~54% of rows — 13 -> 6 on this very query."
       - "bp:db/bp:id need ^^xsd:string (global gotcha string_typing); the plain form joins to nothing here."
+      - say: "Matching only bp:db \"UniProt\" + exact bp:id misses isoform-only controllers: HMGCR (P04035) is xref'd only as \"UniProt Isoform\" P04035-1/-2, so it returns 0 controls; this isoform-aware form returns its ACTIVATION of \"HMGCR dimer reduces bHMG-CoA to MVA\"."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT DISTINCT ?ctl FROM <http://rdf.ebi.ac.uk/dataset/reactome> WHERE {
+              ?prot bp:entityReference/bp:xref ?x .
+              ?x bp:db "UniProt"^^xsd:string ; bp:id "P04035"^^xsd:string .
+              ?ctrl (bp:component|bp:memberPhysicalEntity)* ?prot .
+              ?ctl bp:controller ?ctrl ; bp:controlled ?rxn ; bp:controlType ?sign . } LIMIT 1
+      - say: "To tag a participant's side, write `VALUES ?role { bp:left bp:right } ?rxn ?role ?holder`. A `{ ?rxn bp:left ?holder BIND(... AS ?role) } UNION { ... bp:right ... }` joined to the `(bp:component|bp:memberPhysicalEntity)*` path fails: Virtuoso SQ156 \"unknown table for a column dfe\"."
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            PREFIX bp: <http://www.biopax.org/release/biopax-level3.owl#>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT DISTINCT ?role ?rxnName FROM <http://rdf.ebi.ac.uk/dataset/reactome> WHERE {
+              ?prot bp:entityReference/bp:xref ?x .
+              ?x bp:db "UniProt"^^xsd:string ; bp:id "Q00987"^^xsd:string .
+              ?holder (bp:component|bp:memberPhysicalEntity)* ?prot .
+              { ?rxn bp:left ?holder . BIND("input" AS ?role) } UNION { ?rxn bp:right ?holder . BIND("output" AS ?role) }
+              ?rxn bp:displayName ?rxnName . } LIMIT 20
       - "bp:controlled is polymorphic: BiochemicalReaction (4,455) + Degradation (9) for INHIBITION controls. Do not assume one class."
 
   - id: enum_pathway_organisms

@@ -123,13 +123,22 @@ examples:
       WHERE {
         ?article bibo:pmid "88474" ;                 # bibo:pmid is a STRING, not an integer
                  dct:title ?title ;
-                 prism:publicationName ?journal ;
-                 dct:issued ?issued .
+                 prism:publicationName ?journal .
+        OPTIONAL { ?article dct:issued ?issued }     # missing on ~6% of articles
         OPTIONAL { ?article bibo:abstract ?abstract }
       }
-      LIMIT 1
-    verified: {min_rows: 1, journal: "Journal of immunology (Baltimore, Md. : 1950)", issued: "1979-08", date: "2026-07-22"}
-    teaches: "Anchor on bibo:pmid (a string literal); the article IRI is http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}. journal is prism:publicationName; abstract (71.4% of articles) is OPTIONAL."
+    verified: {row_count: 1, has_values: ["Journal of immunology (Baltimore, Md. : 1950)", "1979-08"], date: "2026-11-27"}
+    teaches: "Anchor on bibo:pmid (a string literal); the article IRI is http://rdf.ncbi.nlm.nih.gov/pubmed/{pmid}. journal is prism:publicationName; abstract (71.4% of articles) and dct:issued are OPTIONAL."
+    traps_avoided:
+      - say: "dct:issued is not universal: 38,726,630 dct:issued triples for 41,249,539 articles, so ≥6% have no date (e.g. PMID 28080323). A required dct:issued drops those articles silently — keep it OPTIONAL unless you are filtering by date."
+        check:
+          kind: ratio
+          date: "2026-11-27"
+          numerator: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/pubmed> { ?a <http://purl.org/dc/terms/issued> ?i } }
+          denominator: |
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/pubmed> { ?a <http://purl.org/ontology/bibo/pmid> ?p } }
+          expect: {ratio: 0.9389, tolerance: 0.02}
 
   - id: pubtype_enum
     intent: enumerate articles of a PUBLICATION TYPE via rdfs:seeAlso to a MeSH pub-type descriptor (the pub-type route)
@@ -256,6 +265,16 @@ examples:
       LIMIT 10
     verified: {min_rows: 10, has_values: ["2023-12-31"], date: "2026-07-22", first_row: "37793527 — …TaLhc2 in wheat stress tolerance and photosynthesis (2023-12-31)"}
     teaches: "bif:contains (Virtuoso indexed FTS) is justified ONLY on genuinely unstructured free text — dct:title / bibo:abstract, which have no controlled vocabulary. For any TOPIC use the MeSH route (mesh_topic_enum), not title text. Prefer bif:contains over FILTER(REGEX()) (10-100x faster, indexed)."
+    traps_avoided:
+      - say: >
+          Title OR abstract: bif:contains needs its binding triple in the SAME group. `?a dct:title ?title .
+          { ?title bif:contains … } UNION { … }` is a compile error (SP031); write
+          { ?a dct:title ?txt . ?txt bif:contains "'x'" } UNION { ?a bibo:abstract ?txt . ?txt bif:contains "'x'" }.
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            SELECT ?a WHERE { GRAPH <http://rdfportal.org/dataset/pubmed> { ?a <http://purl.org/dc/terms/title> ?title . { ?title bif:contains "'photosynthesis'" } UNION { ?a <http://purl.org/ontology/bibo/abstract> ?ab . ?ab bif:contains "'photosynthesis'" } } } LIMIT 5
 
   - id: count_reviews_year
     intent: count articles of a pub type in a year correctly (the tractable-aggregation recipe)

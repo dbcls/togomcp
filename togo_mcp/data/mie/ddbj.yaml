@@ -110,6 +110,32 @@ examples:
     verified: {min_rows: 5, division_total: 52724, date: "2026-07-22", first_row: "AF203973.1 = Escherichia phage RB49"}
     teaches: "nuc:division takes a full Division# IRI (the fragment is part of the IRI, not a placeholder); it is the primary categorical filter and the scope that makes aggregation tractable."
 
+  - id: entry_by_accession
+    intent: resolve a bare (unversioned) INSDC accession to its entry IRI by probing version suffixes
+    question: "What organism is DDBJ entry KZ772694 from?"
+    complexity: basic
+    sparql: |
+      PREFIX nuc: <http://ddbj.nig.ac.jp/ontologies/nucleotide/>
+      PREFIX dcterms: <http://purl.org/dc/terms/>
+      SELECT ?entry ?id ?organism ?definition
+      FROM <http://rdfportal.org/dataset/ddbj>
+      WHERE {
+        VALUES ?entry { <http://identifiers.org/insdc/KZ772694.1> <http://identifiers.org/insdc/KZ772694.2>
+                        <http://identifiers.org/insdc/KZ772694.3> }
+        ?entry a nuc:Entry ; dcterms:identifier ?id ; nuc:organism ?organism ; nuc:definition ?definition .
+      }
+    verified: {row_count: 1, has_values: ["KZ772694.1", "Marchantia polymorpha"], date: "2026-11-27"}
+    teaches: "Entry IRIs AND dcterms:identifier always carry the version suffix (.1, .2, …). Given a bare accession, list ACC.1–ACC.3 as IRIs in VALUES — an index lookup, instant."
+    traps_avoided:
+      - say: "The unversioned form matches nothing: <…/insdc/KZ772694> or dcterms:identifier \"KZ772694\" returns 0 rows. Do not fall back to FILTER(STRSTARTS(STR(?entry), …)) over ~280M entries — probe the version suffixes instead."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT ?e FROM <http://rdfportal.org/dataset/ddbj>
+            WHERE { VALUES ?id { "KZ772694" "CP036276" } ?e dcterms:identifier ?id . } LIMIT 5
+
   - id: feature_by_locus
     intent: gene symbol + product + NCBI-protein xref for a locus tag (the primary feature key)
     question: "What are the annotations for locus tag Mal52_08030?"
@@ -281,7 +307,8 @@ schema_delta:
 # ── id_join_map: how to anchor stably and cross to other resources. ──
 id_join_map:
   stable_anchor: >
-    Entry = INSDC accession IRI http://identifiers.org/insdc/ACCESSION (e.g. CP036276.1). Features are
+    Entry = INSDC accession IRI http://identifiers.org/insdc/ACCESSION.VERSION (e.g. CP036276.1; always versioned,
+    see entry_by_accession). Features are
     …#feature:START-END:STRAND:TYPE.N; nuc:locus_tag is the stable per-feature key (>99% coverage).
   same_endpoint_joins:            # co-hosted on the ddbj endpoint — direct GRAPH join, NO TogoID
     ncbi_taxonomy: "ro:0002162 → identifiers.org/taxonomy/N IRI; names/rank/lineage in GRAPH <ontology/taxonomy> via tax:scientificName / tax:rank / rdfs:subClassOf* (examples xdb_taxonomy, enum_taxonomy_subtree)"

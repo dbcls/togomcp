@@ -70,7 +70,17 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       String literals (rdfs:label, skos:*Label, dcterms:description, and the string sio:SIO_000300 values —
       smiles/inchi/inchikey/formula) are PLAIN literals; appending ^^xsd:string matches NOTHING (a DATATYPE() probe
       misleadingly reports xsd:string — Virtuoso matches TERMS, not values). Numeric sio:SIO_000300 (full_mwt, alogp,
-      psa) genuinely ARE xsd:double. Use the plain form, or FILTER(STR(?x)=...) to be form-agnostic.
+      psa) genuinely ARE xsd:double. For KNOWN names bind the plain literal as the object
+      (`VALUES ?name {"LOVASTATIN"} ?mol rdfs:label ?name`, 0.2s). FILTER(STR(?label)=?name) scans every label:
+      cold runs took 17s (typed ?mol) to >120s (untyped); a repeat can return in 0.1s from cache. Use
+      FILTER(STR()) only on an already-small set.
+    check:
+      kind: count              # the direct-bind form
+      date: "2026-11-27"
+      query: |
+        SELECT (COUNT(?mol) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chembl> WHERE {
+          VALUES ?name { "PITAVASTATIN" "CERIVASTATIN" } ?mol rdfs:label ?name . }
+      expect: {value: 2, tolerance: 0.01}
   - id: taxonomy_and_classification
     say: >
       Combining a cco:taxonomy IRI with cco:hasProteinClassification in one query is FINE — 5,820 human
@@ -88,6 +98,21 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
         WHERE { ?t a cco:SingleProtein ; cco:taxonomy <http://identifiers.org/taxonomy/9606> ;
                    cco:hasProteinClassification ?c . }
       expect: {value: 5820, tolerance: 0.10}
+  - id: mechanism_on_salt_form
+    say: >
+      cco:Mechanism often hangs on a salt/child form, not the parent: ATORVASTATIN (CHEMBL1487) has 0 mechanisms,
+      ATORVASTATIN CALCIUM (CHEMBL393220) has INHIBITOR→HMGCR. 862 parents have mechanisms ONLY on a child, 637 of
+      them carry a DrugIndication, so an indication→mechanism join on the shared molecule drops them silently.
+      Step through `cco:hasChildMolecule?` (example moa_integration).
+    check:
+      kind: count
+      date: "2026-11-27"
+      query: |
+        PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+        SELECT (COUNT(DISTINCT ?p) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chembl> WHERE {
+          ?p cco:hasChildMolecule ?c . ?m a cco:Mechanism ; cco:hasMolecule ?c .
+          FILTER NOT EXISTS { ?m2 a cco:Mechanism ; cco:hasMolecule ?p } }
+      expect: {value: 862, tolerance: 0.05}
   - id: structureless_small_molecules
     say: >
       5,189 of the 1,920,603 cco:SmallMolecule entries carry NO structure in this RDF: no SMILES
@@ -355,17 +380,57 @@ examples:
                     cco:hasMesh <http://identifiers.org/mesh/D010300> ;   # Parkinson Disease
                     cco:highestDevelopmentPhase ?phase ;
                     cco:hasMolecule ?molecule .
-        ?molecule rdfs:label ?moleculeLabel .
-        ?mechanism a cco:Mechanism ; cco:hasMolecule ?molecule ;
+        ?molecule rdfs:label ?moleculeLabel ;
+                  cco:hasChildMolecule? ?form .          # the mechanism may sit on a salt form (gotcha mechanism_on_salt_form)
+        ?mechanism a cco:Mechanism ; cco:hasMolecule ?form ;
                    cco:mechanismActionType ?mechanismType ; cco:hasTarget ?target .
         ?target a cco:SingleProtein ; rdfs:label ?targetLabel ; cco:organismName "Homo sapiens" .
         FILTER(?phase >= 3)
       }
       ORDER BY ?moleculeLabel
-      LIMIT 50
-    verified: {row_count: 36, has_values: ["AMPRELOXETINE"], first_row: "AMPRELOXETINE → Sodium-dependent noradrenaline transporter (INHIBITOR, phase 3)", note: "capped at LIMIT 50 on 2026-07-22; 36 rows in total now", date: "2026-09-14"}
-    teaches: "Indication (cco:hasMesh) and mechanism (cco:Mechanism → cco:mechanismActionType + cco:hasTarget) join on the shared ?molecule. All four filter dimensions are typed predicates — no text search anywhere."
+      LIMIT 60
+    verified: {row_count: 50, has_values: ["AMPRELOXETINE", "TRIHEXYPHENIDYL"], first_row: "AMPRELOXETINE → Sodium-dependent noradrenaline transporter (INHIBITOR, phase 3)", date: "2026-11-27"}
+    teaches: "Indication (cco:hasMesh) and mechanism (cco:Mechanism → cco:mechanismActionType + cco:hasTarget) join on the molecule OR its child forms. All four filter dimensions are typed predicates — no text search anywhere."
     traps_avoided:
+      - say: "Joining the mechanism on ?molecule directly returns 36 rows / 31 drugs instead of 50 / 43 — TRIHEXYPHENIDYL, BIPERIDEN, BENZTROPINE … have their mechanism only on the hydrochloride/mesylate child."
+        check:
+          kind: ratio
+          date: "2026-11-27"
+          numerator: |
+            PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(*) AS ?n) WHERE { SELECT DISTINCT ?molecule ?targetLabel ?mechanismType ?phase
+            FROM <http://rdf.ebi.ac.uk/dataset/chembl> WHERE {
+              ?indication a cco:DrugIndication ; cco:hasMesh <http://identifiers.org/mesh/D010300> ;
+                          cco:highestDevelopmentPhase ?phase ; cco:hasMolecule ?molecule .
+              ?mechanism a cco:Mechanism ; cco:hasMolecule ?molecule ; cco:mechanismActionType ?mechanismType ; cco:hasTarget ?target .
+              ?target a cco:SingleProtein ; rdfs:label ?targetLabel ; cco:organismName "Homo sapiens" .
+              FILTER(?phase >= 3) } }
+          denominator: |
+            PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(*) AS ?n) WHERE { SELECT DISTINCT ?molecule ?targetLabel ?mechanismType ?phase
+            FROM <http://rdf.ebi.ac.uk/dataset/chembl> WHERE {
+              ?indication a cco:DrugIndication ; cco:hasMesh <http://identifiers.org/mesh/D010300> ;
+                          cco:highestDevelopmentPhase ?phase ; cco:hasMolecule ?molecule .
+              ?molecule cco:hasChildMolecule? ?form .
+              ?mechanism a cco:Mechanism ; cco:hasMolecule ?form ; cco:mechanismActionType ?mechanismType ; cco:hasTarget ?target .
+              ?target a cco:SingleProtein ; rdfs:label ?targetLabel ; cco:organismName "Homo sapiens" .
+              FILTER(?phase >= 3) } }
+          expect: {ratio: 0.72, tolerance: 0.05}
+      - say: "Bind ?molecule with a triple BEFORE the `?` path. With ?molecule only from VALUES, Virtuoso mis-evaluates `?mol cco:hasChildMolecule? ?form` and returns unrelated mechanisms (9,187 rows for one molecule that has 1); `cco:hasChildMolecule*` or a preceding `?mol rdfs:label ?l` gives the right answer."
+        check:
+          kind: ratio
+          date: "2026-11-27"
+          unpinned: |
+            PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chembl> WHERE {
+              VALUES ?mol { <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1487> }
+              ?mol cco:hasChildMolecule? ?form . ?mech a cco:Mechanism ; cco:hasMolecule ?form . }
+          pinned: |
+            PREFIX cco: <http://rdf.ebi.ac.uk/terms/chembl#>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chembl> WHERE {
+              VALUES ?mol { <http://rdf.ebi.ac.uk/resource/chembl/molecule/CHEMBL1487> }
+              ?mol rdfs:label ?l ; cco:hasChildMolecule? ?form . ?mech a cco:Mechanism ; cco:hasMolecule ?form . }
+          expect: {ratio: 9187, tolerance: 0.10}
       - "The `a cco:SingleProtein` pin here is a deliberate narrowing to human single proteins, and it silently omits any mechanism curated onto a PROTEIN FAMILY / PROTEIN COMPLEX target. For the complete per-protein drug set, use the cco:targetType idiom in example moa_target_types."
 
   - id: xdb_chebi                  # ELEVATED cross_db

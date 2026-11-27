@@ -277,6 +277,22 @@ examples:
               GROUP BY ?geneId ORDER BY DESC(?cooccurrence) LIMIT 5
             }
           expect: {value: 5, tolerance: 0.0}
+      - say: >
+          Exact counts for a KNOWN gene list: keep this shape — the disease's articles in an unlimited
+          { SELECT DISTINCT ?article WHERE { GRAPH <…pubtator_central> { disease leg } } }, then VALUES ?geneId { … }
+          and the gene leg in its own GRAPH block, GROUP BY ?geneId. Prefer it to one flat join of VALUES genes ×
+          disease. Each per-gene figure equals its single-gene count (INS 3630 × Pancreatic Neoplasms D010190 = 15,785).
+          For a disease with ~10^5 articles even this shape is slow on a cold cache; re-run once before splitting it.
+        check:
+          kind: count
+          date: "2026-11-27"
+          query: |
+            PREFIX oa: <http://www.w3.org/ns/oa#>
+            PREFIX dcterms: <http://purl.org/dc/terms/>
+            SELECT (COUNT(DISTINCT ?article) AS ?n) FROM <http://rdfportal.org/dataset/pubtator_central> WHERE {
+              ?d dcterms:subject "Disease" ; oa:hasBody <http://identifiers.org/mesh/D010190> ; oa:hasTarget ?article .
+              ?g dcterms:subject "Gene" ; oa:hasBody <http://identifiers.org/ncbigene/3630> ; oa:hasTarget ?article . }
+          expect: {value: 15785}
       - "Results interleave human and model-organism orthologs of the same symbol — add the ncbigene taxid filter to restrict to one species (example xdb_species_genes)."
 
   - id: xdb_species_genes

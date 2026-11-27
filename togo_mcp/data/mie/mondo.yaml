@@ -60,7 +60,8 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
   - id: iri_blank_node
     say: >
       rdfs:subClassOf points to OWL restriction BLANK NODES alongside named parents. Add FILTER(isIRI(?parent))
-      whenever you read hierarchy parents, or you get bnode garbage rows.
+      whenever you read hierarchy parents, or you get bnode garbage rows. Inside a UNION+BIND query use the
+      ?parent rdfs:label form instead (example direct_neighbours).
   - id: subclassof_star_dag
     say: >
       MONDO is a multiple-inheritance DAG, so `?d rdfs:subClassOf* <category>` returns ONE ROW PER PATH — a disease
@@ -115,6 +116,37 @@ examples:
     teaches: "rdfs:subClassOf+ walks up the hierarchy (use `*` to include self). Requiring ?ancestor rdfs:label filters to named classes on its own, but keep FILTER(isIRI(?ancestor)) as the explicit guard against OWL restriction bnodes."
     traps_avoided:
       - "Without FILTER(isIRI(?parent)) a bare `rdfs:subClassOf ?parent` returns OWL restriction blank nodes mixed in (gotcha iri_blank_node)."
+
+  - id: direct_neighbours
+    intent: direct parents AND direct children of one disease in a single UNION query
+    question: "What are the immediate parent and child classes of Huntington disease?"
+    complexity: basic
+    sparql: |
+      PREFIX obo: <http://purl.obolibrary.org/obo/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?rel ?class ?label
+      FROM <http://rdfportal.org/ontology/mondo>
+      WHERE {
+        { obo:MONDO_0007739 rdfs:subClassOf ?class . ?class rdfs:label ?label . BIND("parent" AS ?rel) }
+        UNION
+        { ?class rdfs:subClassOf obo:MONDO_0007739 . ?class rdfs:label ?label . BIND("child" AS ?rel) }
+      }
+    verified: {row_count: 4, has_values: ["movement disorder", "juvenile Huntington disease"], date: "2026-11-27"}
+    teaches: "The ?class rdfs:label triple alone excludes OWL restriction bnodes, so no isIRI filter is needed."
+    traps_avoided:
+      - say: "Adding FILTER(isIRI(?class)) to a branch of this UNION (with its BIND) fails with Virtuoso SP031 'sparp_gp_deprecate(): equiv replaces filter but under deprecation' (HTTP 400). Drop the FILTER, or split into one query per branch."
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?rel ?p ?pl FROM <http://rdfportal.org/ontology/mondo>
+            WHERE {
+              { obo:MONDO_0007739 rdfs:subClassOf ?p . FILTER(isIRI(?p)) ?p rdfs:label ?pl . BIND("parent" AS ?rel) }
+              UNION
+              { ?p rdfs:subClassOf obo:MONDO_0007739 . ?p rdfs:label ?pl . BIND("child" AS ?rel) }
+            }
 
   - id: enum_category_subtree
     intent: enumerate ALL diseases under a category via subClassOf* (the set-level enumeration route)

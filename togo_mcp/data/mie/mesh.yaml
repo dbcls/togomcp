@@ -44,7 +44,7 @@ entity_counts:                                   # graph-pinned COUNT(DISTINCT);
   scr_chemical:        250445
   tree_numbers:        81732
   qualifiers:          84
-  descriptor_labels_pinned:   "30262 rows / 30248 subjects (14 descriptors legitimately carry 2 labels)"
+  descriptor_labels_pinned:   "30262 rows / 30248 subjects (the 14 extra are translations on D002493, the only non-@en labels)"
   descriptor_labels_unpinned: "31030 rows / 30248 subjects — +768 poisoned rows from glycovid_pubchem (×1.025)"
   coverage: "descriptors: 100% have a tree number & label · ~31% have meshv:annotation · ~99.6% have a broaderDescriptor · ~33% of Terms carry a thesaurusID"
 
@@ -80,10 +80,35 @@ global_gotchas:                                  # the few that bite ANY query �
       never looks wrong in a count. FIX = pin GRAPH <http://id.nlm.nih.gov/mesh>.
   - id: silent_wrong_predicates
     say: >
-      Three predicate swaps return 0 rows with NO error. Descriptor→descriptor hierarchy is
+      These swaps return 0 rows with NO error. Descriptor→descriptor hierarchy is
       meshv:broaderDescriptor, NOT meshv:broader (broader = empty). Scope notes on a Descriptor are
       meshv:annotation, NOT meshv:scopeNote (scopeNote is valid only on a Concept). Qualifiers use
       meshv:broaderQualifier and Concepts meshv:broaderConcept — never the plain broader.
+      meshv:Descriptor has no instances — type descriptors as meshv:TopicalDescriptor. A Descriptor
+      has no meshv:prefLabel (only Terms do) — use rdfs:label.
+    check:
+      kind: absent
+      date: "2026-11-27"
+      query: |
+        PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+        SELECT ?d FROM <http://id.nlm.nih.gov/mesh>
+        WHERE { { ?d a meshv:Descriptor } UNION { ?d a meshv:TopicalDescriptor ; meshv:prefLabel ?l }
+                UNION { ?d a meshv:TopicalDescriptor ; meshv:broader ?b }
+                UNION { ?d a meshv:TopicalDescriptor ; meshv:scopeNote ?s } } LIMIT 1
+  - id: labels_are_en_tagged
+    say: >
+      Every rdfs:label in the MeSH graph is language-tagged @en — descriptor names AND tree-number
+      labels alike (the only exceptions are 14 translations on D002493). An exact match on a plain
+      literal (rdfs:label "Caffeine", a tree number "C10.228" in VALUES/IN/=) returns 0 rows silently.
+      Write "Caffeine"@en, or compare STR(?l). STRSTARTS/CONTAINS on the label are unaffected.
+    check:
+      kind: zero_rows
+      date: "2026-11-27"
+      query: |
+        PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?d FROM <http://id.nlm.nih.gov/mesh>
+        WHERE { { ?d rdfs:label "Caffeine" } UNION { ?t rdfs:label "D08.811.277.352.100.170.176" } }
   - id: indirect_attributes
     say: >
       Two heavily-wanted attributes are one hop away, never on the entity: CAS meshv:registryNumber is
@@ -113,6 +138,32 @@ examples:
     teaches: "Descriptor IRI = mesh:D######. annotation/treeNumber are OPTIONAL (only ~31% have annotation). Batch several IRIs with a VALUES ?descriptor {...} block."
     traps_avoided:
       - "meshv:broader and meshv:scopeNote both return 0 rows on a Descriptor with no error — use meshv:broaderDescriptor and meshv:annotation (gotcha silent_wrong_predicates)."
+
+  - id: descriptor_synonyms
+    intent: all entry terms (synonyms) of a descriptor, across its preferred AND non-preferred concepts
+    question: "What are all the entry terms (synonyms) of the Caffeine descriptor?"
+    complexity: basic
+    sparql: |
+      PREFIX mesh:  <http://id.nlm.nih.gov/mesh/>
+      PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+      SELECT DISTINCT ?synonym
+      FROM <http://id.nlm.nih.gov/mesh>
+      WHERE {
+        mesh:D002110 (meshv:preferredConcept|meshv:concept)/(meshv:preferredTerm|meshv:term)/meshv:prefLabel ?synonym .
+      }
+      ORDER BY ?synonym
+    verified: {row_count: 12, has_values: ["Caffeine", "1,3,7-Trimethylxanthine", "Vivarin"], date: "2026-11-27"}
+    teaches: "Descriptor → Concept → Term → meshv:prefLabel. Both hops need the preferred|non-preferred alternation; Term labels are meshv:prefLabel, not rdfs:label."
+    traps_avoided:
+      - say: "meshv:concept and meshv:term list only the NON-preferred concepts/terms. Only 11,394 of 30,248 descriptors have any meshv:concept, so `meshv:concept/meshv:term/meshv:prefLabel` returns 0 synonyms for most (Caffeine included) — use the alternation path above."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX mesh:  <http://id.nlm.nih.gov/mesh/>
+            PREFIX meshv: <http://id.nlm.nih.gov/mesh/vocab#>
+            SELECT ?l FROM <http://id.nlm.nih.gov/mesh>
+            WHERE { mesh:D002110 meshv:concept/meshv:term/meshv:prefLabel ?l }
 
   - id: tree_category_enum
     intent: "ENUMERATION ROUTE #1 (headline) — ALL descriptors under a tree category via STRSTARTS on the tree-number label"

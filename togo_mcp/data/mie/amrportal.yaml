@@ -33,6 +33,8 @@ entity_counts:                     # graph-pinned, live 2026-07-22 (COUNT over t
   phenotype_measurements: 1714486  # amr:PhenotypeMeasurement
   genotype_features: 1164007       # amr:GenotypeFeature (elementType is uniformly "AMR" in this snapshot — no VIRULENCE/STRESS rows despite the schema allowing them)
   distinct_biosamples: 170958      # DISTINCT amr:bioSample across BOTH entity types — the sole phenotype↔genotype join key
+  genera: 20                       # 2026-11-27, DISTINCT genus of amr:species over both entity types (88 species strings incl. strain-level ones)
+  genera_list: "Acinetobacter, Campylobacter, Clostridioides, Enterobacter, Enterococcus, Escherichia, Haemophilus, Helicobacter, Klebsiella, Morganella, Mycobacterium, Neisseria, Proteus, Providencia, Pseudomonas, Salmonella, Serratia, Shigella, Staphylococcus (aureus only), Streptococcus (pneumoniae, uberis). A genus or species not listed (e.g. Bacteroides, Staphylococcus epidermidis) is outside coverage: 0 rows is the answer, not a broken query."
   date: "2026-07-22"
 
 global_gotchas:                    # the few that bite ANY query on this DB — verified 2026-07-22
@@ -151,7 +153,22 @@ examples:
       }
       GROUP BY ?amrClass ORDER BY DESC(?n)
     verified: {row_count: 26, has_values: ["BETA-LACTAM", "EFFLUX"], top: "BETA-LACTAM 50630, EFFLUX 30858, AMINOGLYCOSIDE 28485, MACROLIDE 18745, SULFONAMIDE 16256", date: "2026-07-22"}
-    teaches: "Every GenotypeFeature carries obo:RO_0002162 (RO 'in taxon') → an identifiers.org/taxonomy/{taxid} IRI (100% coverage). Filter organisms by this IRI — exact and index-fast — NOT by name text. The IRI scheme is identifiers.org/taxonomy/, NOT purl.uniprot.org/taxonomy/."
+    teaches: "Every GenotypeFeature carries obo:RO_0002162 (RO 'in taxon') → an identifiers.org/taxonomy/{taxid} IRI (100% coverage) — the SUBMITTED taxid, exact-match only. It is index-fast and fine for E. coli (562 = 99.4% of amr:species \"Escherichia coli\"). The IRI scheme is identifiers.org/taxonomy/, NOT purl.uniprot.org/taxonomy/."
+    traps_avoided:
+      - say: "The submitted taxid can be a subspecies or strain: Klebsiella pneumoniae genotype rows sit under 573 (146,652), subsp. pneumoniae 72407 (19,143), 574, and ~300 strain taxids — filtering 573 alone misses 15%. For a species-level total filter amr:species \"Klebsiella pneumoniae\" (the binomial string, on both entity types) instead."
+        check:
+          kind: ratio
+          date: "2026-11-27"
+          numerator: |
+            PREFIX amr: <http://example.org/ebiamr#>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/amrportal>
+            WHERE { ?s a amr:GenotypeFeature ; amr:species "Klebsiella pneumoniae" . }
+          denominator: |
+            PREFIX amr: <http://example.org/ebiamr#>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdfportal.org/dataset/amrportal>
+            WHERE { ?s a amr:GenotypeFeature ; obo:RO_0002162 <http://identifiers.org/taxonomy/573> . }
+          expect: {ratio: 1.177, tolerance: 0.05}
 
   - id: geo_subregion
     intent: country-level geography via the controlled region/subregion predicates (the WHO-name trap)
@@ -266,7 +283,7 @@ id_join_map:
     Entities are BLANK NODES with no persistent IRI — anchor a record by its content keys instead:
     amr:bioSample (identifiers.org/biosample/SAM* IRI) is the isolate-level anchor and the sole phenotype↔genotype
     join key; amr:antibioticOntologyId (obo:ARO_NNNNNNN) anchors the antibiotic; obo:RO_0002162 (identifiers.org/taxonomy/{taxid})
-    anchors the organism on genotypes.
+    anchors the organism on genotypes (submitted taxid; amr:species for species totals, see classes_by_taxon).
   same_endpoint_joins:            # co-hosted on the ebi endpoint — direct GRAPH join, NO TogoID
     chebi:  "no structured bridge — supply the ChEBI IRI (obo:CHEBI_NNN, via OLS4) and GRAPH-join <http://rdf.ebi.ac.uk/dataset/chebi> (example xdb_chebi)."
     chembl: "NAME-only bridge (LCASE+STR both sides) to <http://rdf.ebi.ac.uk/dataset/chembl>; there is no shared IRI. Two-stage: aggregate AMR counts first, then VALUES them into a ChEMBL name join (never aggregate across GRAPHs — timeout)."

@@ -13,6 +13,57 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.35.0] - 2026-11-27
+
+MINOR: no tool, parameter or return shape removed or changed; `run_sparql` gains a warning block. Driven by
+a forensic pass over three months of production failures (2026-08-29 → 11-27): five MIE files were giving
+agents wrong guidance, 19 more lacked facts agents kept missing, and one Virtuoso behaviour made the usual
+way of checking a query (`ASK` / `COUNT(*)`) report a match that is not there.
+
+### Added
+
+- `run_sparql` now prepends a `# WARNING — RESULT NOT TRUSTWORTHY` block when a `FROM`/`FROM NAMED`
+  clause leaves out a graph that a `GRAPH <iri>` block names (Usage Guide trap #12). That block
+  matches nothing. On Virtuoso, `ASK` still answers true and `COUNT(*)` answers 1 whatever the data,
+  so the existing empty-result note could not catch it. The check is static and fires whatever the
+  result. A graph listed in a plain `FROM` is not flagged, because Virtuoso returns its rows;
+  `SERVICE` bodies, comments and string literals are ignored. In the production log it matches 6 of
+  24,868 queries, and none of the 1,128 MIE query strings. The CSV body is unchanged; the warning
+  adds only `#` lines, the same convention as the empty-result note.
+
+### Fixed
+
+- **24 MIE files revised from production failures.** The source was the 2026-08-29 → 11-27 tool-call log
+  (interactive clients, 6,950 `run_sparql` calls). Each failing query was paired with the same user's
+  next successful one, and every finding was re-verified live before it was written. Most zero-row
+  results were genuine absences; these are the ones an MIE could have prevented. Five MIEs were giving
+  wrong guidance:
+  - `uniprot`: "always filter on `up:reviewed`" made single-accession lookups hang (29 of 41 uniprot
+    timeouts). The rule now covers set queries only, and a new `function_text` example shows the
+    `FILTER EXISTS` form.
+  - `uniprot`: keyword names are `skos:prefLabel`, not `rdfs:label`. `keyword_enum` also used KW-0727
+    (SH2) for SH3; it now uses KW-0728, and the count goes from 108 to 225.
+  - `oma`: the Ensembl/NCBI Gene xrefs are on `orth:Gene`, not `orth:Protein`.
+  - `clinvar`: dbSNP IDs hang off the allele node (new `rs_lookup` example).
+  - `glycosmos`: the glycoepitope graph is under `rdf.glycoinfo.org`.
+- New worked examples or traps for facts agents kept missing:
+  - `chembl`: mechanisms recorded on the salt form.
+  - `reactome`: isoform-only controllers, and the SQ156 compiler error.
+  - `gwascatalog`: `LCASE` without `STR` returns HTTP 500; ~41% of study references are unresolvable.
+  - `mesh`: concept/term lists only the non-preferred members; labels are `@en`.
+  - `oma`: suffixed HOG ids and `xrefSwissProt` mnemonics.
+  - `bacdive`: binomial `hasSpecies`; temperature predicates.
+  - `ddbj`: entry IRIs carry a version suffix.
+  - `rikenbrc_mouse`: transitive and `SERVICE` restrictions.
+  - `ontology`/`go`: VALUES-bound roots with `subClassOf*`.
+  - `pdb`: no per-atom coordinates.
+  - Smaller notes: `amrportal`, `ensembl`, `medgen`, `mondo`, `pubmed`, `pubtator`, `rhea`, `chebi`,
+    `mediadive`, `wikipathways`.
+- Usage Guide `references/co-tenancy.md` gains two silent traps:
+  - `FROM <A>` plus `GRAPH <B>` empties the GRAPH block; `FROM NAMED` restores it. In that state Virtuoso's
+    `ASK` returns true and `COUNT(*)` returns 1 whatever the data, so neither can be used to check it.
+  - An undeclared `obo:` prefix resolves to oboInOwl.
+
 ## [2.34.2] - 2026-11-24
 
 PATCH: no tool, parameter or return shape changed. Three MIE files are re-measured after the weekly drift
@@ -4094,7 +4145,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.35.0...HEAD
+[2.35.0]: https://github.com/dbcls/togomcp/compare/v2.34.2...v2.35.0
 [2.34.2]: https://github.com/dbcls/togomcp/compare/v2.34.1...v2.34.2
 [2.34.1]: https://github.com/dbcls/togomcp/compare/v2.34.0...v2.34.1
 [2.34.0]: https://github.com/dbcls/togomcp/compare/v2.33.0...v2.34.0

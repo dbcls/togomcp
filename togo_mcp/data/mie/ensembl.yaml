@@ -162,6 +162,27 @@ examples:
     teaches: "Transcript quality is a controlled flag set: terms:has_transcript_flag → ENSGLOSSARY_* IRI. This is the set-level route for 'all MANE Select / canonical / APPRIS-P1 transcripts'. MANE Select is human-only, so no species filter is needed here; for a species-scoped flag count, join via so:transcribed_from a species-filtered gene (transcripts carry no species IRI — gotcha species_iri)."
     traps_avoided:
       - "canonical (ENSGLOSSARY_0000023) is exactly 1 per gene (= the gene total, 87,693 human), NOT a quality signal like MANE Select — do not treat 'canonical' as 'best/reviewed'."
+      - say: "Keep `?transcript a terms:EnsemblTranscript`. The versioned node (terms:VersionedTranscript, e.g. ENST00000000233.10) carries the same has_transcript_flag, so an untyped flag count is ×2 (38,676 vs 19,338)."
+        check:
+          kind: ratio
+          date: "2026-11-27"
+          unpinned: |
+            PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+            SELECT (COUNT(*) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/ensembl> { ?t terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> } }
+          pinned: |
+            PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+            SELECT (COUNT(DISTINCT ?t) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/ensembl> { ?t a terms:EnsemblTranscript ; terms:has_transcript_flag <http://ensembl.org/glossary/ENSGLOSSARY_0000365> } }
+          expect: {ratio: 2.0, tolerance: 0.02}
+      - say: "Versioned transcript nodes exist ONLY for MANE transcripts (19,404 = 19,338 MANE Select + 66 MANE Plus Clinical, ENSGLOSSARY_0000375). Never construct a .N IRI for any other transcript — it returns 0 rows; use the unversioned IRI."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX terms: <http://rdf.ebi.ac.uk/terms/ensembl/>
+            SELECT ?t WHERE { GRAPH <http://rdfportal.org/dataset/ensembl> {
+              ?t a terms:EnsemblTranscript ; terms:has_versioned_transcript ?v .
+              FILTER NOT EXISTS { ?t terms:has_transcript_flag ?f . VALUES ?f { <http://ensembl.org/glossary/ENSGLOSSARY_0000365> <http://ensembl.org/glossary/ENSGLOSSARY_0000375> } }
+            } } LIMIT 1
 
   - id: enum_biotype_distribution
     intent: full biotype breakdown of a genome — discover every biotype IRI + its gene count in one pass
@@ -315,7 +336,7 @@ examples:
 schema_delta:
   - "Gene synonyms: skos:altLabel on the gene (e.g. BRCA1 → 'RNF53','BRCC1','FANCS'). Gene description is dcterms:description ('… [Source:HGNC Symbol;Acc:HGNC:1100]')."
   - "Exon order: a transcript exposes exons as an ordered list — sio:SIO_000974 → ordered-exon node → sio:SIO_000628 (refers-to exon) + sio:SIO_000300 (integer rank); plain membership is so:has_part → terms:EnsemblExon. Exon IRIs also type as obo:SO_0000147."
-  - "Versioned transcript: terms:has_versioned_transcript → a version-suffixed IRI (e.g. ENST00000357654.9); the unversioned dcterms:identifier is the stable key."
+  - "Versioned transcript: terms:has_versioned_transcript → a version-suffixed terms:VersionedTranscript IRI, MANE transcripts only (traps in enum_transcript_flag); the unversioned IRI / dcterms:identifier is the stable key for every transcript."
   - "Transcript/protein xref targets differ from genes: transcripts rdfs:seeAlso → GO terms (obo/GO_) + RefSeq; proteins rdfs:seeAlso → UniProt + PDB (identifiers.org/pdb/) + Reactome."
 
 # ── id_join_map: how to anchor stably and cross to other resources. ──

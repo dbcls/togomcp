@@ -80,14 +80,13 @@ entity_counts:                     # COUNT(DISTINCT), graph-pinned unless noted;
 global_gotchas:                    # the few that bite ANY query — verified 2026-07-29
   - id: reviewed_filter
     say: >
-      ALWAYS filter on up:reviewed — omitting it queries ~244M TrEMBL rows and times out. The LITERAL
-      FORM does not matter HERE: this Virtuoso treats `up:reviewed 1` and `up:reviewed true` as the same
-      value (589,957 either way, 2026-08-26), so both work and the examples below use `1`.
-      PORTABILITY, and the reason not to state a rule about the form: on UniProt's OWN endpoint
-      (sparql.uniprot.org) it is exactly reversed — `up:reviewed 1` returns 0 rows there and only
-      `true` matches. If a query may be moved or was copied from upstream (sib-swiss/sparql-examples
-      uses `true`), write `true`: it is the form that works on both. Until 2026-08-26 this entry
-      prescribed integer `1` and said `true` returns 0 rows, which is the reverse of the portable truth.
+      SET queries (?protein free): ALWAYS filter on up:reviewed — omitting it queries ~244M TrEMBL rows
+      and times out. BOUND ACCESSION (constant, VALUES or BIND): do NOT add `uniprot:ACC up:reviewed true`
+      as a plain triple — next to a multi-valued hop it stalls on a cold accession (up:annotation >60s, up:sequence 52s, vs 0.2s without; a cached repeat can be fast); drop it, or write `FILTER EXISTS { uniprot:ACC up:reviewed true }` (example function_text).
+      The LITERAL FORM does not matter HERE: this Virtuoso treats `up:reviewed 1` and `true` as the same
+      value (589,957 either way), so the examples use `1`. On UniProt's OWN endpoint (sparql.uniprot.org)
+      `1` returns 0 rows and only `true` matches — write `true` if a query may be moved or was copied
+      from upstream (sib-swiss/sparql-examples uses `true`).
     check:
       kind: ratio            # the two literal forms must stay interchangeable ON THIS ENDPOINT
       date: "2026-08-26"
@@ -385,12 +384,20 @@ examples:
       WHERE {
         ?protein a up:Protein ; up:reviewed 1 ;
                  up:organism <http://purl.uniprot.org/taxonomy/9606> ;
-                 up:classifiedWith keywords:727 .    # KW-0727 = SH3 domain (swap the KW number for any feature/domain/function)
+                 up:classifiedWith keywords:728 .    # KW-0728 = SH3 domain (KW-0727 is SH2); swap the KW number for any feature/domain/function
       }
-    verified: {n: 108, date: "2026-07-29"}
+    verified: {n: 225, date: "2026-11-27"}
     teaches: "To enumerate proteins by a domain/feature/functional class, use up:classifiedWith keywords:NNN (the KW number). This is the PRIMARY route for 'all proteins with feature X' — keywords cover ~99% of reviewed proteins."
     traps_avoided:
-      - "Do NOT substitute a name/comment text match or the per-annotation route for whole-set enumeration: free-text matches miss synonyms and non-name mentions and silently UNDERCOUNT, while the keyword classification is complete (~99% of reviewed entries carry keywords). Resolve a feature name to its KW number (keywords graph rdfs:label), then enumerate by that IRI."
+      - "Do NOT substitute a name/comment text match or the per-annotation route for whole-set enumeration: free-text matches miss synonyms and non-name mentions and silently UNDERCOUNT, while the keyword classification is complete (~99% of reviewed entries carry keywords). Resolve a feature name to its KW number first, then enumerate by that IRI — never guess the number from memory."
+      - say: "Resolve the name with `GRAPH <http://sparql.uniprot.org/keywords> { ?kw skos:prefLabel \"SH3 domain\" }` (-> keywords:728). NOT rdfs:label: keyword IRIs carry none (1,201 carry skos:prefLabel); the keywords graph's rdfs:label triples sit on GO terms, so `?kw rdfs:label` silently binds GO IRIs."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?kw WHERE { GRAPH <http://sparql.uniprot.org/keywords> { ?kw rdfs:label ?l
+              FILTER(STRSTARTS(STR(?kw), "http://purl.uniprot.org/keywords/")) } } LIMIT 1
 
   - id: count_swissprot           # the ELEVATED `aggregation` class — targets the factoid miscount failure mode
     intent: count current reviewed Swiss-Prot proteins (the union-inflation recipe)
@@ -449,6 +456,67 @@ examples:
     verified: {row_count: 36, distinct_types: 3, date: "2026-07-29"}
     teaches: "ALL positional features use FALDO: up:annotation -> typed *_Annotation -> up:range -> faldo:begin/end -> faldo:position. Filter by annotation type."
 
+  - id: function_text
+    intent: function text of ONE known protein — the bound-accession form of the reviewed filter
+    question: "What is the function of TP53 (P04637)?"
+    complexity: basic
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX uniprot: <http://purl.uniprot.org/uniprot/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT ?function
+      FROM <http://sparql.uniprot.org/uniprot>
+      WHERE {
+        uniprot:P04637 up:annotation ?annot .
+        ?annot a up:Function_Annotation ; rdfs:comment ?function .
+        FILTER EXISTS { uniprot:P04637 up:reviewed true }   # optional; NEVER as a plain triple here
+      }
+    verified: {row_count: 1, date: "2026-11-27", runtime: "0.13s"}
+    teaches: "With the accession bound, the anchor already selects one entry: no reviewed filter is needed. If you want the check, put it in FILTER EXISTS."
+    traps_avoided:
+      - say: "Writing `uniprot:ACC up:reviewed true ; up:annotation ?annot` (or `1`; GRAPH, VALUES or triple reordering do not help) hangs on an accession the endpoint has not seen recently: >60s for 3 of 3 fresh accessions, while this FILTER EXISTS form took 0.2-0.3s for 3 of 3 others (2026-11-27). up:sequence degrades too (P38398: 52s vs 0.14s). It is cache-dependent: once a slow query has finished, a repeat can return in 0.2s, so a fast re-run proves nothing. It was the largest cluster of production timeouts."
+
+  - id: pathway_label
+    intent: proteins in a pathway by name — Pathway_Annotation -> UniPathway IRI -> label in the pathways graph
+    question: "Which reviewed human proteins act in a pathway whose name mentions nicotinate?"
+    complexity: intermediate
+    sparql: |
+      PREFIX up: <http://purl.uniprot.org/core/>
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?protein ?mnemonic ?pathwayLabel
+      WHERE {
+        GRAPH <http://sparql.uniprot.org/uniprot> {
+          ?protein a up:Protein ; up:reviewed 1 ; up:organism <http://purl.uniprot.org/taxonomy/9606> ;
+                   up:mnemonic ?mnemonic ; up:annotation ?a .
+          ?a a up:Pathway_Annotation ; rdfs:seeAlso ?pathway .      # purl.uniprot.org/unipathway/...
+        }
+        GRAPH <http://sparql.uniprot.org/pathways> { ?pathway rdfs:label ?pathwayLabel . }
+        FILTER(CONTAINS(LCASE(STR(?pathwayLabel)), "nicotinate"))
+      }
+      ORDER BY ?mnemonic
+    verified: {row_count: 5, has_values: ["NADC_HUMAN", "PNCB_HUMAN"], date: "2026-11-27"}
+    teaches: "The pathway name is not on the annotation: follow rdfs:seeAlso to the UniPathway IRI and read its rdfs:label from the pathways graph."
+    traps_avoided:
+      - say: "Pathway_Annotation has NO rdfs:comment (1,534 on human reviewed proteins, 0 comments) — a comment text match finds nothing."
+        check:
+          kind: absent
+          date: "2026-11-27"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?c WHERE { GRAPH <http://sparql.uniprot.org/uniprot> {
+              ?p up:organism <http://purl.uniprot.org/taxonomy/9606> ; up:reviewed 1 ; up:annotation ?a .
+              ?a a up:Pathway_Annotation ; rdfs:comment ?c } } LIMIT 1
+      - say: "Moving the label triple inside the uniprot GRAPH block returns 0 rows: vocabulary labels live in their own graphs (schema_delta)."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?l WHERE { GRAPH <http://sparql.uniprot.org/uniprot> {
+              <http://purl.uniprot.org/uniprot/Q15274> up:annotation ?a . ?a a up:Pathway_Annotation ; rdfs:seeAlso ?pw . ?pw rdfs:label ?l } }
+
   - id: ec_class
     intent: proteins by EC class via the up:enzyme IRI-prefix filter
     question: "How many reviewed proteins are transferases (EC 2.7.*)?"
@@ -487,6 +555,15 @@ examples:
     teaches: "Reach a clade with a SINGLE-HOP ?organism rdfs:subClassOf ?order; pin both graphs (FROM uniprot + taxonomy)."
     traps_avoided:
       - "Use the single hop, NOT rdfs:subClassOf* — the lineage is pre-flattened so both return the same set, but the transitive form is ~30x slower where it runs at all and Virtuoso rejects it outright when neither end is bound (gotcha flat_lineage). Pinning the taxonomy graph also avoids the taxon-multiplication trap."
+      - say: "To pick an ancestor by rank, up:rank values are up:Taxonomic_Rank_<Rank> (e.g. up:Taxonomic_Rank_Genus). `?anc up:rank up:Genus` in the taxonomy graph returns 0 (genus of taxon 634: up:Genus 0, up:Taxonomic_Rank_Genus 1)."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX up: <http://purl.uniprot.org/core/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT ?anc WHERE { GRAPH <http://sparql.uniprot.org/taxonomy> {
+              <http://purl.uniprot.org/taxonomy/634> rdfs:subClassOf ?anc . ?anc up:rank up:Genus } }
 
   - id: xdb_rhea                    # ELEVATED `cross_db` class
     intent: "cross-DB: human enzymes -> catalysed Rhea reactions via shared EC IRIs (same SIB endpoint)"
@@ -613,6 +690,7 @@ examples:
 schema_delta:
   - "Gene symbol: ?protein up:encodedBy ?gene . ?gene skos:prefLabel ?symbol (skos:altLabel = synonyms). 87.7% coverage — 46,270 of the 550,744 gene-bearing entries have an unnamed gene node."
   - "Catalytic activity is an indirect 3-hop scaffold: up:annotation -> up:Catalytic_Activity_Annotation -> up:catalyticActivity -> up:catalyzedReaction -> Rhea IRI. Do not reach ?reaction directly from ?protein. (Example xdb_rhea joins the same reactions via the EC IRI instead.)"
+  - "Vocabulary labels are NOT in the uniprot graph; pin each label triple to its own graph or it returns 0 (Q96S37 disease label: 0 in uniprot, 1 in diseases; Q13057 locations: 0 vs 2). Disease -> diseases, skos:prefLabel (definition is rdfs:comment; no skos:definition). Keyword -> keywords, skos:prefLabel. Subcellular location: up:annotation -> up:Subcellular_Location_Annotation -> up:locatedIn -> up:cellularComponent -> locations graph, skos:prefLabel. Pathway -> pathways, rdfs:label (example pathway_label)."
   - "Isoforms: an entry's alternative isoforms are up:Modified_Sequence nodes isoforms:ACC-N beside its one up:Simple_Sequence canonical. N is an isoform number, never a canonical flag (example sequence_mass)."
   - "dcterms:identifier ON A PROTEIN is OMA-supplied (co-hosted graph only; 0 in sparql.uniprot.org/uniprot, verified 2026-08-26), NOT the native accession — so a protein query must not reach for it. But the PREDICATE is not absent from UniProt, which this entry wrongly implied until 2026-08-26: it carries citation DOIs (citations, 1,639,486), proteome IDs (proteomes, 1,044,473), EC numbers (enzyme, 2,554), DB names (databases, 361) and location IDs (locations, 18). Native protein accession = STRAFTER(STR(?p),'uniprot/'); up:mnemonic = e.g. 'P53_HUMAN'."
 

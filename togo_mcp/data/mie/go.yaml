@@ -86,6 +86,14 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       Virtuoso needs STR() for typed-literal comparison. FILTER(?ns = "biological_process") silently returns 0
       rows; the datatype must be stripped: FILTER(STR(?ns) = "biological_process"). Same for the ^^xsd:string
       form. Valid hasOBONamespace values: biological_process | molecular_function | cellular_component.
+      rdfs:label is ^^xsd:string too: an exact `rdfs:label "kinase activity"` matches nothing — write
+      "kinase activity"^^xsd:string or FILTER(STR(?l) = "kinase activity").
+    check:
+      kind: zero_rows
+      date: "2026-11-27"
+      query: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?c FROM <http://rdfportal.org/ontology/go> WHERE { ?c rdfs:label "kinase activity" }
   - id: deprecation_filter
     say: >
       ~28% of classes (13,704 / 48,321) carry owl:deprecated true. Any active-term query/count must exclude them:
@@ -168,6 +176,15 @@ examples:
     teaches: "rdfs:subClassOf+ (transitive) from a PARENT IRI is THE route for 'all terms under concept X' — the complete subtree, not the handful of hits a label search returns. Discover the parent IRI once (OLS4/xref), then expand it. subClassOf* (with *) includes the parent itself; + excludes it."
     traps_avoided:
       - "CIRCULAR REASONING: never load individual OLS4 search hits into VALUES and COUNT them — that just re-counts the hits you already had, bounded by the search LIMIT. Anchor on the parent IRI and let subClassOf+ reach the full set."
+      - say: "Several parents at once: VALUES ?root {obo:GO_0016301 obo:GO_0016791} alone before `?d rdfs:subClassOf+ ?root` is rejected with 'transitive start not given' (HTTP 500). Add a triple on the root (`?root a owl:Class .`) and it runs (517 distinct descendants for those two)."
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            SELECT (COUNT(DISTINCT ?d) AS ?n) FROM <http://rdfportal.org/ontology/go>
+            WHERE { VALUES ?root { obo:GO_0016301 obo:GO_0016791 } ?d rdfs:subClassOf+ ?root . }
       - "+ / * traverse into obsolete branches; add the deprecation filter (gotcha deprecation_filter) for active-only descendants. Property-path queries are heavier — keep a LIMIT while exploring."
 
   - id: xref_by_db                 # ELEVATED aggregation — the string-typed cross-reference route

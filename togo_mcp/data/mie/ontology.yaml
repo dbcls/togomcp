@@ -82,6 +82,16 @@ global_gotchas:                    # the few that bite ANY query on this DB — 
       returns 0 rows silently. TYPED ^^xsd:string matches in hp/go only; PLAIN in uberon/cl/efo/edam/mondo;
       "x"@en in fma/sio/meo. SAFE EVERYWHERE: FILTER(STR(?l) = "x") — use it whenever you span graphs or are
       unsure. DATATYPE() cannot decide this (Virtuoso reports xsd:string for both typed and plain).
+      Put a VALUES ?q list that feeds FILTER(STR(?l) = ?q) INSIDE the GRAPH block: written outside it,
+      the same query returns 0 rows (hp, verified).
+    check:
+      kind: zero_rows
+      date: "2026-11-27"
+      query: |
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        SELECT ?t ?q WHERE {
+          VALUES ?q { "Ataxia" "Hypotonia" "Chorea" }
+          GRAPH <http://rdfportal.org/ontology/hp> { ?t rdfs:label ?l . FILTER(STR(?l) = ?q) } }
   - id: lang_filter
     say: >
       NEVER FILTER(LANG(?label)="en") AND NEVER FILTER(LANG(?label)="") — each drops ~99% on opposite halves.
@@ -176,6 +186,16 @@ examples:
     teaches: "rdfs:subClassOf* is THE route to enumerate 'all terms of kind X' — the complete subtree, not a label-search sample. * includes the anchor, + excludes it. Three requirements, all mandatory: pin the OWNING graph (gotcha graph_pin), FILTER NOT EXISTS owl:deprecated, and COUNT(DISTINCT) because the hierarchy is a DAG (1,483 path rows collapse to 573 terms). Binding rdfs:label also gives Virtuoso the transitive start it needs."
     traps_avoided:
       - "UNPINNED `?term rdfs:subClassOf* CL_0000738` over all 37 graphs EXCEEDED Virtuoso transitive temp memory → HTTP 500 (verified 2026-07-22). Pinning is survival, not just correctness (gotcha graph_pin)."
+      - say: "Several roots: bind them with VALUES ?anchor {…} PLUS a triple on the anchor (`?anchor a owl:Class .`) before `?term rdfs:subClassOf* ?anchor`. VALUES alone is rejected with 'transitive start not given' (HTTP 500); with the anchor triple, CL_0000624 + CL_0000809 → 43 distinct terms."
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX obo: <http://purl.obolibrary.org/obo/>
+            SELECT (COUNT(DISTINCT ?term) AS ?n) WHERE { GRAPH <http://rdfportal.org/ontology/cl> {
+              VALUES ?anchor { obo:CL_0000624 obo:CL_0000809 }
+              ?term rdfs:subClassOf* ?anchor . } }
       - "COUNT(*) instead of COUNT(DISTINCT) reports 1,483 — a DAG over-count that also distorts per-term rankings when joined to data (gotcha graph_pin / see xdb_eco_glycosmos)."
 
   - id: part_of_partonomy

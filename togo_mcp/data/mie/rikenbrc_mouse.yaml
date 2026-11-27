@@ -185,6 +185,17 @@ examples:
       }
     verified: {has_values: [692, 276], date: "2026-11-11"}
     teaches: "Annotations are to specific MP terms; 'all strains with an X phenotype' needs rdfs:subClassOf* over GRAPH <…/ontology/MP>, then the annotation leg pinned to xsearch_animal. Find a branch IRI by label in the MP graph first."
+    traps_avoided:
+      - say: >
+          Several roots at once: a VALUES ?root feeding `?mp rdfs:subClassOf* ?root` fails ("transitive start not
+          given" / "neither end of it is bound") when the VALUES sits inside a sub-SELECT or inside the MP GRAPH block
+          next to further strain patterns. Fix: add `?root a owl:Class .` inside the MP GRAPH block — that binds the
+          start and every placement then runs (MP_0002078 → 167 strains, MP_0001261 → 18, GROUP BY ?root).
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            SELECT ?root (COUNT(DISTINCT ?st) AS ?n) WHERE { { SELECT DISTINCT ?root ?mp WHERE { VALUES ?root { <http://purl.obolibrary.org/obo/MP_0002078> <http://purl.obolibrary.org/obo/MP_0001261> } GRAPH <http://metadb.riken.jp/ontology/MP> { ?mp <http://www.w3.org/2000/01/rdf-schema#subClassOf>* ?root } } } GRAPH <http://metadb.riken.jp/db/xsearch_animal> { ?st <http://semanticscience.org/resource/SIO_001279>/<http://semanticscience.org/resource/SIO_000255> ?mp } } GROUP BY ?root
 
   - id: enum_resource_type
     intent: the SET-LEVEL strain-type route — xs:resourceTypeLink and its rdfs:subClassOf hierarchy
@@ -244,6 +255,17 @@ examples:
       } GROUP BY ?hg ?hsym ?hdesc
     verified: {row_count: 1, has_values: ["PAX6", "paired box 6", 9], date: "2026-11-11"}
     teaches: "Run on THIS endpoint (database=rikenbrc_mouse); it can call RDF Portal via SERVICE. Bind the join key locally first in a DISTINCT subquery, keep only the identifiers.org/ncbigene/ form (= ncbigene's base_uri), then cross. xs:humanOrtholog hangs off the mouse brs_gene node."
+    traps_avoided:
+      - say: >
+          This endpoint rejects some SERVICE bodies with "SR619 SPARUL LOAD SERVICE DATA access denied": FILTER NOT
+          EXISTS inside SERVICE, and a body of { sub-SELECT } joined to another GRAPH. Write deprecation filters as
+          OPTIONAL { ?x owl:deprecated ?d } FILTER(!BOUND(?d)), and wrap a multi-part remote body in ONE
+          SELECT … WHERE { GRAPH … GRAPH … }. Plain BGPs and property paths inside SERVICE work.
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            SELECT ?m WHERE { SERVICE <https://rdfportal.org/primary/sparql> { GRAPH <http://rdfportal.org/ontology/mondo> { ?m <http://www.w3.org/2000/01/rdf-schema#subClassOf> <http://purl.obolibrary.org/obo/MONDO_0005148> . FILTER NOT EXISTS { ?m <http://www.w3.org/2002/07/owl#deprecated> true } } } } LIMIT 5
 
 id_join_map:
   stable_anchor: >

@@ -308,13 +308,14 @@ SIGNATURE_PREFIXES = {
 _AMBIGUOUS_PREFIX_QNAMES: dict[str, dict[str, frozenset[str]]] = {
     "schema": {
         "bacdive": frozenset({
-            "CellMotility", "Enzyme", "GramStain", "GrowthCondition",
-            "OxygenTolerance", "Pathogenicity", "RiskAssessment", "SaltTolerance",
+            "CellMotility", "CultureTemperature", "Enzyme", "GramStain",
+            "GrowthCondition", "OxygenTolerance", "Pathogenicity", "RiskAssessment", "SaltTolerance",
             "SporeFormation", "describesStrain", "fromSequenceDB", "hasAbility",
             "hasActivity", "hasBiosafetyLevel", "hasDesignation", "hasECNumber",
             "hasGramStain", "hasLink", "hasMediaLink", "hasOxygenTolerance",
-            "hasPhylum", "hasSaltConcentrationRangeEnd", "hasSaltType",
-            "hasSequenceAccession", "hasTestAbility", "hasTestType", "isHumanPathogen",
+            "hasCultureTemp", "hasPhylum", "hasSaltConcentrationRangeEnd",
+            "hasSaltType", "hasSequenceAccession", "hasSpeciesEpithet",
+            "hasTemperatureRangeStart", "hasTestAbility", "hasTestType", "isHumanPathogen",
             "isMotile", "isTypeStrain",
         }),
         "lotus": frozenset({"MolecularEntity", "inChI", "iupacName"}),
