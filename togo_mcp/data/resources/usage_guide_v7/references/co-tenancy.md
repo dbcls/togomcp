@@ -105,10 +105,16 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
     default graph *and* leaves the named-graph set empty, so a `GRAPH <B>` pattern beside it
     matches nothing. Verified 2026-11-27 on `primary` (`FROM <ontology/mondo>` +
     `GRAPH <ontology/hp> { obo:HP_0001250 rdfs:label ?l }` → 0 rows; without the `FROM` → 1) and
-    on `ebi` (`FROM <gwas_catalog>` + `GRAPH <expressionatlas>` → 0; without → 4). A bare
-    `COUNT(*)` over that empty block even reported **1** on both. In a cross-database query, pin
-    every graph with `GRAPH`, or declare the second graph with `FROM NAMED <B>` (that restores
-    the rows). Seen in production on gwascatalog, pubcasefinder and uniprot.
+    on `ebi` (`FROM <gwas_catalog>` + `GRAPH <expressionatlas>` → 0; without → 4). **Worse, the
+    variable-free forms lie:** with the block emptied this way, `ASK` returns **true** and
+    `COUNT(*)` / `COUNT(1)` return **1** whatever the data — for a true count of 38, of 23,858,
+    for a subject that does not exist, even for a graph that does not exist. `COUNT(?var)`
+    correctly says 0, and `SUM` returns no row at all. Same on every Virtuoso endpoint tested
+    (primary, ebi, sib, ncbi, glycosmos, rikenbrc; 2026-11-27); a `FROM NAMED`-only clause
+    triggers it too. So never verify a `GRAPH` block with `ASK` or `COUNT(*)` while a dataset
+    clause is present. In a cross-database query, pin every graph with `GRAPH` and no
+    `FROM`, or declare the second graph with `FROM NAMED <B>` (that restores the rows and the
+    count). Seen in production on gwascatalog, pubcasefinder and uniprot.
 13. **A missing `PREFIX obo:` is not an error.** Virtuoso resolves an undeclared `obo:` against
     a built-in default: `BIND(obo:MONDO_0007915 AS ?x)` yields
     `http://www.geneontology.org/formats/oboInOwl#MONDO_0007915` (verified 2026-11-27), so every

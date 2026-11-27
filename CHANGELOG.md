@@ -42,7 +42,8 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
   - Smaller notes: `amrportal`, `ensembl`, `medgen`, `mondo`, `pubmed`, `pubtator`, `rhea`, `chebi`,
     `mediadive`, `wikipathways`.
 - Usage Guide `references/co-tenancy.md` gains two silent traps:
-  - `FROM <A>` plus `GRAPH <B>` empties the GRAPH block; `FROM NAMED` restores it.
+  - `FROM <A>` plus `GRAPH <B>` empties the GRAPH block; `FROM NAMED` restores it. In that state Virtuoso's
+    `ASK` returns true and `COUNT(*)` returns 1 whatever the data, so neither can be used to check it.
   - An undeclared `obo:` prefix resolves to oboInOwl.
 
 ## [2.34.2] - 2026-11-24
