@@ -13,6 +13,17 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Added
+
+- `run_sparql` now prepends a `# WARNING — RESULT NOT TRUSTWORTHY` block when a `FROM`/`FROM NAMED`
+  clause leaves out a graph that a `GRAPH <iri>` block names (Usage Guide trap #12). That block
+  matches nothing. On Virtuoso, `ASK` still answers true and `COUNT(*)` answers 1 whatever the data,
+  so the existing empty-result note could not catch it. The check is static and fires whatever the
+  result. A graph listed in a plain `FROM` is not flagged, because Virtuoso returns its rows;
+  `SERVICE` bodies, comments and string literals are ignored. In the production log it matches 6 of
+  24,868 queries, and none of the 1,128 MIE query strings. The CSV body is unchanged; the warning
+  adds only `#` lines, the same convention as the empty-result note.
+
 ### Fixed
 
 - **24 MIE files revised from production failures.** The source was the 2026-08-29 → 11-27 tool-call log

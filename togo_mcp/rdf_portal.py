@@ -310,8 +310,13 @@ async def run_sparql(
     csv_text = await execute_sparql(sparql_query, database, endpoint_name, endpoint_url)
     # Prepend rather than replace: the aggregate case carries a real `0` the caller
     # may want, and preserving the body keeps ONE output shape for both empty kinds.
-    note = _empty_result_note(csv_text, sparql_query)
-    return f"{note}{csv_text}" if note else csv_text
+    # The dataset-clause warning goes first and fires whatever the result: in that
+    # shape a non-empty answer (ASK true, COUNT(*) = 1) is exactly the wrong one.
+    notes = (
+        _undeclared_graph_note(sparql_query) or "",
+        _empty_result_note(csv_text, sparql_query) or "",
+    )
+    return f"{''.join(notes)}{csv_text}"
 
 
 # --------------------------------------------------------------------------- #
@@ -464,6 +469,99 @@ def _empty_result_note(csv_text: str, sparql_query: str) -> str | None:
         )
     lines.extend(extra)
 
+    return "\n".join(f"# {line}" for line in lines) + "\n"
+
+
+# --------------------------------------------------------------------------- #
+# Dataset clause that leaves a GRAPH block outside the dataset (Usage Guide trap #12)
+#
+# A FROM / FROM NAMED clause fixes the query's dataset. A `GRAPH <B> { ... }` whose
+# <B> that clause does not list then matches NOTHING (SPARQL 1.1 §13.2: FROM without
+# FROM NAMED leaves the named-graph set empty). Measured 2026-11-27 on every
+# Virtuoso endpoint tried (primary, ebi, sib, ncbi, glycosmos, rikenbrc):
+#   - SELECT returns 0 rows; COUNT(?var) returns 0; SUM returns no row;
+#   - ASK returns TRUE and COUNT(*) / COUNT(1) return 1 WHATEVER THE DATA — true
+#     counts of 38 and 23,858, a subject that does not exist, a graph that does not
+#     exist. So the empty-result note above cannot catch it, and an agent verifying
+#     a pattern with ASK gets a confident yes.
+# Virtuoso does accept a GRAPH <B> that is listed in a plain FROM (spec says it
+# should not, but it returns the rows), so "declared" = FROM ∪ FROM NAMED here; only
+# a graph in neither is flagged. GRAPH ?var is not flagged: Virtuoso ignores the
+# dataset for it (reads every graph), which is wrong but not silent-empty.
+# Production 2026-07-27..11-27: 6 of 24,868 queries had this shape (4 returned 0
+# rows, 1 silently lost an OPTIONAL label leg, 1 errored); none was caught.
+# Static, text-only check: full IRIs only (a prefixed-name FROM/GRAPH is rare and
+# skipped rather than resolved), SERVICE bodies excluded (they have their own dataset).
+# --------------------------------------------------------------------------- #
+
+# Tokens that may contain `#` or `{`/`}` and must not be mistaken for comments/braces.
+_SPARQL_TOKEN_RE = _re.compile(
+    r'<[^<>"{}|^`\\\s]*>'                       # IRI ref (may contain '#')
+    r'|"""(?:[^"\\]|\\.|"(?!""))*"""'            # long string literals
+    r"|'''(?:[^'\\]|\\.|'(?!''))*'''"
+    r'|"(?:[^"\\\n]|\\.)*"'                      # short string literals
+    r"|'(?:[^'\\\n]|\\.)*'"
+    r"|#[^\n]*",                                 # comment
+    _re.S,
+)
+_DATASET_CLAUSE_RE = _re.compile(r"\bFROM\s+(NAMED\s+)?<([^>]*)>", _re.I)
+_GRAPH_IRI_RE = _re.compile(r"\bGRAPH\s*<([^>]*)>", _re.I)
+_SERVICE_RE = _re.compile(r"\bSERVICE\s+(?:SILENT\s+)?(?:<[^>]*>|\?\w+|\$\w+)\s*\{", _re.I)
+
+
+def _strip_comments_and_strings(query: str) -> str:
+    """Drop comments and blank out string literals, keeping IRIs intact."""
+
+    def repl(m: _re.Match[str]) -> str:
+        tok = m.group(0)
+        if tok.startswith("<"):
+            return tok
+        return "" if tok.startswith("#") else '""'
+
+    return _SPARQL_TOKEN_RE.sub(repl, query)
+
+
+def _remove_service_bodies(query: str) -> str:
+    """Cut every `SERVICE ... { ... }` body (brace-matched) out of the query."""
+    out, pos = [], 0
+    while (m := _SERVICE_RE.search(query, pos)) is not None:
+        out.append(query[pos : m.start()])
+        depth, i = 1, m.end()
+        while i < len(query) and depth:
+            depth += {"{": 1, "}": -1}.get(query[i], 0)
+            i += 1
+        pos = i
+    out.append(query[pos:])
+    return "".join(out)
+
+
+def _undeclared_graphs(sparql_query: str) -> list[str]:
+    """GRAPH <iri> targets a dataset clause leaves out, in query order; [] if none."""
+    q = _strip_comments_and_strings(sparql_query or "")
+    declared = {iri for _named, iri in _DATASET_CLAUSE_RE.findall(q)}
+    if not declared:
+        return []
+    seen: dict[str, None] = {}
+    for iri in _GRAPH_IRI_RE.findall(_remove_service_bodies(q)):
+        if iri not in declared:
+            seen.setdefault(iri, None)
+    return list(seen)
+
+
+def _undeclared_graph_note(sparql_query: str) -> str | None:
+    """`#`-prefixed warning when a FROM/FROM NAMED clause leaves a GRAPH block out."""
+    missing = _undeclared_graphs(sparql_query)
+    if not missing:
+        return None
+    shown = " ".join(f"<{g}>" for g in missing[:3]) + (" …" if len(missing) > 3 else "")
+    lines = [
+        f"WARNING — RESULT NOT TRUSTWORTHY: your FROM/FROM NAMED clause does not declare {shown},",
+        "which a GRAPH block names. Under a dataset clause that GRAPH block matches NOTHING,",
+        "and on Virtuoso ASK still returns true and COUNT(*)/COUNT(1) return 1 whatever the",
+        "data — so neither 0 rows nor a positive ASK/COUNT below is evidence. Fix: add",
+        "`FROM NAMED <graph>` for each, or drop the FROM clause and pin every pattern with",
+        "GRAPH. Usage Guide trap #12.",
+    ]
     return "\n".join(f"# {line}" for line in lines) + "\n"
 
 
