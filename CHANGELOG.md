@@ -13,6 +13,13 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+## [2.35.0] - 2026-11-27
+
+MINOR: no tool, parameter or return shape removed or changed; `run_sparql` gains a warning block. Driven by
+a forensic pass over three months of production failures (2026-08-29 → 11-27): five MIE files were giving
+agents wrong guidance, 19 more lacked facts agents kept missing, and one Virtuoso behaviour made the usual
+way of checking a query (`ASK` / `COUNT(*)`) report a match that is not there.
+
 ### Added
 
 - `run_sparql` now prepends a `# WARNING — RESULT NOT TRUSTWORTHY` block when a `FROM`/`FROM NAMED`
@@ -4138,7 +4145,8 @@ their own file. No tool-surface change; the served MIE/guide content is correcte
 _MIE database onboarding and revisions land continuously and are summarised per
 release above; see git history for the full detail._
 
-[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.34.2...HEAD
+[Unreleased]: https://github.com/dbcls/togomcp/compare/v2.35.0...HEAD
+[2.35.0]: https://github.com/dbcls/togomcp/compare/v2.34.2...v2.35.0
 [2.34.2]: https://github.com/dbcls/togomcp/compare/v2.34.1...v2.34.2
 [2.34.1]: https://github.com/dbcls/togomcp/compare/v2.34.0...v2.34.1
 [2.34.0]: https://github.com/dbcls/togomcp/compare/v2.33.0...v2.34.0
