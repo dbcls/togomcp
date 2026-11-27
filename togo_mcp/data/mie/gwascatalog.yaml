@@ -172,6 +172,31 @@ examples:
     teaches: "Requiring dct:identifier is also the cheapest way to restrict ?s a gwas:Study to the 89,981 real study records."
     traps_avoided:
       - "dct:description holds the study's REPORTED trait as free text (\"Stroke\"), not an EFO IRI — the EFO IRI is on m2r:mapped_trait for a Study (but is a label string on an Association)."
+      - say: "From an Association, keep the study block OPTIONAL: 22,920 of the 62,725 study IRIs that m2r:study points to carry no triples at all (no dct:identifier), so an inner join drops 40.7% of associations. Read the accession off the IRI: STRAFTER(STR(?study), \"studies/\")."
+        check:
+          kind: ratio
+          date: "2026-11-27"
+          numerator: |
+            PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+            PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+            PREFIX dct: <http://purl.org/dc/terms/>
+            SELECT (COUNT(?a) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog> WHERE {
+              ?a a gwas:Association ; m2r:study ?s . ?s dct:identifier ?i }
+          denominator: |
+            PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+            PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+            SELECT (COUNT(?a) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog> WHERE {
+              ?a a gwas:Association ; m2r:study ?s }
+          expect: {ratio: 0.593, tolerance: 0.05}
+      - say: "m2r:initial_sample_size is free-text cohort wording: \"East Asian ancestry\" (2,703 studies) and \"Japanese\" (970) both occur, so a population filter must try every wording."
+        check:
+          kind: count
+          date: "2026-11-27"
+          query: |
+            PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+            SELECT (COUNT(*) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog> WHERE {
+              ?s m2r:initial_sample_size ?t . FILTER(CONTAINS(?t, "Japanese")) }
+          expect: {value: 970, tolerance: 0.10}
 
   - id: snp_location_ebi
     intent: genomic position and cytogenetic band for an rsID via the EBI/OBAN entity
@@ -194,6 +219,15 @@ examples:
     teaches: "The gwas: vocabulary needs ^^xsd:string on every string match; has_basepair_position (unlike m2r:chr_pos) is a real integer."
     traps_avoided:
       - "You cannot build the SNP IRI from an rsID: .../SingleNucleotidePolymorphism/10064763 holds rs1296720 — the numeric tail is an internal key, NOT the rs number. Always look the SNP up by has_snp_reference_id."
+      - say: "Some rsIDs have NO gwas:SingleNucleotidePolymorphism node (rs11621083 returns 0 here). Fall back to the Association: `?a m2r:snps \"rs11621083\" ; m2r:chr_id ?chr ; m2r:chr_pos ?pos` gives chr 14 : 102093201."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT ?snp FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog> WHERE {
+              ?snp gwas:has_snp_reference_id "rs11621083"^^xsd:string } LIMIT 1
 
   - id: trait_snps_oban
     intent: SNPs associated with an EFO trait through the IRI-addressable OBAN model
@@ -284,7 +318,15 @@ examples:
     traps_avoided:
       - "m2r:snp_gene_ids is IRI-valued ONLY where a gene was mapped; elsewhere it is an EMPTY STRING (241 IRI vs 89 \"\" in a 330-row sample). `?a m2r:snp_gene_ids ?g` with no filter binds junk — add FILTER(isIRI(?g)) when you leave it as a variable."
       - "m2r:mapped_genes looks like the gene field but was EMPTY on 300/300 sampled associations — snp_gene_ids is the populated one."
-      - "m2r:mapped_trait flips type by subject class: a LABEL string on an Association (used here), but an EFO IRI on a Study. Never write a query that reads it off both."
+      - say: "m2r:mapped_trait flips type by subject class: a LABEL string on an Association (used here), but an EFO IRI on a Study. So `LCASE(?trait)` fails with HTTP 500 \"LCASE() needs a string value\" even with `?a a gwas:Association`; write LCASE(STR(?trait)) (\"cysteine\" → 44 traits)."
+        check:
+          kind: error
+          date: "2026-11-27"
+          query: |
+            PREFIX gwas: <http://rdf.ebi.ac.uk/terms/gwas/>
+            PREFIX m2r: <http://med2rdf.org/gwascatalog/terms/>
+            SELECT (COUNT(DISTINCT ?trait) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/gwas_catalog> WHERE {
+              ?a a gwas:Association ; m2r:mapped_trait ?trait . FILTER(CONTAINS(LCASE(?trait), "cysteine")) }
 
   - id: agg_genome_wide_significant
     intent: count associations passing the genome-wide significance threshold

@@ -228,6 +228,37 @@ examples:
     traps_avoided:
       - "rdfs:label is HGVS free text, not a gene symbol — never text-match it to find a gene's variants; resolve the gene id first and use the IRI. bif:contains on the label is exploratory only."
 
+  - id: rs_lookup
+    intent: dbSNP rs number → ClinVar variant + germline significance (the rs xref sits on the ALLELE node)
+    question: "Which ClinVar variants correspond to rs5030858, rs121907892 and rs28934891, and how are they classified?"
+    complexity: intermediate
+    sparql: |
+      PREFIX cvo: <http://purl.jp/bio/10/clinvar/>
+      PREFIX sio: <http://semanticscience.org/resource/>
+      PREFIX dct: <http://purl.org/dc/terms/>
+      SELECT DISTINCT ?rs ?variant ?label ?significance
+      FROM <http://rdfportal.org/dataset/clinvar>
+      WHERE {
+        VALUES ?rs { "5030858" "121907892" "28934891" }   # rs number WITHOUT the "rs" prefix
+        ?ref dct:source "dbSNP" ; dct:identifier ?rs .
+        ?allele dct:references ?ref .                      # ?allele: med2rdf:Variation / cvo:TypeAllele
+        ?cr sio:SIO_000628 ?allele .
+        ?variant cvo:classified_record ?cr ; rdfs:label ?label .
+        OPTIONAL { ?cr cvo:classifications/cvo:germline_classification/cvo:description ?significance }
+      }
+    verified: {row_count: 3, has_values: ["577", "3512", "126"], date: "2026-11-27"}
+    teaches: "rs → variant path: TypeXref (dct:source \"dbSNP\", dct:identifier rs digits) ← dct:references ← allele node ← sio:SIO_000628 ← classified record ← cvo:classified_record ← variant. Same SIO_000628 hop as the gene walk, but to the allele bnode."
+    traps_avoided:
+      - say: "dbSNP xrefs are NOT on the med2rdf:disease bnodes (where MedGen/OMIM/MONDO xrefs live) — walking variant → med2rdf:disease → dct:references for \"dbSNP\" returns 0 rows. Hang the rs TypeXref off the allele node as above."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX med2rdf: <http://med2rdf.org/ontology/med2rdf#>
+            PREFIX dct: <http://purl.org/dc/terms/>
+            SELECT ?dis FROM <http://rdfportal.org/dataset/clinvar>
+            WHERE { ?ref dct:source "dbSNP" . ?dis dct:references ?ref . ?dis a med2rdf:Disease . } LIMIT 1
+
   - id: enum_significance
     intent: enumerate ALL variants by germline clinical significance (the set-level significance route)
     question: "How many ClinVar variants fall in each germline clinical-significance class (Pathogenic, VUS, …)?"
@@ -459,14 +490,14 @@ id_join_map:
     medgen:   "disease TypeXref rdfs:seeAlso → ncbi.nlm.nih.gov/medgen/C* ; MedGen types the www.ncbi form — apply the www→no-www REPLACE swap (example xdb_medgen)"
     ncbigene: "med2rdf:gene → ncbi.nlm.nih.gov/gene/{id}; NCBI Gene RDF uses identifiers.org/ncbigene/{id} — join on the shared integer id (BIND the id as a string), not the IRI"
     pubtator/pubmed: "literature co-mention, reachable only via a MedGen-CUI → MeSH-IRI bridge two hops out; run the discovery step separately (a single 3+ graph join times out)"
-  xrefs:                          # outbound, on disease TypeXref nodes (dct:source + dct:identifier [+ rdfs:seeAlso]) or on the Gene entity.
+  xrefs:                          # outbound TypeXref nodes (dct:source + dct:identifier [+ rdfs:seeAlso]): disease vocabularies on med2rdf:disease bnodes, dbSNP on the allele node; hgnc/omim also on the Gene entity.
                                   # 153 source vocabularies exist — enumerate them with example enum_xref_source before picking a filter value.
     omim:     "dct:source \"OMIM\" (11,999,276 xref rows) on a TypeXref; also cvo:omim (integer) directly on the Gene entity"
     orphanet: "dct:source \"Orphanet\" (2,486,548), dct:identifier the ORPHA number"
     mondo:    "dct:source \"MONDO\" (4,816,842), dct:identifier \"MONDO:0007254\""
     mesh:     "dct:source \"MeSH\" (991,449); a \"MESH\" spelling also exists but is only 180 rows (0.02%) — safe to ignore, unlike the HP split below. dct:identifier is the MeSH descriptor id (e.g. \"D061325\")"
     hpo:      "dct:source is SPLIT three ways and this one DOES matter: \"Human Phenotype Ontology\" 758,175 / \"HP\" 384,455 / \"HPO\" 64 — filtering \"HP\" alone returns 33.6% of the rows (gotcha source_case)"
-    dbsnp:    "dct:source \"dbSNP\" (2,980,324), dct:identifier the rs number without the \"rs\" prefix"
+    dbsnp:    "dct:source \"dbSNP\" (2,980,324), dct:identifier the rs number without the \"rs\" prefix — on the ALLELE node, not the disease node: ?allele dct:references ?ref . ?cr sio:SIO_000628 ?allele . ?variant cvo:classified_record ?cr (example rs_lookup)"
     clingen:  "dct:source \"ClinGen\" (2,893,276) — variant-level curation, surfaced by enum_xref_source"
     hgnc:     "cvo:hgnc_id \"HGNC:NNNN\" on the Gene entity (28,660 of 92,628 gene IRIs, 31%; 2026-10-27)"
   bridged_via_togoid:             # for DBs NOT co-hosted on the ncbi endpoint

@@ -153,6 +153,14 @@ examples:
       LIMIT 15
     verified: {min_rows: 15, approved_total: 18184, date: "2026-08-26"}
     teaches: "`rdfs:subClassOf rhea:Reaction` selects the 18,854 master reactions; pair it with the Approved status IRI as the standard entry point."
+    traps_avoided:
+      - say: "A reaction has NO rhea:name (0 reactions; names live on the Compound node) — read rhea:equation for its text."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            PREFIX rhea: <http://rdf.rhea-db.org/>
+            SELECT ?nm WHERE { GRAPH <http://rdfportal.org/dataset/rhea> { ?r rdfs:subClassOf rhea:Reaction ; rhea:name ?nm } } LIMIT 1
 
   - id: compound_participant
     intent: reactions containing a compound via the 4-hop ChEBI-participant path (the flagship compound-enum route)
@@ -305,6 +313,17 @@ examples:
     traps_avoided:
       - "Do NOT write `?side rhea:contains ?participant` and expect a number anywhere: rhea:contains is the UNION super-property and carries no coefficient. Binding the sub-property is the whole point of the pattern."
       - "Do NOT enumerate `rhea:contains1`, `rhea:contains2`, … by hand. Besides being 31 branches, four of the coefficients are SYMBOLIC, not numeric — containsN, contains2n, containsNplus1, containsNminus1 yield \"N\", \"2n\", \"Nplus1\", \"Nminus1\" (polymer reactions). Cast to a number only after checking, or the polymer rows silently vanish."
+      - say: "rhea:coefficient is a STRING (\"11\"), even the numeric ones: `isNumeric(?c)` or `?c >= 30` matches 0. Write FILTER(REGEX(?c, \"^[0-9]+$\", \"\") && xsd:integer(?c) >= 30) — 2 reactions have a coefficient >= 30."
+        check:
+          kind: count
+          date: "2026-11-27"
+          query: |
+            PREFIX rhea: <http://rdf.rhea-db.org/>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+            SELECT (COUNT(DISTINCT ?r) AS ?n) WHERE { GRAPH <http://rdfportal.org/dataset/rhea> {
+              ?r rhea:side ?s . ?s ?p ?x . ?p rdfs:subPropertyOf rhea:contains ; rhea:coefficient ?c .
+              FILTER(REGEX(?c, "^[0-9]+$", "") && xsd:integer(?c) >= 30) } }
+          expect: {value: 2, tolerance: 0.01}
       - "The equation string (rhea:equation) already spells the stoichiometry out for a human — use this query when a MACHINE needs the coefficients, not to re-derive what the text says."
 
   - id: xdb_uniprot_direct

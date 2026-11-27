@@ -16,7 +16,7 @@ discovery:
     OWL ontology of 224k+ chemical entities (small molecules, ions, radicals, functional groups) with a
     rdfs:subClassOf class hierarchy, molecular properties (formula/mass/InChI/SMILES/charge) in the chemrof
     namespace, biological roles + chemical relationships (conjugate acid/base, tautomer, enantiomer) via OWL
-    restrictions, and lowercase prefix:id cross-refs to KEGG/DrugBank/PubChem/HMDB/CAS and 50+ resources.
+    restrictions, and lowercase prefix:id cross-refs to KEGG/DrugBank/HMDB/CAS and 50+ resources.
   keywords: [chemical entity, small molecule, metabolite, lipid, amino acid, ion, radical, functional group,
              biological role, drug, molecular formula, inchi, smiles, ontology, hierarchy, chebi, compound]
   categories: [compound, ontology]
@@ -96,6 +96,13 @@ examples:
       }
     verified: {row_count: 1, has_values: ["ATP", "C10H16N5O13P3"], label: "ATP", formula: "C10H16N5O13P3", mass: 507.182, inchikey: "ZKHQWZAMYRWXGA-KQYNXXCUSA-N", date: "2026-09-14"}
     teaches: "Direct-IRI property lookup: entity IS obo:CHEBI_NNNNN typed owl:Class; molecular data are chemrof:* (OPTIONAL, since abstract classes omit them). Old chebi: predicates return 0 (gotcha namespace_migration)."
+    traps_avoided:
+      - say: "To find the IRI by exact name, rdfs:label is a PLAIN literal: `rdfs:label \"carotene\"` finds it, `\"carotene\"@en` returns 0."
+        check:
+          kind: zero_rows
+          date: "2026-11-27"
+          query: |
+            SELECT ?e FROM <http://rdf.ebi.ac.uk/dataset/chebi> WHERE { ?e rdfs:label "carotene"@en } LIMIT 1
 
   - id: enum_subclass_hierarchy
     intent: enumerate ALL descendants of a class via the rdfs:subClassOf+ hierarchy (set-level ROUTE #1)
@@ -176,6 +183,16 @@ examples:
       LIMIT 8
     verified: {min_rows: 8, has_values: ["chemspider", "lincs.smallmolecule"], top: "chemspider 53225, lincs.smallmolecule 41390, pubmed 33274, cas 29826, hmdb 19790, reaxys 17597, kegg.compound 17362, lipidmaps 12638", date: "2026-07-22"}
     teaches: "Cross-refs are literal 'prefix:id' strings on oboInOwl:hasDbXref; STRBEFORE(?xref, ':') extracts the source prefix. To FILTER for one source, match the exact LOWERCASE dot-notation prefix (kegg.compound:, drugbank:) — see gotcha namespace_migration."
+    traps_avoided:
+      - say: "PubChem is nearly absent: only 159 entities carry `pubchem.compound:<CID>` (115 more hold a bare \"pubchem.compound\" with no ID). Route ChEBI→PubChem through togoid_convertId, not hasDbXref."
+        check:
+          kind: count
+          date: "2026-11-27"
+          query: |
+            PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+            SELECT (COUNT(DISTINCT ?e) AS ?n) FROM <http://rdf.ebi.ac.uk/dataset/chebi> WHERE {
+              ?e oboInOwl:hasDbXref ?x . FILTER(STRSTARTS(STR(?x), "pubchem.compound:")) }
+          expect: {value: 159, tolerance: 0.10}
 
   - id: role_and_hierarchy
     intent: compose BOTH set-level routes in one query — hierarchy (subClassOf+) AND role (owl:Restriction)

@@ -13,6 +13,38 @@ dominant client re-reads the schema each session. Only a removal/rename is MAJOR
 
 ## [Unreleased]
 
+### Fixed
+
+- **24 MIE files revised from production failures.** The source was the 2026-08-29 → 11-27 tool-call log
+  (interactive clients, 6,950 `run_sparql` calls). Each failing query was paired with the same user's
+  next successful one, and every finding was re-verified live before it was written. Most zero-row
+  results were genuine absences; these are the ones an MIE could have prevented. Five MIEs were giving
+  wrong guidance:
+  - `uniprot`: "always filter on `up:reviewed`" made single-accession lookups hang (29 of 41 uniprot
+    timeouts). The rule now covers set queries only, and a new `function_text` example shows the
+    `FILTER EXISTS` form.
+  - `uniprot`: keyword names are `skos:prefLabel`, not `rdfs:label`. `keyword_enum` also used KW-0727
+    (SH2) for SH3; it now uses KW-0728, and the count goes from 108 to 225.
+  - `oma`: the Ensembl/NCBI Gene xrefs are on `orth:Gene`, not `orth:Protein`.
+  - `clinvar`: dbSNP IDs hang off the allele node (new `rs_lookup` example).
+  - `glycosmos`: the glycoepitope graph is under `rdf.glycoinfo.org`.
+- New worked examples or traps for facts agents kept missing:
+  - `chembl`: mechanisms recorded on the salt form.
+  - `reactome`: isoform-only controllers, and the SQ156 compiler error.
+  - `gwascatalog`: `LCASE` without `STR` returns HTTP 500; ~41% of study references are unresolvable.
+  - `mesh`: concept/term lists only the non-preferred members; labels are `@en`.
+  - `oma`: suffixed HOG ids and `xrefSwissProt` mnemonics.
+  - `bacdive`: binomial `hasSpecies`; temperature predicates.
+  - `ddbj`: entry IRIs carry a version suffix.
+  - `rikenbrc_mouse`: transitive and `SERVICE` restrictions.
+  - `ontology`/`go`: VALUES-bound roots with `subClassOf*`.
+  - `pdb`: no per-atom coordinates.
+  - Smaller notes: `amrportal`, `ensembl`, `medgen`, `mondo`, `pubmed`, `pubtator`, `rhea`, `chebi`,
+    `mediadive`, `wikipathways`.
+- Usage Guide `references/co-tenancy.md` gains two silent traps:
+  - `FROM <A>` plus `GRAPH <B>` empties the GRAPH block; `FROM NAMED` restores it.
+  - An undeclared `obo:` prefix resolves to oboInOwl.
+
 ## [2.34.2] - 2026-11-24
 
 PATCH: no tool, parameter or return shape changed. Three MIE files are re-measured after the weekly drift

@@ -101,3 +101,16 @@ OMA**, dropping every protein with no OMA record. It returned a wrong count (248
     negative. A production MassBank lookup (2026-08 logs) pinned `VALUES` with native ChEMBL
     IRIs and returned 0 for every compound — which is also exactly what MassBank returns for a
     compound it genuinely has no spectra for.
+12. **`FROM <A>` plus `GRAPH <B> { … }` empties the `GRAPH` block.** A `FROM` clause sets the
+    default graph *and* leaves the named-graph set empty, so a `GRAPH <B>` pattern beside it
+    matches nothing. Verified 2026-11-27 on `primary` (`FROM <ontology/mondo>` +
+    `GRAPH <ontology/hp> { obo:HP_0001250 rdfs:label ?l }` → 0 rows; without the `FROM` → 1) and
+    on `ebi` (`FROM <gwas_catalog>` + `GRAPH <expressionatlas>` → 0; without → 4). A bare
+    `COUNT(*)` over that empty block even reported **1** on both. In a cross-database query, pin
+    every graph with `GRAPH`, or declare the second graph with `FROM NAMED <B>` (that restores
+    the rows). Seen in production on gwascatalog, pubcasefinder and uniprot.
+13. **A missing `PREFIX obo:` is not an error.** Virtuoso resolves an undeclared `obo:` against
+    a built-in default: `BIND(obo:MONDO_0007915 AS ?x)` yields
+    `http://www.geneontology.org/formats/oboInOwl#MONDO_0007915` (verified 2026-11-27), so every
+    pattern on it returns 0 rows. Always declare
+    `PREFIX obo: <http://purl.obolibrary.org/obo/>`.
